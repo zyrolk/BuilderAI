@@ -9,16 +9,31 @@
 /build
 /dist
 
-# testing
+# testing and coverage
 /coverage
+/.nyc_output
+*.lcov
 
 # local environment files
 .env*
 !.env.example
 
-# logs
+# logs and diagnostic reports
+/logs
 *.log
 npm-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# runtime data
+*.pid
+*.pid.lock
+*.seed
+
+# local tool caches and generated packages
+/.npm
+.eslintcache
+.node_repl_history
+*.tgz
 
 # editor and operating system files
 .DS_Store
