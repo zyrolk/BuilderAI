@@ -1,0 +1,649 @@
+{
+  "schemaVersion": 1,
+  "blueprint": {
+    "projectId": "builder-ai",
+    "name": "BuilderAI",
+    "vision": "Build a trustworthy, model-independent software engineering platform grounded in durable project context.",
+    "goals": [
+      {
+        "id": "canonical-context",
+        "statement": "Maintain one canonical machine-readable Project Brain per project.",
+        "successCriteria": [
+          "Runtime consumers and project documentation reference the same validated state."
+        ]
+      },
+      {
+        "id": "model-independence",
+        "statement": "Keep project knowledge portable across tools and models.",
+        "successCriteria": [
+          "The Project Brain core imports no AI, UI, storage-vendor, or network SDK."
+        ]
+      },
+      {
+        "id": "history-integrity",
+        "statement": "Preserve project identity and append-only delivery history.",
+        "successCriteria": [
+          "No supported command can rewrite identity, decisions, completed work, or completed sprints."
+        ]
+      }
+    ],
+    "features": [
+      {
+        "id": "project-blueprint",
+        "name": "Project Blueprint",
+        "summary": "Project vision, goals, features, requirements, constraints, stack references, and ownership."
+      },
+      {
+        "id": "project-memory",
+        "name": "Project Memory",
+        "summary": "Completed and pending work, important decisions, and architectural rules."
+      },
+      {
+        "id": "decision-history",
+        "name": "Decision Log",
+        "summary": "Append-only architectural decision records."
+      },
+      {
+        "id": "delivery-progress",
+        "name": "Progress Log",
+        "summary": "Current milestone, completed sprints, and completed task identifiers."
+      },
+      {
+        "id": "task-engine",
+        "name": "Task Engine",
+        "summary": "Validated Todo, In Progress, Done, and Blocked task lifecycle."
+      },
+      {
+        "id": "domain-vocabulary",
+        "name": "Domain Glossary",
+        "summary": "Shared business and technical definitions."
+      },
+      {
+        "id": "blueprint-reader",
+        "name": "Blueprint Reader",
+        "summary": "Deterministic discovery, validation, analysis, consistency checking, and structured summaries for BuilderAI project documentation."
+      }
+    ],
+    "requirements": [
+      {
+        "id": "canonical-state-file",
+        "statement": "Store mutable Project Brain state in one canonical machine-readable file.",
+        "acceptanceCriteria": [
+          "The canonical file passes the production runtime parser in CI.",
+          "Project Brain policy documents do not repeat mutable state."
+        ]
+      },
+      {
+        "id": "intent-commands",
+        "statement": "Mutate Project Brain state only through explicit intent-based commands.",
+        "acceptanceCriteria": [
+          "The application service API exposes no unrestricted aggregate replacement.",
+          "Project identity and append-only histories are enforced at the repository boundary."
+        ]
+      },
+      {
+        "id": "runtime-validation",
+        "statement": "Validate every Project Brain snapshot before it enters storage.",
+        "acceptanceCriteria": ["Invalid snapshots return path-specific validation issues."]
+      },
+      {
+        "id": "blueprint-document-discovery",
+        "statement": "Discover required BuilderAI documents through a storage-independent port.",
+        "acceptanceCriteria": [
+          "Missing, duplicate, and unknown documents are reported deterministically."
+        ]
+      },
+      {
+        "id": "blueprint-document-analysis",
+        "statement": "Parse versioned documentation and produce a structured project summary without AI.",
+        "acceptanceCriteria": [
+          "Required sections, versions, schema compatibility, relationships, conflicts, and duplicated mutable state are validated.",
+          "The summary contains overview, architecture, modules, features, milestone, work, risks, and missing documentation."
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "id": "no-ai-sprint-one",
+        "statement": "Do not implement AI, LLM, chat, code-generation, or automation capabilities in Sprint 1.",
+        "rationale": "The permanent context foundation must be trustworthy before product AI is considered."
+      },
+      {
+        "id": "no-durable-persistence",
+        "statement": "Do not select or introduce durable persistence in Sprint 1.",
+        "rationale": "Storage requirements and operational constraints are not approved."
+      },
+      {
+        "id": "approval-gate",
+        "statement": "Do not begin Sprint 2 without explicit stakeholder approval.",
+        "rationale": "Sprint boundaries control scope and architectural risk."
+      },
+      {
+        "id": "no-ai-sprint-two",
+        "statement": "Do not implement AI, LLM, chat, code-generation, automation, deployment, or API calls in Sprint 2.",
+        "rationale": "The Blueprint Reader is limited to deterministic project understanding."
+      }
+    ],
+    "techStack": [
+      {
+        "name": "Node.js",
+        "version": "managed by .nvmrc and package.json",
+        "purpose": "Supported runtime and CI environment."
+      },
+      {
+        "name": "TypeScript",
+        "version": "managed by package.json",
+        "purpose": "Strict domain and application contracts."
+      },
+      {
+        "name": "Next.js",
+        "version": "managed by package.json",
+        "purpose": "Deployable web shell outside the Project Brain core."
+      },
+      {
+        "name": "Vitest",
+        "version": "managed by package.json",
+        "purpose": "Deterministic unit and adapter tests."
+      }
+    ],
+    "folderOwnership": [
+      {
+        "path": "project-brain.json",
+        "owner": "Project governance",
+        "responsibility": "Sole canonical mutable Project Brain state."
+      },
+      {
+        "path": "docs",
+        "owner": "Project governance",
+        "responsibility": "Stable policies and field interpretation without duplicated live state."
+      },
+      {
+        "path": "src/core/project-brain/types",
+        "owner": "Domain architecture",
+        "responsibility": "Framework-independent Project Brain contracts and errors."
+      },
+      {
+        "path": "src/core/project-brain/validators",
+        "owner": "Domain architecture",
+        "responsibility": "Structural, relationship, identity, and history invariants."
+      },
+      {
+        "path": "src/core/project-brain/schemas",
+        "owner": "Application architecture",
+        "responsibility": "Runtime parsing and defensive-copy boundaries."
+      },
+      {
+        "path": "src/core/project-brain/services",
+        "owner": "Application architecture",
+        "responsibility": "Explicit intent-based Project Brain commands and queries."
+      },
+      {
+        "path": "src/core/project-brain/storage",
+        "owner": "Ports and adapters",
+        "responsibility": "Repository contract and current non-durable in-memory adapter."
+      },
+      {
+        "path": "src/core/blueprint-reader",
+        "owner": "Domain architecture",
+        "responsibility": "Framework-, AI-, and storage-independent document discovery, parsing, validation, analysis, and summary policy."
+      },
+      {
+        "path": "src/infrastructure/blueprint-reader",
+        "owner": "Infrastructure adapters",
+        "responsibility": "Local Node filesystem implementation of the Blueprint Reader document-source port."
+      }
+    ]
+  },
+  "memory": {
+    "completedWork": [
+      {
+        "id": "foundation-zero",
+        "summary": "Established the Next.js engineering foundation, documentation, CI, security baseline, and production build.",
+        "taskIds": [],
+        "completedAt": "2026-07-30T09:00:00.000Z"
+      },
+      {
+        "id": "sprint-one-foundation",
+        "summary": "Created the first Project Brain domain model, runtime validation, services, repository port, and tests.",
+        "taskIds": [],
+        "completedAt": "2026-07-30T10:00:00.000Z"
+      },
+      {
+        "id": "sprint-one-critical-remediation",
+        "summary": "Established canonical machine-readable state, policy-only documentation, intent-based commands, immutable identity, and append-only history enforcement.",
+        "taskIds": ["canonical-project-brain", "intent-based-commands", "critical-self-review"],
+        "completedAt": "2026-07-30T11:00:00.000Z"
+      },
+      {
+        "id": "sprint-two-blueprint-reader",
+        "summary": "Implemented deterministic document discovery, versioned parsing, validation, relationship and consistency analysis, structured summaries, a secure filesystem adapter, and comprehensive tests.",
+        "taskIds": [
+          "version-blueprint-documents",
+          "implement-document-discovery",
+          "implement-document-analysis",
+          "generate-project-summary",
+          "verify-blueprint-reader"
+        ],
+        "completedAt": "2026-07-30T13:00:00.000Z"
+      }
+    ],
+    "pendingWork": [
+      {
+        "id": "complete-cross-record-invariants",
+        "summary": "Define and enforce remaining completed-work, sprint, task-reopening, and decision-reference invariants before those workflows become externally writable.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "complete-decision-lifecycle",
+        "summary": "Define explicit decision supersession relationships, provenance, and status transitions.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "define-aggregate-scale-limits",
+        "summary": "Define Project Brain size, task-count, latency, and conflict thresholds before durable storage or multi-writer use.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "specify-repository-semantics",
+        "summary": "Document atomic compare-and-save semantics and add repository conformance tests before implementing a durable adapter.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "bound-external-document-ingestion",
+        "summary": "Define file-size, document-count, nesting-depth, and processing-time limits before accepting remote or user-controlled project archives.",
+        "priority": "HIGH"
+      }
+    ],
+    "importantDecisionIds": [
+      "decision-001",
+      "decision-002",
+      "decision-003",
+      "decision-004",
+      "decision-005",
+      "decision-006",
+      "decision-007",
+      "decision-008"
+    ],
+    "architecturalRules": [
+      {
+        "id": "read-canonical-brain",
+        "rule": "Read and validate project-brain.json before changing code.",
+        "rationale": "All implementation must use the current canonical project context."
+      },
+      {
+        "id": "intent-only-mutation",
+        "rule": "Mutate Project Brain state only through explicit intent-based commands.",
+        "rationale": "Generic replacement can bypass domain history and identity guarantees."
+      },
+      {
+        "id": "append-only-history",
+        "rule": "Decisions, completed work, and completed sprints are append-only.",
+        "rationale": "Project history must remain auditable."
+      },
+      {
+        "id": "no-ai-before-approval",
+        "rule": "Do not implement AI capabilities without a separately approved milestone.",
+        "rationale": "The Project Brain foundation does not authorize product AI."
+      }
+    ],
+    "updatedAt": "2026-07-30T13:00:00.000Z"
+  },
+  "decisionLog": [
+    {
+      "id": "decision-001",
+      "title": "Make the Project Brain the project authority",
+      "context": "Future engineering tools require durable context independent of chat history.",
+      "decision": "All changes begin by reading the canonical Project Brain and its policy documents.",
+      "rationale": "Repository-owned context is portable and reviewable.",
+      "status": "ACCEPTED",
+      "alternatives": ["Tool-specific conversational memory"],
+      "consequences": {
+        "positive": ["Portable project context"],
+        "negative": ["Project state must be maintained deliberately"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:00:00.000Z"
+    },
+    {
+      "id": "decision-002",
+      "title": "Isolate a model-independent core",
+      "context": "BuilderAI may use different interfaces and infrastructure over time.",
+      "decision": "Keep Project Brain policy free of UI, AI-provider, network, and storage-vendor dependencies.",
+      "rationale": "Domain policy must remain portable.",
+      "status": "ACCEPTED",
+      "alternatives": ["Place policy in Next.js routes"],
+      "consequences": {
+        "positive": ["Independent domain testing"],
+        "negative": ["Explicit boundaries require maintenance"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:01:00.000Z"
+    },
+    {
+      "id": "decision-003",
+      "title": "Use dependency-free runtime validation",
+      "context": "Runtime input requires validation without expanding the dependency surface.",
+      "decision": "Use internal validators for schema version 1.",
+      "rationale": "The current schema is small enough to maintain locally.",
+      "status": "ACCEPTED",
+      "alternatives": ["Add a schema-validation dependency"],
+      "consequences": {
+        "positive": ["No new runtime dependency"],
+        "negative": ["Validation code requires disciplined tests"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:02:00.000Z"
+    },
+    {
+      "id": "decision-004",
+      "title": "Use optimistic repository revisions",
+      "context": "Concurrent updates must not silently overwrite one another.",
+      "decision": "Require an expected revision for every Project Brain commit.",
+      "rationale": "Compare-and-save exposes conflicts explicitly.",
+      "status": "ACCEPTED",
+      "alternatives": ["Last-write-wins updates"],
+      "consequences": {
+        "positive": ["Lost updates are rejected"],
+        "negative": ["Callers must handle revision conflicts"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:03:00.000Z"
+    },
+    {
+      "id": "decision-005",
+      "title": "Use explicit task transitions",
+      "context": "Implicit status assignment makes delivery state unreliable.",
+      "decision": "Enforce documented task transitions, blockers, and dependencies.",
+      "rationale": "Task progress must remain auditable.",
+      "status": "ACCEPTED",
+      "alternatives": ["Allow unrestricted status assignment"],
+      "consequences": {
+        "positive": ["Consistent task state"],
+        "negative": ["Corrections require explicit reopening"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:04:00.000Z"
+    },
+    {
+      "id": "decision-006",
+      "title": "Use one canonical machine-readable Project Brain",
+      "context": "Markdown and runtime fixtures duplicated mutable state and could drift.",
+      "decision": "Make project-brain.json the sole mutable Project Brain state and keep documentation policy-only.",
+      "rationale": "One validated artifact eliminates competing state authorities.",
+      "status": "ACCEPTED",
+      "alternatives": ["Synchronize multiple hand-maintained Markdown records"],
+      "consequences": {
+        "positive": ["Runtime and project state share one source"],
+        "negative": ["Human readers must inspect or render the canonical JSON"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:30:00.000Z"
+    },
+    {
+      "id": "decision-007",
+      "title": "Allow only intent-based Project Brain mutations",
+      "context": "Generic replacement could rewrite history or project identity.",
+      "decision": "Remove public aggregate replacement and enforce identity and history at commit time.",
+      "rationale": "Supported mutations must express domain intent and preserve auditability.",
+      "status": "ACCEPTED",
+      "alternatives": ["Keep generic replacement with caller discipline"],
+      "consequences": {
+        "positive": ["Identity and append-only history are protected"],
+        "negative": ["Each new mutation requires an explicit command"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T10:31:00.000Z"
+    },
+    {
+      "id": "decision-008",
+      "title": "Use deterministic Blueprint Reader ports and parsers",
+      "context": "BuilderAI must understand project documentation without coupling the domain to filesystems, frameworks, storage engines, or AI providers.",
+      "decision": "Place discovery, parsing, validation, relationship analysis, consistency diagnostics, and summary generation in a framework-independent core behind a DocumentSource port; provide Node filesystem access as an infrastructure adapter.",
+      "rationale": "Deterministic rules make project understanding portable, testable, and independent of AI and storage choices.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Parse documents inside Next.js routes",
+        "Use an AI model to infer project structure",
+        "Couple discovery directly to Node filesystem APIs"
+      ],
+      "consequences": {
+        "positive": [
+          "The reader can operate over memory, filesystems, or future sources without changing domain policy",
+          "Analysis is deterministic and testable"
+        ],
+        "negative": ["Supported Markdown structure and version metadata must be explicit"]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T12:00:00.000Z"
+    }
+  ],
+  "progressLog": {
+    "currentMilestone": "Sprint 2 complete - awaiting stakeholder approval",
+    "completedSprints": [
+      {
+        "id": "foundation-zero",
+        "name": "Engineering Foundation",
+        "outcome": "A reproducible Next.js foundation with CI, tests, documentation, and security controls.",
+        "completedTaskIds": [],
+        "completedAt": "2026-07-30T09:00:00.000Z"
+      },
+      {
+        "id": "sprint-one-foundation",
+        "name": "Project Brain Foundation",
+        "outcome": "A framework-independent Project Brain domain prototype with runtime validation.",
+        "completedTaskIds": [],
+        "completedAt": "2026-07-30T10:00:00.000Z"
+      },
+      {
+        "id": "sprint-one-critical-remediation",
+        "name": "Sprint 1 Critical Remediation",
+        "outcome": "One canonical machine-readable Project Brain with drift-resistant policy documentation and intent-only mutation boundaries.",
+        "completedTaskIds": [
+          "canonical-project-brain",
+          "intent-based-commands",
+          "critical-self-review"
+        ],
+        "completedAt": "2026-07-30T11:00:00.000Z"
+      },
+      {
+        "id": "sprint-two-blueprint-reader",
+        "name": "Blueprint Reader Foundation",
+        "outcome": "A deterministic, framework-independent Blueprint Reader with document discovery, versioned parsing, validation, relationship and consistency analysis, structured summaries, a secure filesystem adapter, and comprehensive verification.",
+        "completedTaskIds": [
+          "version-blueprint-documents",
+          "implement-document-discovery",
+          "implement-document-analysis",
+          "generate-project-summary",
+          "verify-blueprint-reader"
+        ],
+        "completedAt": "2026-07-30T13:00:00.000Z"
+      }
+    ],
+    "completedTaskIds": [
+      "canonical-project-brain",
+      "intent-based-commands",
+      "critical-self-review",
+      "version-blueprint-documents",
+      "implement-document-discovery",
+      "implement-document-analysis",
+      "generate-project-summary",
+      "verify-blueprint-reader"
+    ],
+    "updatedAt": "2026-07-30T13:00:00.000Z"
+  },
+  "tasks": [
+    {
+      "id": "canonical-project-brain",
+      "title": "Establish canonical Project Brain state",
+      "description": "Create one validated machine-readable Project Brain and remove mutable state duplication from documentation.",
+      "status": "DONE",
+      "priority": "CRITICAL",
+      "acceptanceCriteria": [
+        "project-brain.json is the sole mutable Project Brain state.",
+        "CI validates the canonical state with the production parser."
+      ],
+      "dependencyIds": [],
+      "createdAt": "2026-07-30T10:30:00.000Z",
+      "updatedAt": "2026-07-30T11:00:00.000Z",
+      "completedAt": "2026-07-30T11:00:00.000Z"
+    },
+    {
+      "id": "intent-based-commands",
+      "title": "Replace unrestricted aggregate mutation",
+      "description": "Expose explicit commands and enforce immutable identity and append-only history.",
+      "status": "DONE",
+      "priority": "CRITICAL",
+      "acceptanceCriteria": [
+        "No public application service replaces an arbitrary aggregate.",
+        "Identity and append-only histories are protected by tests."
+      ],
+      "dependencyIds": [],
+      "createdAt": "2026-07-30T10:30:00.000Z",
+      "updatedAt": "2026-07-30T11:00:00.000Z",
+      "completedAt": "2026-07-30T11:00:00.000Z"
+    },
+    {
+      "id": "critical-self-review",
+      "title": "Verify and review critical remediation",
+      "description": "Run CI and review all Critical and High findings without starting Sprint 2.",
+      "status": "DONE",
+      "priority": "CRITICAL",
+      "acceptanceCriteria": [
+        "CI and all tests pass.",
+        "The remediation report classifies every Critical and High finding."
+      ],
+      "dependencyIds": ["canonical-project-brain", "intent-based-commands"],
+      "createdAt": "2026-07-30T10:30:00.000Z",
+      "updatedAt": "2026-07-30T11:00:00.000Z",
+      "completedAt": "2026-07-30T11:00:00.000Z"
+    },
+    {
+      "id": "version-blueprint-documents",
+      "title": "Version required Blueprint Reader documents",
+      "description": "Add stable machine-readable type and version metadata to every required Markdown document.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Every required Markdown document declares its supported type and version without duplicating mutable state."
+      ],
+      "dependencyIds": [],
+      "createdAt": "2026-07-30T12:00:00.000Z",
+      "updatedAt": "2026-07-30T12:30:00.000Z",
+      "completedAt": "2026-07-30T12:30:00.000Z"
+    },
+    {
+      "id": "implement-document-discovery",
+      "title": "Implement document discovery",
+      "description": "Locate required documents and report missing, duplicate, and unknown files through a DocumentSource port.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": ["Discovery is deterministic and storage-independent."],
+      "dependencyIds": ["version-blueprint-documents"],
+      "createdAt": "2026-07-30T12:00:00.000Z",
+      "updatedAt": "2026-07-30T12:35:00.000Z",
+      "completedAt": "2026-07-30T12:35:00.000Z"
+    },
+    {
+      "id": "implement-document-analysis",
+      "title": "Implement parsing and analysis",
+      "description": "Parse canonical JSON and versioned Markdown, validate structure and relationships, and detect inconsistencies.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Version, section, schema, relationship, conflict, reference, and mutable-state duplication diagnostics are tested."
+      ],
+      "dependencyIds": ["implement-document-discovery"],
+      "createdAt": "2026-07-30T12:00:00.000Z",
+      "updatedAt": "2026-07-30T12:40:00.000Z",
+      "completedAt": "2026-07-30T12:40:00.000Z"
+    },
+    {
+      "id": "generate-project-summary",
+      "title": "Generate structured project summary",
+      "description": "Produce deterministic project, architecture, module, feature, milestone, work, risk, and documentation summaries.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": ["Summary output remains framework-, AI-, and storage-independent."],
+      "dependencyIds": ["implement-document-analysis"],
+      "createdAt": "2026-07-30T12:00:00.000Z",
+      "updatedAt": "2026-07-30T12:45:00.000Z",
+      "completedAt": "2026-07-30T12:45:00.000Z"
+    },
+    {
+      "id": "verify-blueprint-reader",
+      "title": "Verify Blueprint Reader",
+      "description": "Run comprehensive tests and the full repository CI gate, update canonical completion state, and wait for Sprint 3 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Discovery, parsing, validation, missing files, conflicts, versions, and summary generation tests pass.",
+        "The complete CI pipeline passes."
+      ],
+      "dependencyIds": ["generate-project-summary"],
+      "createdAt": "2026-07-30T12:00:00.000Z",
+      "updatedAt": "2026-07-30T13:00:00.000Z",
+      "completedAt": "2026-07-30T13:00:00.000Z"
+    }
+  ],
+  "domainGlossary": {
+    "terms": [
+      {
+        "id": "project-brain-term",
+        "term": "Project Brain",
+        "category": "BUSINESS",
+        "definition": "The authoritative validated context and delivery state for one BuilderAI project.",
+        "aliases": ["Brain"]
+      },
+      {
+        "id": "canonical-state-term",
+        "term": "Canonical State",
+        "category": "TECHNICAL",
+        "definition": "The sole machine-readable artifact that owns mutable Project Brain facts.",
+        "aliases": ["Canonical Project Brain"]
+      },
+      {
+        "id": "intent-command-term",
+        "term": "Intent-based Command",
+        "category": "TECHNICAL",
+        "definition": "A mutation operation named for a specific domain outcome rather than arbitrary state replacement.",
+        "aliases": ["Command"]
+      },
+      {
+        "id": "append-only-history-term",
+        "term": "Append-only History",
+        "category": "TECHNICAL",
+        "definition": "Historical records that may gain entries but whose existing entries cannot be removed or rewritten.",
+        "aliases": []
+      },
+      {
+        "id": "revision-term",
+        "term": "Revision",
+        "category": "TECHNICAL",
+        "definition": "A monotonically increasing token used to reject stale Project Brain commits.",
+        "aliases": ["Version token"]
+      },
+      {
+        "id": "blueprint-reader-term",
+        "term": "Blueprint Reader",
+        "category": "BUSINESS",
+        "definition": "The deterministic BuilderAI capability that discovers, validates, relates, and summarizes project documentation without AI.",
+        "aliases": ["Reader"]
+      },
+      {
+        "id": "document-source-term",
+        "term": "Document Source",
+        "category": "TECHNICAL",
+        "definition": "A storage-independent port that lists and reads project documentation.",
+        "aliases": []
+      },
+      {
+        "id": "document-diagnostic-term",
+        "term": "Document Diagnostic",
+        "category": "TECHNICAL",
+        "definition": "A structured finding describing discovery, validation, relationship, or consistency problems in project documentation.",
+        "aliases": ["Diagnostic"]
+      }
+    ],
+    "updatedAt": "2026-07-30T12:00:00.000Z"
+  }
+}

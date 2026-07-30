@@ -1,0 +1,39 @@
+.main {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 2rem;
+}
+
+.panel {
+  width: min(42rem, 100%);
+  padding: clamp(2rem, 6vw, 4rem);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 1.5rem;
+  background: rgb(255 255 255 / 5%);
+  box-shadow: 0 2rem 5rem rgb(0 0 0 / 24%);
+}
+
+.panel h1 {
+  margin: 0;
+  font-size: clamp(3rem, 10vw, 6rem);
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.panel p:last-child {
+  max-width: 34rem;
+  margin: 1.5rem 0 0;
+  color: #c9d0e3;
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  color: #8ea7ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
