@@ -45,3 +45,7 @@ known limitations, and the next concrete step.
 Product AI is a separate architectural concern. It requires discovery, evaluation criteria, threat
 modeling, privacy and provider review, cost controls, human oversight, incident handling, and explicit
 approval before implementation. See the AI feature gate in `roadmap.md`.
+
+Any future model-facing adapter must consume only a validated, size-bounded Context Package. It may not
+read Project Brain state, documentation, or source files independently. This rule defines a future
+boundary; it does not authorize an adapter, external transmission, or product AI implementation.

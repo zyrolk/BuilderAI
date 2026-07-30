@@ -1,0 +1,70 @@
+import {
+  CONTEXT_PRIORITIES,
+  DEFAULT_CONTEXT_LIMITS,
+  ContextBuilderValidationError,
+} from '../types';
+import type { ContextBuildInput, ContextLimits, ContextPackage } from '../types';
+import { ContextInputValidator, ContextPackageValidator } from '../validators';
+import { ContextSelectionService } from './context-selection.service';
+import { ContextSizeService, type ContextPackageDraft } from './context-size.service';
+
+export class ContextBuilderService {
+  constructor(
+    private readonly inputValidator = new ContextInputValidator(),
+    private readonly selectionService = new ContextSelectionService(),
+    private readonly sizeService = new ContextSizeService(),
+    private readonly packageValidator = new ContextPackageValidator(),
+  ) {}
+
+  async build(
+    input: ContextBuildInput,
+    limitOverrides: Partial<ContextLimits> = {},
+  ): Promise<ContextPackage> {
+    const limits: ContextLimits = { ...DEFAULT_CONTEXT_LIMITS, ...limitOverrides };
+    let sourcePaths: readonly string[];
+    try {
+      sourcePaths = await input.sourceFileSource.listSourcePaths();
+    } catch (error: unknown) {
+      throw new ContextBuilderValidationError([
+        {
+          code: 'INVALID_REFERENCE',
+          path: '$.sourceFileSource',
+          message: `Could not list source paths: ${error instanceof Error ? error.message : 'unknown error'}`,
+        },
+      ]);
+    }
+    const validated = this.inputValidator.validate(input, limits, sourcePaths);
+    const selection = await this.selectionService.select(validated, limits);
+    const draft: ContextPackageDraft = {
+      schemaVersion: 1,
+      priorityOrder: CONTEXT_PRIORITIES,
+      projectIdentity: {
+        id: validated.brain.blueprint.projectId,
+        name: validated.brain.blueprint.name,
+        vision: validated.brain.blueprint.vision,
+      },
+      currentMilestone: validated.brain.progressLog.currentMilestone,
+      currentTask: selection.currentTask,
+      relatedTasks: selection.relatedTasks,
+      goals: selection.goals,
+      constraints: selection.constraints,
+      architectureSummary: validated.reader.analysis.architecture,
+      relevantModules: selection.modules,
+      relevantFiles: selection.files,
+      relevantDecisions: selection.decisions,
+      codingStandards: selection.codingStandards,
+      knownRisks: selection.risks,
+      openBlockers: selection.blockers,
+      relevantDocumentation: selection.documents,
+    };
+    const packageValue = this.sizeService.enforce(
+      draft,
+      limits,
+      selection.omissions,
+      selection.sourcePaths,
+      selection.sourceReads,
+    );
+    this.packageValidator.validate(packageValue, limits);
+    return structuredClone(packageValue);
+  }
+}

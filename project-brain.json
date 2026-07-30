@@ -62,6 +62,11 @@
         "id": "blueprint-reader",
         "name": "Blueprint Reader",
         "summary": "Deterministic discovery, validation, analysis, consistency checking, and structured summaries for BuilderAI project documentation."
+      },
+      {
+        "id": "context-builder",
+        "name": "Context Builder",
+        "summary": "Task-scoped selection, prioritization, dependency resolution, validation, and size-bounded packaging of project context."
       }
     ],
     "requirements": [
@@ -100,6 +105,22 @@
           "Required sections, versions, schema compatibility, relationships, conflicts, and duplicated mutable state are validated.",
           "The summary contains overview, architecture, modules, features, milestone, work, risks, and missing documentation."
         ]
+      },
+      {
+        "id": "task-scoped-context-selection",
+        "statement": "Select only project information relevant to the current task using deterministic rules and explicit dependency relationships.",
+        "acceptanceCriteria": [
+          "Context selection resolves related modules, documents, tasks, decisions, and source files without external services.",
+          "Context priority follows the approved governance-to-source order."
+        ]
+      },
+      {
+        "id": "bounded-context-package",
+        "statement": "Produce one validated, strongly typed Context Package within configurable limits.",
+        "acceptanceCriteria": [
+          "Oversized, duplicate, conflicting, incomplete, and invalid context is rejected or deterministically omitted according to policy.",
+          "The Context Package remains framework-, storage-, and consumer-independent."
+        ]
       }
     ],
     "constraints": [
@@ -122,6 +143,11 @@
         "id": "no-ai-sprint-two",
         "statement": "Do not implement AI, LLM, chat, code-generation, automation, deployment, or API calls in Sprint 2.",
         "rationale": "The Blueprint Reader is limited to deterministic project understanding."
+      },
+      {
+        "id": "no-ai-sprint-three",
+        "statement": "Do not implement models, chat, code generation, API calls, deployment, or automation in Sprint 3.",
+        "rationale": "The Context Builder is limited to deterministic, bounded preparation of project context."
       }
     ],
     "techStack": [
@@ -191,6 +217,11 @@
         "path": "src/infrastructure/blueprint-reader",
         "owner": "Infrastructure adapters",
         "responsibility": "Local Node filesystem implementation of the Blueprint Reader document-source port."
+      },
+      {
+        "path": "src/core/context-builder",
+        "owner": "Domain architecture",
+        "responsibility": "Framework-, storage-, and consumer-independent context selection, prioritization, dependency resolution, validation, and packaging."
       }
     ]
   },
@@ -225,6 +256,17 @@
           "verify-blueprint-reader"
         ],
         "completedAt": "2026-07-30T13:00:00.000Z"
+      },
+      {
+        "id": "sprint-three-context-builder",
+        "summary": "Implemented deterministic task-scoped context selection, canonical prioritization, lazy dependency resolution, duplicate handling, validation, and bounded Context Package construction.",
+        "taskIds": [
+          "define-context-package",
+          "implement-context-selection",
+          "enforce-context-policy",
+          "verify-context-builder"
+        ],
+        "completedAt": "2026-07-30T15:00:00.000Z"
       }
     ],
     "pendingWork": [
@@ -252,6 +294,11 @@
         "id": "bound-external-document-ingestion",
         "summary": "Define file-size, document-count, nesting-depth, and processing-time limits before accepting remote or user-controlled project archives.",
         "priority": "HIGH"
+      },
+      {
+        "id": "evaluate-context-relevance-quality",
+        "summary": "Define a representative relevance corpus and false-positive, false-negative, and package-size thresholds before approving an external context consumer.",
+        "priority": "HIGH"
       }
     ],
     "importantDecisionIds": [
@@ -262,7 +309,8 @@
       "decision-005",
       "decision-006",
       "decision-007",
-      "decision-008"
+      "decision-008",
+      "decision-009"
     ],
     "architecturalRules": [
       {
@@ -286,7 +334,7 @@
         "rationale": "The Project Brain foundation does not authorize product AI."
       }
     ],
-    "updatedAt": "2026-07-30T13:00:00.000Z"
+    "updatedAt": "2026-07-30T15:00:00.000Z"
   },
   "decisionLog": [
     {
@@ -415,10 +463,35 @@
       },
       "important": true,
       "recordedAt": "2026-07-30T12:00:00.000Z"
+    },
+    {
+      "id": "decision-009",
+      "title": "Use one deterministic Context Package boundary",
+      "context": "Downstream consumers need task-relevant project context without reading the entire repository or depending on a framework, storage engine, network service, or model integration.",
+      "decision": "Build context through a pure core service that validates Project Brain and Blueprint Reader inputs, resolves explicit and lexical dependencies, applies a fixed priority order, enforces configurable limits, and emits one strongly typed Context Package.",
+      "rationale": "A single validated and bounded package prevents consumers from bypassing governance, loading uncontrolled context, or interpreting competing context formats.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Allow each downstream consumer to assemble repository context independently",
+        "Always load the entire project",
+        "Couple context assembly to a filesystem or application framework"
+      ],
+      "consequences": {
+        "positive": [
+          "Context selection is deterministic, bounded, portable, and independently testable",
+          "Downstream consumers receive one validated contract"
+        ],
+        "negative": [
+          "Lexical relevance rules require explicit project vocabulary and relationship metadata",
+          "Very small limits may reject a package when mandatory governance context cannot fit"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T14:00:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Sprint 2 complete - awaiting stakeholder approval",
+    "currentMilestone": "Sprint 3 complete - awaiting architecture review",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -457,6 +530,18 @@
           "verify-blueprint-reader"
         ],
         "completedAt": "2026-07-30T13:00:00.000Z"
+      },
+      {
+        "id": "sprint-three-context-builder",
+        "name": "Context Builder Foundation",
+        "outcome": "A deterministic, framework-independent Context Builder that emits one validated, task-scoped, priority-ordered, size-bounded Context Package through lazy source access.",
+        "completedTaskIds": [
+          "define-context-package",
+          "implement-context-selection",
+          "enforce-context-policy",
+          "verify-context-builder"
+        ],
+        "completedAt": "2026-07-30T15:00:00.000Z"
       }
     ],
     "completedTaskIds": [
@@ -467,9 +552,13 @@
       "implement-document-discovery",
       "implement-document-analysis",
       "generate-project-summary",
-      "verify-blueprint-reader"
+      "verify-blueprint-reader",
+      "define-context-package",
+      "implement-context-selection",
+      "enforce-context-policy",
+      "verify-context-builder"
     ],
-    "updatedAt": "2026-07-30T13:00:00.000Z"
+    "updatedAt": "2026-07-30T15:00:00.000Z"
   },
   "tasks": [
     {
@@ -583,6 +672,66 @@
       "createdAt": "2026-07-30T12:00:00.000Z",
       "updatedAt": "2026-07-30T13:00:00.000Z",
       "completedAt": "2026-07-30T13:00:00.000Z"
+    },
+    {
+      "id": "define-context-package",
+      "title": "Define the Context Package contract",
+      "description": "Define priority, package, source snapshot, size metadata, omission, and validation issue contracts.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The Context Package contains every approved field and declares a fixed priority order.",
+        "Contracts import no framework, storage, network, or model SDK."
+      ],
+      "dependencyIds": [],
+      "createdAt": "2026-07-30T14:00:00.000Z",
+      "updatedAt": "2026-07-30T14:20:00.000Z",
+      "completedAt": "2026-07-30T14:20:00.000Z"
+    },
+    {
+      "id": "implement-context-selection",
+      "title": "Implement context selection and dependency resolution",
+      "description": "Select task-relevant modules, documents, tasks, decisions, and source files using deterministic rules.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Selection avoids loading unrelated project content.",
+        "Task dependencies and relative source imports are resolved transitively."
+      ],
+      "dependencyIds": ["define-context-package"],
+      "createdAt": "2026-07-30T14:00:00.000Z",
+      "updatedAt": "2026-07-30T14:30:00.000Z",
+      "completedAt": "2026-07-30T14:30:00.000Z"
+    },
+    {
+      "id": "enforce-context-policy",
+      "title": "Enforce context priority, size, and validation policy",
+      "description": "Apply fixed priorities, deduplication, configurable limits, and typed rejection of invalid context.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The serialized package never exceeds configured limits.",
+        "Missing, invalid, duplicate, and conflicting context cases are comprehensively tested."
+      ],
+      "dependencyIds": ["implement-context-selection"],
+      "createdAt": "2026-07-30T14:00:00.000Z",
+      "updatedAt": "2026-07-30T14:45:00.000Z",
+      "completedAt": "2026-07-30T14:45:00.000Z"
+    },
+    {
+      "id": "verify-context-builder",
+      "title": "Verify the Context Builder",
+      "description": "Run comprehensive tests and the full repository CI gate, synchronize canonical completion state, and wait for Sprint 4 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Selection, prioritization, limits, dependencies, deduplication, conflicts, and validation tests pass.",
+        "The complete CI pipeline passes."
+      ],
+      "dependencyIds": ["enforce-context-policy"],
+      "createdAt": "2026-07-30T14:00:00.000Z",
+      "updatedAt": "2026-07-30T15:00:00.000Z",
+      "completedAt": "2026-07-30T15:00:00.000Z"
     }
   ],
   "domainGlossary": {
@@ -642,8 +791,29 @@
         "category": "TECHNICAL",
         "definition": "A structured finding describing discovery, validation, relationship, or consistency problems in project documentation.",
         "aliases": ["Diagnostic"]
+      },
+      {
+        "id": "context-builder-term",
+        "term": "Context Builder",
+        "category": "BUSINESS",
+        "definition": "The deterministic capability that selects, prioritizes, validates, and bounds project information for a current task.",
+        "aliases": []
+      },
+      {
+        "id": "context-package-term",
+        "term": "Context Package",
+        "category": "TECHNICAL",
+        "definition": "The sole strongly typed, validated, task-scoped context object available to downstream consumers.",
+        "aliases": []
+      },
+      {
+        "id": "context-budget-term",
+        "term": "Context Budget",
+        "category": "TECHNICAL",
+        "definition": "Configured character, file, and document limits applied while constructing a Context Package.",
+        "aliases": ["Context limit"]
       }
     ],
-    "updatedAt": "2026-07-30T12:00:00.000Z"
+    "updatedAt": "2026-07-30T14:00:00.000Z"
   }
 }

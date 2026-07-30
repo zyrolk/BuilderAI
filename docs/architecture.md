@@ -7,11 +7,11 @@ version: 1
 
 ## Status and scope
 
-This document defines the baseline architecture for the Project Brain and Blueprint Reader foundations.
-The repository contains a deployable web shell, a framework-independent Project Brain core, and a
-deterministic project-document reader. Authentication, durable persistence, external integrations,
-application workflows, deployment automation, and AI capabilities remain out of scope until their
-requirements and risks are approved.
+This document defines the baseline architecture for the Project Brain, Blueprint Reader, and Context
+Builder foundations. The repository contains a deployable web shell and framework-independent cores
+for canonical project state, deterministic document understanding, and task-scoped context packaging.
+Authentication, durable persistence, external integrations, application workflows, deployment
+automation, and AI capabilities remain out of scope until their requirements and risks are approved.
 
 ## Architectural principles
 
@@ -93,6 +93,30 @@ valid, but any error diagnostic makes the result invalid.
 `src/infrastructure/blueprint-reader` contains the Node filesystem adapter. It recursively enumerates
 the repository `docs` boundary, reads UTF-8 content, and rejects traversal outside the configured
 project root. Other adapters may implement the same port without changing reader policy.
+
+## Context Builder core
+
+`src/core/context-builder` transforms validated Project Brain state, a valid Blueprint Reader result,
+a current task reference, and a `ProjectFileSource` port into one versioned Context Package. It imports
+no filesystem, framework, storage, network, automation, or model integration. Callers implement the
+port for an approved source; the core lists paths first and reads content only after selection.
+
+Selection uses explicit task-dependency and relative-import graphs first, then deterministic lexical
+relevance for goals, modules, decisions, pending risks, documents, and source-file seeds. Camel-case,
+kebab-case, and prose terms are normalized consistently. Weak single-term matches do not select an
+item. The package declares the canonical priority order from constitution through related source files.
+
+The Context Package carries structured project identity, milestone, current and related tasks, goals,
+constraints, architecture, modules, files, decisions, coding standards, risks, blockers, and relevant
+policy documents. It does not contain another raw Project Brain snapshot. Duplicate content is removed
+with an omission record; duplicate references, conflicting reader state, unsafe paths, missing
+governance, and invalid references are rejected.
+
+Character, file, document, source-path, and source-read limits are explicit inputs. Optional context is
+removed from the lowest canonical priority upward when necessary. Mandatory governance and task
+context is never truncated; construction fails when the mandatory package cannot fit. The recorded
+character count is the exact serialized JSON length, making the bound testable by any downstream
+consumer.
 
 ## Rendering and API strategy
 

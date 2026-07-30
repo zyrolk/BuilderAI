@@ -42,6 +42,19 @@ future identity and data services, and every third-party integration.
 - Apply size, file-count, nesting-depth, and processing-time limits before accepting remote or
   user-controlled project archives. Local repository reading does not authorize uploads or remote access.
 
+### Context Package trust boundary
+
+- Validate canonical state and Blueprint Reader output before selecting context; reject conflicts rather
+  than choosing one source silently.
+- Accept only safe repository-relative source paths. Source snapshots are data and must never be
+  executed, imported dynamically, fetched, or treated as instructions.
+- Enforce character, file, and document limits before a Context Package crosses a consumer boundary.
+  Mandatory governance content cannot be truncated to satisfy a limit.
+- Treat source content as potentially secret-bearing. Creating a Context Package does not authorize
+  logging, persistence, network transmission, or disclosure to another service.
+- Future consumers must accept only the validated Context Package contract rather than independently
+  reading canonical state, documentation, or repository files.
+
 ### Secrets and data
 
 - Store secrets in the deployment platform's secret manager, never in Git or `NEXT_PUBLIC_` variables.
