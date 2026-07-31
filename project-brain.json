@@ -87,6 +87,16 @@
         "id": "openai-provider",
         "name": "OpenAI Responses Provider",
         "summary": "The first isolated AIProvider implementation, mapping one validated Prompt Package to one non-streaming OpenAI Responses API call and returning validated BuilderAI output."
+      },
+      {
+        "id": "response-processor",
+        "name": "Response Processor",
+        "summary": "Provider-independent validation, normalization, manifest generation, and integrity verification that converts a completed provider exchange into one deterministic Response Package without side effects."
+      },
+      {
+        "id": "change-planner",
+        "name": "Project Change Planner",
+        "summary": "Provider-independent transformation of a validated Response Package into one deterministic, conflict-checked, effect-free Project Change Plan."
       }
     ],
     "requirements": [
@@ -198,6 +208,38 @@
           "Every request and response crosses existing validated Prompt Package, AIProvider, and Execution Engine boundaries.",
           "The adapter performs one non-streaming call with SDK retries disabled and exposes no tools, files, images, history, persistence, or telemetry."
         ]
+      },
+      {
+        "id": "deterministic-response-package",
+        "statement": "Transform one validated completed provider response and its correlated Execution Result into one versioned deterministic Response Package.",
+        "acceptanceCriteria": [
+          "Generated artifacts, diagnostics, warnings, and scalar metadata are normalized and ordered deterministically.",
+          "Only Source File, Documentation, Configuration, Test, and Patch artifacts are accepted, and processing performs no filesystem, Git, network, persistence, telemetry, or execution effect."
+        ]
+      },
+      {
+        "id": "response-artifact-integrity",
+        "statement": "Produce and verify a deterministic artifact manifest before response output crosses the processing boundary.",
+        "acceptanceCriteria": [
+          "Each manifest entry records a normalized safe logical path, closed artifact type, checksum, UTF-8 byte size, and validated metadata.",
+          "Duplicate paths, unsupported types, malformed metadata, oversized content, checksum mismatches, and cross-contract identity or artifact drift are rejected with typed path-specific issues."
+        ]
+      },
+      {
+        "id": "deterministic-project-change-plan",
+        "statement": "Transform one validated Response Package into one versioned deterministic Project Change Plan without inspecting or modifying project state.",
+        "acceptanceCriteria": [
+          "Every operation has explicit Create File, Update File, or Delete File intent and preserves source artifact and execution references.",
+          "The plan contains a deterministic change set, exact summary, structured risks, warnings, and scalar metadata while performing no filesystem, Git, network, build, test, rollback, persistence, or project-modification effect."
+        ]
+      },
+      {
+        "id": "change-plan-conflict-policy",
+        "statement": "Reject ambiguous, unsupported, duplicated, conflicting, unsafe, or incorrectly ordered project change intents before a plan crosses the boundary.",
+        "acceptanceCriteria": [
+          "Case-insensitive path aliases, duplicate operation identities, conflicting operation kinds, file/tree conflicts, patch semantics, invalid metadata, summary drift, and broken source references fail with typed path-specific issues.",
+          "Operations use canonical create, update, delete, and logical-path order and every plan records that current project-state preconditions remain unverified."
+        ]
       }
     ],
     "constraints": [
@@ -245,6 +287,16 @@
         "id": "single-provider-sprint-seven",
         "statement": "Sprint 7 integrates only the OpenAI Responses API and excludes routing, streaming, tools, functions, files, images, parallel or background execution, history, agents, UI, persistence, and telemetry.",
         "rationale": "The first integration must prove the existing architecture through the smallest controlled external boundary."
+      },
+      {
+        "id": "response-processing-sprint-eight",
+        "statement": "Sprint 8 is limited to provider-independent, in-memory Response Package validation, normalization, manifest generation, and integrity verification without modifying a project.",
+        "rationale": "Provider output must become deterministic and verifiable before any separately approved project-change capability may consume it."
+      },
+      {
+        "id": "safe-change-planning-sprint-nine",
+        "statement": "Sprint 9 is limited to provider-independent, effect-free Project Change Plan generation and excludes filesystem access, Git, automatic modification, build or test execution, rollback, UI, streaming, multi-provider work, and Sprint 10 capabilities.",
+        "rationale": "Change intent must be explicit, deterministic, conflict-checked, and reviewable before any project effect can be considered."
       }
     ],
     "techStack": [
@@ -344,6 +396,16 @@
         "path": "src/providers/openai",
         "owner": "Provider integrations",
         "responsibility": "OpenAI-specific configuration, explicit credentials, SDK transport, deterministic mapping, runtime validation, error translation, and single-call Execution Engine integration."
+      },
+      {
+        "path": "src/core/response-processor",
+        "owner": "Domain architecture",
+        "responsibility": "Provider-, framework-, storage-, filesystem-, Git-, network-, and execution-independent response normalization, artifact manifest generation, integrity verification, and Response Package validation."
+      },
+      {
+        "path": "src/core/change-planner",
+        "owner": "Domain architecture",
+        "responsibility": "Provider-, framework-, storage-, filesystem-, Git-, network-, build-, test-, rollback-, and execution-independent change intent, conflict policy, ordering, risk, summary, reference, and Project Change Plan validation."
       }
     ]
   },
@@ -434,6 +496,28 @@
           "verify-openai-provider"
         ],
         "completedAt": "2026-07-31T04:30:00.000Z"
+      },
+      {
+        "id": "sprint-eight-response-processing",
+        "summary": "Implemented a provider-independent Response Processor with versioned packages, closed generated-artifact contracts, deterministic normalization and manifests, configurable bounds, checksum verification, cross-contract validation, and no project-changing side effects.",
+        "taskIds": [
+          "define-response-package",
+          "implement-artifact-processing",
+          "enforce-response-integrity",
+          "verify-response-processor"
+        ],
+        "completedAt": "2026-07-31T06:00:00.000Z"
+      },
+      {
+        "id": "sprint-nine-safe-change-planning",
+        "summary": "Implemented a provider-independent Project Change Planner with versioned plans, explicit closed file-operation intent, deterministic ordering, conflict detection, source-reference validation, summaries, risks, warnings, configurable bounds, and no project effects.",
+        "taskIds": [
+          "define-change-plan-contract",
+          "implement-change-planning",
+          "enforce-change-plan-conflicts",
+          "verify-change-planner"
+        ],
+        "completedAt": "2026-07-31T07:30:00.000Z"
       }
     ],
     "pendingWork": [
@@ -476,6 +560,11 @@
         "id": "implement-execution-runtime-controls",
         "summary": "Before any provider may run, approve and implement queue, clock, active deadline and cancellation enforcement, idempotency, concurrency, persistence, recovery, observability, and provider invocation adapters outside the pure Execution Engine core.",
         "priority": "HIGH"
+      },
+      {
+        "id": "authorize-artifact-application",
+        "summary": "Before any Project Change Plan may change a project, design and approve current-state verification, human authorization, root and symlink containment, protected-path policy, content preconditions, conflict handling, atomic application, isolated verification, rollback, Git policy, audit, and secret-scanning controls in a separate capability.",
+        "priority": "HIGH"
       }
     ],
     "importantDecisionIds": [
@@ -491,7 +580,9 @@
       "decision-010",
       "decision-011",
       "decision-012",
-      "decision-013"
+      "decision-013",
+      "decision-014",
+      "decision-015"
     ],
     "architecturalRules": [
       {
@@ -518,9 +609,19 @@
         "id": "provider-content-authorization",
         "rule": "Send a Prompt Package to an external provider only after the caller authorizes and classifies its content.",
         "rationale": "A technically valid Prompt Package may still contain confidential source or project information."
+      },
+      {
+        "id": "response-package-before-change",
+        "rule": "Treat provider output as untrusted data until it has crossed the validated Response Package boundary; a Response Package never authorizes filesystem, Git, execution, persistence, or project mutation.",
+        "rationale": "Deterministic packaging and integrity evidence must remain separate from any future reviewed and authorized project-change workflow."
+      },
+      {
+        "id": "change-plan-before-project-effect",
+        "rule": "Project change intent must cross the validated Project Change Plan boundary before review; a plan never authorizes filesystem, Git, build, test, rollback, persistence, or project-modification effects.",
+        "rationale": "Planning must remain deterministic, conflict-aware review evidence and cannot substitute for current-state verification or explicit execution authorization."
       }
     ],
-    "updatedAt": "2026-07-31T04:30:00.000Z"
+    "updatedAt": "2026-07-31T07:30:00.000Z"
   },
   "decisionLog": [
     {
@@ -775,10 +876,64 @@
       },
       "important": true,
       "recordedAt": "2026-07-31T04:30:00.000Z"
+    },
+    {
+      "id": "decision-014",
+      "title": "Insert one deterministic Response Package boundary",
+      "context": "Validated provider output remains external, unordered data and Execution Results contain only artifact placeholders; future project-change workflows need one trustworthy, provider-independent response contract without receiving raw provider payloads or gaining side effects.",
+      "decision": "Correlate one completed validated AIProviderResponse with its completed Execution Result, extract generated artifacts from one structured response artifact, normalize them deterministically, generate and verify an in-memory checksum manifest, and expose only one versioned Response Package from src/core/response-processor.",
+      "rationale": "A single pure boundary centralizes response structure, closed artifact policy, size controls, canonical ordering, metadata rules, and integrity evidence while separating untrusted provider data from any future project mutation capability.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Let future project writers consume provider responses directly",
+        "Place full generated file content inside the Execution Result placeholder contract",
+        "Generate manifests while writing artifacts to the filesystem"
+      ],
+      "consequences": {
+        "positive": [
+          "Downstream consumers can depend on one provider-independent, deterministic, validated response contract",
+          "Artifact paths, types, metadata, byte sizes, and content checksums are verified before crossing the boundary",
+          "Response processing remains independently testable and performs no project-changing effect"
+        ],
+        "negative": [
+          "The current contract supports complete in-memory artifact content only and has configured aggregate limits",
+          "Checksums detect accidental or boundary drift but do not provide authenticity or signing",
+          "Applying, reviewing, authorizing, persisting, or rolling back artifacts requires a separately approved capability"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T06:00:00.000Z"
+    },
+    {
+      "id": "decision-015",
+      "title": "Insert one effect-free Project Change Plan boundary",
+      "context": "Response Packages contain deterministic artifacts but neither authorize project changes nor establish whether target paths exist; future review needs explicit operation intent, ordering, conflicts, provenance, and risk evidence without introducing project access or effects.",
+      "decision": "Transform one validated Response Package into one versioned Project Change Plan under src/core/change-planner; require explicit Create File, Update File, or Delete File metadata, reject patch and ambiguous semantics, order operations create then update then delete by path, validate internal and source references, and always warn that current project-state preconditions are unverified.",
+      "rationale": "A pure plan boundary makes proposed change intent deterministic and reviewable while keeping provider output interpretation, planning, current-state verification, authorization, and execution as separate trust boundaries.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Inspect the filesystem to infer create and update operations",
+        "Let a future file writer interpret Response Packages directly",
+        "Model patch application, builds, tests, Git, and rollback in the planner"
+      ],
+      "consequences": {
+        "positive": [
+          "Future reviewers receive one provider-independent, deterministic, conflict-checked change contract",
+          "Every operation preserves artifact checksum, size, type, description, package version, and execution provenance",
+          "The planner has no project-state or effect capability and cannot silently modify a repository"
+        ],
+        "negative": [
+          "Create, update, and delete existence preconditions remain unverified until a separately approved current-state boundary exists",
+          "Patch artifacts are rejected rather than interpreted",
+          "Application authorization, protected-path policy, content drift checks, atomic writes, isolated verification, Git, rollback, and audit remain future decisions"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T07:30:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Sprint 7 complete - awaiting architecture review",
+    "currentMilestone": "Sprint 9 complete - awaiting architecture review",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -878,6 +1033,30 @@
           "verify-openai-provider"
         ],
         "completedAt": "2026-07-31T04:30:00.000Z"
+      },
+      {
+        "id": "sprint-eight-response-processing",
+        "name": "Response Processing Foundation",
+        "outcome": "A deterministic provider-independent Response Processor converts one correlated completed provider exchange into a versioned, normalized, manifest-backed, integrity-verified Response Package without modifying the project.",
+        "completedTaskIds": [
+          "define-response-package",
+          "implement-artifact-processing",
+          "enforce-response-integrity",
+          "verify-response-processor"
+        ],
+        "completedAt": "2026-07-31T06:00:00.000Z"
+      },
+      {
+        "id": "sprint-nine-safe-change-planning",
+        "name": "Safe Project Change Planning",
+        "outcome": "A deterministic provider-independent Project Change Planner emits one versioned, explicit, ordered, conflict-checked, source-correlated, risk-aware plan without project access or effects.",
+        "completedTaskIds": [
+          "define-change-plan-contract",
+          "implement-change-planning",
+          "enforce-change-plan-conflicts",
+          "verify-change-planner"
+        ],
+        "completedAt": "2026-07-31T07:30:00.000Z"
       }
     ],
     "completedTaskIds": [
@@ -909,9 +1088,17 @@
       "implement-openai-mapping",
       "enforce-openai-contract",
       "integrate-openai-execution",
-      "verify-openai-provider"
+      "verify-openai-provider",
+      "define-response-package",
+      "implement-artifact-processing",
+      "enforce-response-integrity",
+      "verify-response-processor",
+      "define-change-plan-contract",
+      "implement-change-planning",
+      "enforce-change-plan-conflicts",
+      "verify-change-planner"
     ],
-    "updatedAt": "2026-07-31T04:30:00.000Z"
+    "updatedAt": "2026-07-31T07:30:00.000Z"
   },
   "tasks": [
     {
@@ -1340,6 +1527,126 @@
       "createdAt": "2026-07-31T03:30:00.000Z",
       "updatedAt": "2026-07-31T04:30:00.000Z",
       "completedAt": "2026-07-31T04:30:00.000Z"
+    },
+    {
+      "id": "define-response-package",
+      "title": "Define the versioned Response Package boundary",
+      "description": "Define provider-independent processing input, Response Package, closed generated-artifact, manifest, diagnostic, warning, metadata, configuration, checksum-port, and typed-error contracts.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The input correlates one validated completed provider response with one completed Execution Result without duplicating either contract.",
+        "The Response Package is framework-, provider-, storage-, filesystem-, Git-, network-, and execution-independent."
+      ],
+      "dependencyIds": ["verify-openai-provider"],
+      "createdAt": "2026-07-31T05:00:00.000Z",
+      "updatedAt": "2026-07-31T05:15:00.000Z",
+      "completedAt": "2026-07-31T05:15:00.000Z"
+    },
+    {
+      "id": "implement-artifact-processing",
+      "title": "Implement deterministic artifact processing",
+      "description": "Validate the closed artifact vocabulary and safe logical paths, normalize line endings and metadata, sort outputs canonically, and generate an in-memory UTF-8-size and checksum manifest.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Only Source File, Documentation, Configuration, Test, and Patch artifacts are accepted within configured bounds.",
+        "Identical semantic input produces the same normalized artifact order and manifest without filesystem access."
+      ],
+      "dependencyIds": ["define-response-package"],
+      "createdAt": "2026-07-31T05:00:00.000Z",
+      "updatedAt": "2026-07-31T05:30:00.000Z",
+      "completedAt": "2026-07-31T05:30:00.000Z"
+    },
+    {
+      "id": "enforce-response-integrity",
+      "title": "Enforce response correlation and artifact integrity",
+      "description": "Reject malformed or conflicting provider/execution data, duplicate paths, unsupported types, invalid metadata, limit violations, manifest drift, byte-size mismatches, and checksum mismatches.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "All failures use typed path-specific validation issues and no untrusted response is silently repaired.",
+        "Integrity verification checks every normalized artifact against exactly one manifest entry."
+      ],
+      "dependencyIds": ["implement-artifact-processing"],
+      "createdAt": "2026-07-31T05:00:00.000Z",
+      "updatedAt": "2026-07-31T05:45:00.000Z",
+      "completedAt": "2026-07-31T05:45:00.000Z"
+    },
+    {
+      "id": "verify-response-processor",
+      "title": "Verify the Response Processing foundation",
+      "description": "Run artifact, manifest, normalization, integrity, duplicate, response, configuration, coverage, audit, build, boundary, and full CI checks, then wait for Sprint 9 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Comprehensive deterministic tests cover every approved Response Processor responsibility and negative boundary.",
+        "The complete CI pipeline passes and no filesystem write, Git, network, SDK, persistence, telemetry, execution, or Sprint 9 behavior exists."
+      ],
+      "dependencyIds": ["enforce-response-integrity"],
+      "createdAt": "2026-07-31T05:00:00.000Z",
+      "updatedAt": "2026-07-31T06:00:00.000Z",
+      "completedAt": "2026-07-31T06:00:00.000Z"
+    },
+    {
+      "id": "define-change-plan-contract",
+      "title": "Define the versioned Project Change Plan boundary",
+      "description": "Define provider-independent plan, source, change-set, create, update, delete, summary, risk, warning, metadata, configuration, validation-issue, and typed-error contracts.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The plan accepts only a validated Response Package and preserves source version, execution, artifact, size, and checksum references.",
+        "Contracts import no provider implementation, framework, storage, filesystem, Git, network, build, test, rollback, persistence, or executor capability."
+      ],
+      "dependencyIds": ["verify-response-processor"],
+      "createdAt": "2026-07-31T06:30:00.000Z",
+      "updatedAt": "2026-07-31T06:45:00.000Z",
+      "completedAt": "2026-07-31T06:45:00.000Z"
+    },
+    {
+      "id": "implement-change-planning",
+      "title": "Implement deterministic effect-free change planning",
+      "description": "Map explicit generated-artifact intent to closed file operations, canonicalize create-update-delete path order, generate exact summaries, structured risks and warnings, and return defensive plan copies.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Create and update operations carry exact normalized desired content while delete operations carry no content.",
+        "Identical Response Packages produce identical plans and every plan warns that current project-state preconditions are unverified."
+      ],
+      "dependencyIds": ["define-change-plan-contract"],
+      "createdAt": "2026-07-31T06:30:00.000Z",
+      "updatedAt": "2026-07-31T07:00:00.000Z",
+      "completedAt": "2026-07-31T07:00:00.000Z"
+    },
+    {
+      "id": "enforce-change-plan-conflicts",
+      "title": "Enforce change-plan conflicts and references",
+      "description": "Reject unsupported intent, patch semantics, unsafe paths, duplicate identities, case-insensitive aliases, conflicting kinds, file/tree conflicts, invalid ordering, malformed metadata, summary drift, and broken plan or source references.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "All conflict, structure, metadata, ordering, consistency, and reference failures use typed path-specific issues.",
+        "The plan validator independently enforces internal invariants and the reference validator correlates every operation to its Response Package artifact and manifest entry."
+      ],
+      "dependencyIds": ["implement-change-planning"],
+      "createdAt": "2026-07-31T06:30:00.000Z",
+      "updatedAt": "2026-07-31T07:15:00.000Z",
+      "completedAt": "2026-07-31T07:15:00.000Z"
+    },
+    {
+      "id": "verify-change-planner",
+      "title": "Verify Safe Project Change Planning",
+      "description": "Run generation, conflict, ordering, validation, reference, summary, risk, configuration, coverage, audit, build, boundary, and full CI checks, then wait for Sprint 10 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Comprehensive deterministic tests cover every approved Project Change Planner responsibility and negative boundary.",
+        "The complete CI pipeline passes and no filesystem access, Git, automatic modification, build or test execution, rollback, UI, streaming, multi-provider, or Sprint 10 behavior exists."
+      ],
+      "dependencyIds": ["enforce-change-plan-conflicts"],
+      "createdAt": "2026-07-31T06:30:00.000Z",
+      "updatedAt": "2026-07-31T07:30:00.000Z",
+      "completedAt": "2026-07-31T07:30:00.000Z"
     }
   ],
   "domainGlossary": {
@@ -1504,8 +1811,36 @@
         "category": "TECHNICAL",
         "definition": "The isolated AIProvider implementation that maps one validated Prompt Package to one non-streaming OpenAI Responses API call and validates the returned structured output.",
         "aliases": ["OpenAI Provider"]
+      },
+      {
+        "id": "response-package-term",
+        "term": "Response Package",
+        "category": "TECHNICAL",
+        "definition": "The sole versioned, normalized, validated, manifest-backed response object available to a future separately approved project-change consumer.",
+        "aliases": []
+      },
+      {
+        "id": "artifact-manifest-term",
+        "term": "Artifact Manifest",
+        "category": "TECHNICAL",
+        "definition": "A deterministic list of normalized generated-artifact paths, closed types, content checksums, UTF-8 byte sizes, and validated metadata.",
+        "aliases": ["Manifest"]
+      },
+      {
+        "id": "project-change-plan-term",
+        "term": "Project Change Plan",
+        "category": "TECHNICAL",
+        "definition": "The sole versioned, deterministic, conflict-checked, source-correlated description of proposed file operations available to a future separately approved project-change consumer.",
+        "aliases": ["Change Plan"]
+      },
+      {
+        "id": "change-operation-term",
+        "term": "Change Operation",
+        "category": "TECHNICAL",
+        "definition": "An explicit effect-free Create File, Update File, or Delete File intent within a Project Change Plan.",
+        "aliases": ["File Operation"]
       }
     ],
-    "updatedAt": "2026-07-31T04:30:00.000Z"
+    "updatedAt": "2026-07-31T07:30:00.000Z"
   }
 }

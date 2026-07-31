@@ -52,3 +52,18 @@ timeouts, character limits, and output-token limit are explicit validated config
 model is selected. The API key must be obtained by a future server-only composition root from an
 approved secret manager and passed explicitly to `createOpenAIProvider`. The adapter does not read
 environment variables, and it is not connected to a route, UI, automatic workflow, or live CI test.
+
+## Response processing boundary
+
+`src/core/response-processor` converts a correlated completed provider response and Execution Result
+into one versioned, normalized, manifest-backed Response Package. It supports only source,
+documentation, configuration, test, and patch artifacts and performs no filesystem, Git, network,
+persistence, telemetry, execution, or project-modification operation. A valid package is reviewable
+output data, not authorization to apply changes.
+
+## Project change planning boundary
+
+`src/core/change-planner` converts a validated Response Package into a deterministic Project Change
+Plan containing explicit create, update, and delete intents, source references, ordering, risks,
+warnings, and exact summaries. It does not inspect or modify the repository, and every plan states
+that real project preconditions remain unverified. A plan is review data, not permission to apply it.

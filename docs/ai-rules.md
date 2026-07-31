@@ -65,3 +65,16 @@ External transmission requires caller authorization and data classification; the
 `store: false` setting does not replace provider-retention and privacy review. No other provider,
 streaming mode, tool, file, image, history, persistence, telemetry, or automatic workflow is authorized
 by the Sprint 7 adapter.
+
+Provider output remains untrusted until the Response Processor correlates it with its completed
+Execution Result and emits a validated, normalized, integrity-verified Response Package. Future
+project-change consumers may receive only that package, not raw provider responses. A Response Package
+never authorizes file writes, patch application, code or test execution, Git operations, persistence,
+telemetry, or any other project mutation; each effect requires a separately approved and reviewed
+capability.
+
+Future project-change consumers must receive only a validated Project Change Plan produced from a
+validated Response Package. File operation intent must be explicit; assistants may not infer current
+project state or reinterpret patch artifacts as file operations. A plan describes proposed create,
+update, and delete operations but never authorizes filesystem access, Git changes, builds, tests,
+rollback, persistence, or automatic modification.

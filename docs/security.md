@@ -122,6 +122,41 @@ future identity and data services, and every third-party integration.
   redaction, restricted telemetry, audit retention, and safe provider-response handling outside this
   pure core.
 
+### Response Package trust boundary
+
+- Accept only a completed `AIProviderResponse` and its correlated completed `ExecutionResult`. Reject
+  identity, usage, artifact-placeholder, completion-state, or shared-metadata drift before extracting
+  generated artifacts.
+- Treat artifact paths, types, content, diagnostics, warnings, and metadata as untrusted. Permit only
+  the closed artifact vocabulary, safe repository-relative POSIX paths, scalar bounded metadata, and
+  configured count and UTF-8 byte limits. Detect duplicate paths case-insensitively.
+- Normalize before calculating integrity evidence. Verify every artifact against exactly one manifest
+  entry containing its normalized path, type, metadata, byte size, and checksum. Checksums detect
+  accidental or boundary drift; they are not signatures and provide no producer authenticity.
+- Response processing is an in-memory transformation and must not read or write the filesystem, invoke
+  Git, run generated content, persist output, send network requests, or emit payload telemetry.
+- A valid Response Package does not authorize a project change. Before application is approved, add
+  human review, explicit authorization, root-contained path resolution, symlink defense, conflict and
+  overwrite policy, secret scanning, atomic writes, rollback, audit evidence, and isolated test
+  execution in a separate capability.
+
+### Project Change Plan trust boundary
+
+- Accept only a validated Response Package. Revalidate its structure and correlate every operation to
+  one generated artifact and manifest entry by path, type, intent, description, content, UTF-8 size,
+  checksum, package version, and execution identity.
+- Require explicit Create File, Update File, or Delete File intent. Never infer path existence, apply
+  patch syntax, or silently convert an unsupported artifact into an executable operation.
+- Reject unsafe paths, case-insensitive aliases, duplicate operation identifiers, conflicting kinds,
+  file/tree prefix conflicts, broken references, noncanonical ordering, invalid metadata, and summary
+  drift. Preserve destructive and configuration changes as explicit structured risks.
+- Planning has no project-state, filesystem, Git, network, build, test, persistence, telemetry, or
+  rollback capability. Every plan warns that create, update, and delete preconditions are unverified.
+- A valid plan is review evidence, not authorization. Before any operation may run, require current
+  project-state validation, explicit human authorization, root and symlink containment, content
+  preconditions, protected-path policy, secret scanning, conflict handling, atomic application,
+  isolated verification, rollback, Git policy, and durable audit evidence in a separate boundary.
+
 ### Secrets and data
 
 - Store secrets in the deployment platform's secret manager, never in Git or `NEXT_PUBLIC_` variables.

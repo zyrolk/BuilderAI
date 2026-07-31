@@ -8,11 +8,13 @@ version: 1
 ## Status and scope
 
 This document defines the baseline architecture for the Project Brain, Blueprint Reader, Context
-Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, and first OpenAI provider. The
-repository contains a deployable web shell, framework-independent cores, and one isolated external
-adapter that can perform a validated non-streaming Responses API call. Authentication, durable
-persistence, multi-provider routing, streaming, tools, files, images, history, background work,
-telemetry, UI workflows, and deployment automation remain out of scope.
+Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, first OpenAI provider, Response
+Processor, and Project Change Planner. The repository contains a deployable web shell,
+framework-independent cores, one isolated external adapter that can perform a validated non-streaming
+Responses API call, a pure boundary that packages returned artifacts, and an effect-free planner that
+describes file-operation intent. Authentication, durable persistence, multi-provider routing,
+streaming, tools, files, images, history, background work, telemetry, UI workflows, project-state
+inspection, automatic artifact application, rollback, and deployment automation remain out of scope.
 
 ## Architectural principles
 
@@ -229,6 +231,63 @@ persistence, or background execution. The SDK enforces the per-call timeout, whi
 cancellation subscription is bridged to one request-scoped abort signal. A live API test is excluded
 from CI to avoid credentials, spend, and external disclosure; a controlled pre-release smoke test and
 provider data-retention review remain operational gates.
+
+## Response Processor core
+
+`src/core/response-processor` is the sole boundary allowed to transform a correlated, completed
+`AIProviderResponse` and terminal `ExecutionResult` into a versioned Response Package. It depends
+only on provider-neutral and execution contracts. It imports no provider implementation, SDK,
+framework, filesystem, Git client, storage adapter, network client, telemetry service, or project
+mutation workflow.
+
+One `STRUCTURED_DATA` provider artifact owns the generated-artifact candidate list. The processor
+does not add full content to Execution Result placeholders or retain raw provider payloads in the
+package. It validates completion state, request/execution identity, prompt and output accounting,
+provider-to-execution artifact placeholders, and shared metadata before extracting candidates.
+Generated artifact types are closed to Source File, Documentation, Configuration, Test, and Patch.
+Logical paths must be safe repository-relative POSIX paths and are unique under case-insensitive
+comparison.
+
+Normalization converts line endings to LF, canonicalizes artifact, diagnostic, warning, and metadata
+ordering, and returns defensive copies. Configurable limits bound artifact count, individual and
+aggregate UTF-8 byte sizes, metadata entries, and metadata string length. An injectable checksum port
+keeps the policy independently testable; the default implementation uses Web Crypto SHA-256. The
+deterministic Artifact Manifest records each normalized path, type, checksum, UTF-8 size, and metadata.
+Integrity verification recomputes every checksum and size and rejects missing, duplicated, reordered,
+or inconsistent entries.
+
+The Response Package is evidence, not authority. Construction and validation perform no I/O and do
+not authorize writing files, applying patches, running generated code or tests, changing Git state,
+persisting output, or contacting another service. Human review, authorization, path containment,
+conflict handling, atomic application, rollback, secret scanning, and audit controls belong to a
+separately approved future capability.
+
+## Project Change Planner core
+
+`src/core/change-planner` is the sole boundary allowed to transform a validated Response Package into
+a versioned Project Change Plan. It imports provider-neutral Response Processor contracts but no
+provider implementation, SDK, framework, filesystem, Git client, storage adapter, network client,
+build tool, test runner, rollback mechanism, or project mutation workflow.
+
+Every generated artifact must explicitly declare `change-operation` metadata as Create File, Update
+File, or Delete File. The planner does not infer path existence because it has no project-state or
+filesystem port. It consequently adds an `UNVERIFIED_PROJECT_STATE` warning to every plan. Create and
+update operations contain the exact normalized desired content; delete operations contain no content
+and require an empty source artifact. Patch artifacts are rejected because patch application is not
+an exact-result file operation in the closed plan contract.
+
+Operations preserve Response Package version, execution identity, logical path, artifact type,
+description, checksum, and UTF-8 size as provenance. Validation rejects unsafe paths, unsupported
+intent, duplicate operation identifiers, case-insensitive path aliases, conflicting operation kinds,
+file/tree prefix conflicts, noncanonical ordering, invalid metadata, summary drift, and broken source
+references. The canonical safety-oriented order is create, update, then delete, followed by stable
+logical-path ordering.
+
+Plans contain one change set, exact path summaries, structured deterministic risks, inherited response
+warnings, and scalar metadata. Planning performs no I/O and does not authorize an effect. Verifying
+real path existence, content preconditions, symlinks, permissions, repository policy, conflict-free
+application, atomic writes, rollback, secret scanning, Git changes, or build and test outcomes requires
+a separately approved capability.
 
 ## Rendering and API strategy
 
