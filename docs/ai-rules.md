@@ -78,3 +78,16 @@ validated Response Package. File operation intent must be explicit; assistants m
 project state or reinterpret patch artifacts as file operations. A plan describes proposed create,
 update, and delete operations but never authorizes filesystem access, Git changes, builds, tests,
 rollback, persistence, or automatic modification.
+
+Filesystem changes may occur only through the Safe File Apply Engine after caller authorization. The
+engine must revalidate the plan, enforce mandatory and configured protected paths, complete all
+preflight inspection before mutation, and use only its root-scoped filesystem port. Assistants may not
+bypass the port, weaken protected rules, follow symlinks, invoke Git, run builds or tests, or describe a
+partially applied result as atomic success.
+
+Project verification may begin only from a validated Applied File Apply Result and must cross the
+fixed Verification Engine pipeline. Project, dependency, build, test, and time effects must remain
+behind their declared ports; assistants may not invoke framework or process tools from core, omit or
+reorder stages, trust adapter output without validation, leak adapter details, or derive report status
+independently. A Verification Report is evidence only and never authorizes automatic repair, further
+file changes, Git, rollback, deployment, networking, or Sprint 12 work.

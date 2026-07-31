@@ -9,12 +9,14 @@ version: 1
 
 This document defines the baseline architecture for the Project Brain, Blueprint Reader, Context
 Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, first OpenAI provider, Response
-Processor, and Project Change Planner. The repository contains a deployable web shell,
-framework-independent cores, one isolated external adapter that can perform a validated non-streaming
-Responses API call, a pure boundary that packages returned artifacts, and an effect-free planner that
-describes file-operation intent. Authentication, durable persistence, multi-provider routing,
-streaming, tools, files, images, history, background work, telemetry, UI workflows, project-state
-inspection, automatic artifact application, rollback, and deployment automation remain out of scope.
+Processor, Project Change Planner, Safe File Apply Engine, and Build and Verification Engine. The
+repository contains a deployable web shell, framework-independent cores, one isolated external adapter
+that can perform a validated non-streaming Responses API call, a pure boundary that packages returned
+artifacts, an effect-free planner, a two-phase filesystem effect boundary, and a fixed verification
+pipeline behind ports. Authentication, durable application state, multi-provider routing, streaming,
+tools, files, images, history, background work, telemetry, UI workflows, Git operations, automatic
+repair, transactional rollback, deployment automation, a concrete production filesystem adapter, and
+concrete project, dependency, build, or test runners remain out of scope.
 
 ## Architectural principles
 
@@ -288,6 +290,68 @@ warnings, and scalar metadata. Planning performs no I/O and does not authorize a
 real path existence, content preconditions, symlinks, permissions, repository policy, conflict-free
 application, atomic writes, rollback, secret scanning, Git changes, or build and test outcomes requires
 a separately approved capability.
+
+## Safe File Apply Engine core
+
+`src/core/file-apply` is the only core boundary allowed to translate a validated Project Change Plan
+into create, update, and delete filesystem effects. It imports no provider implementation, framework,
+Node filesystem API, Git client, process runner, network client, build tool, test runner, deployment
+adapter, telemetry service, or rollback mechanism. Filesystem and monotonic-clock behavior enter only
+through explicit ports.
+
+Apply is two phase. The engine first revalidates the complete plan, operation limit, canonical order,
+duplicates, conflicts, paths, metadata, and summaries. It then checks mandatory and configured
+protected-path rules and inspects every target and create-parent through the filesystem port. Create
+requires an absent target and existing regular parent directory; update and delete require an existing
+regular file. Symlinks and other entry kinds are rejected. Any validation or inspection error returns
+a Rejected result with zero mutations.
+
+Mandatory case-insensitive rules protect `.git`, environment-file prefixes, `project-brain.json`,
+`AGENTS.md`, and `.github/workflows`. Callers may add exact, subtree, or path-prefix rules but cannot
+remove mandatory protection. The filesystem port contract requires root containment, ancestor symlink
+rejection, and conditional create-if-absent, update-if-regular-file, and delete-if-regular-file methods
+so state changes between preflight and mutation fail closed.
+
+After preflight, operations execute sequentially in the validated create-update-delete plan order.
+Execution stops at the first adapter failure. The versioned Apply Result records actual created,
+updated, deleted, and skipped paths, warnings, stable errors, duration, and metadata. Because rollback
+is not implemented, a failure after earlier success returns Partially Applied and preserves completed
+effects; every valid-plan result states this limitation explicitly.
+
+The current core supplies the port and an in-memory test adapter, not a production Node filesystem
+adapter or composition root. Production use still requires caller authorization, a root-scoped adapter
+conformance suite, operating-system containment tests, expected-current-content checks, locking,
+recovery, audit evidence, and operator controls.
+
+## Build and Verification core
+
+`src/core/verification` accepts only a File Apply Result that passes its existing production validator
+and has Applied status. Rejected, Failed, Partially Applied, or malformed inputs invoke no verification
+capability. The module imports no framework, filesystem, process runner, network client, Git client,
+deployment adapter, provider implementation, storage implementation, or automatic repair behavior.
+
+The pipeline is closed and sequential: Project Validation, Dependency Validation, Build Validation,
+then Test Validation. Each capability has a dedicated port; the monotonic time source is also a port.
+Every stage receives a defensive context containing the accepted apply evidence and affected files.
+All stages run once for accepted input, even after an earlier failure, so the report contains complete
+verification evidence rather than a fail-fast subset.
+
+Port output is untrusted. Each result is runtime validated for closed structure, Passed or Failed
+status consistency, bounded and unique findings, and bounded scalar metadata, then normalized into
+canonical order. Thrown adapters and invalid adapter results become generic failed stages without
+leaking implementation details and do not suppress later stages.
+
+The versioned Verification Report contains the four ordered stage results, exact flattened warnings
+and errors, total duration, and defensive metadata. Overall Passed requires every stage to pass,
+Failed means no stage passed, and Partially Passed represents mixed evidence. The report validator
+recomputes ordering, status, stage consistency, and flattened findings so summary drift cannot cross
+the boundary.
+
+Only ports and controlled test doubles exist in this foundation. Production composition requires
+authorized and project-contained runner adapters, command allowlists, sandboxing, active deadlines,
+resource and output limits, process-tree termination, no-network enforcement, redaction, conformance
+tests, and restricted audit evidence. A Verification Report is evidence; it does not authorize repair,
+Git, rollback, deployment, or another workflow.
 
 ## Rendering and API strategy
 

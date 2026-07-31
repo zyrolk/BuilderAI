@@ -1,0 +1,163 @@
+import {
+  ChangePlanSummaryService,
+  OperationOrderingService,
+  PROJECT_CHANGE_PLAN_SCHEMA_VERSION,
+  createOperationId,
+  type ProjectChangeOperation,
+  type ProjectChangePlan,
+} from '../../change-planner';
+import type { FileApplyConfiguration } from '../config';
+import type { FileApplyClockPort, FileSystemEntry, FileSystemPort } from '../ports';
+import { FileSystemPortError } from '../types';
+
+export function createOperation(
+  kind: ProjectChangeOperation['kind'],
+  logicalPath: string,
+  content = '',
+): ProjectChangeOperation {
+  const base = {
+    operationId: createOperationId(kind, logicalPath),
+    logicalPath,
+    artifactType: 'SOURCE_FILE' as const,
+    description: `${kind} ${logicalPath}`,
+    sourceChecksum: { algorithm: 'sha256', value: 'a'.repeat(64) },
+    sourceSizeBytes: new TextEncoder().encode(content).byteLength,
+  };
+  return kind === 'DELETE_FILE' ? { ...base, kind } : { ...base, kind, content };
+}
+
+export function createPlan(
+  operations: readonly ProjectChangeOperation[] = [
+    createOperation('CREATE_FILE', 'src/new.ts', 'new\n'),
+    createOperation('UPDATE_FILE', 'src/existing.ts', 'updated\n'),
+    createOperation('DELETE_FILE', 'src/old.ts'),
+  ],
+): ProjectChangePlan {
+  const ordered = new OperationOrderingService().order(operations);
+  const warnings = [
+    {
+      code: 'UNVERIFIED_PROJECT_STATE',
+      message: 'Project state was not verified during planning.',
+      operationIds: ordered.map(({ operationId }) => operationId).sort(),
+    },
+  ];
+  return {
+    schemaVersion: PROJECT_CHANGE_PLAN_SCHEMA_VERSION,
+    source: { responsePackageSchemaVersion: 1, executionId: 'execution-file-apply' },
+    changeSet: { operations: ordered },
+    summary: new ChangePlanSummaryService().generate(ordered, warnings),
+    risks: [],
+    warnings,
+    metadata: { 'provider-id': 'fixture-provider', 'request-class': 'test' },
+  };
+}
+
+export function createConfiguration(
+  overrides: Partial<FileApplyConfiguration> = {},
+): FileApplyConfiguration {
+  return {
+    maximumOperations: 10,
+    additionalProtectedPathRules: [],
+    ...overrides,
+  };
+}
+
+export class SequenceClock implements FileApplyClockPort {
+  private index = 0;
+
+  constructor(private readonly values: readonly number[] = [100, 125]) {}
+
+  now(): number {
+    const value = this.values[this.index] ?? this.values.at(-1) ?? 0;
+    this.index += 1;
+    return value;
+  }
+}
+
+export class InMemoryFileSystemPort implements FileSystemPort {
+  readonly inspectionCalls: string[] = [];
+  readonly mutationCalls: string[] = [];
+  readonly files = new Map<string, string>();
+  readonly directories = new Set<string>(['', 'src', 'docs', 'config']);
+  readonly symlinks = new Set<string>();
+  readonly otherEntries = new Set<string>();
+  failMutationPath?: string;
+  failInspectionPath?: string;
+
+  constructor(files: Readonly<Record<string, string>> = {}) {
+    Object.entries(files).forEach(([path, content]) => this.files.set(path, content));
+  }
+
+  async inspect(logicalPath: string): Promise<FileSystemEntry | null> {
+    this.inspectionCalls.push(`target:${logicalPath}`);
+    if (this.failInspectionPath === logicalPath) {
+      throw new FileSystemPortError('INSPECTION_FAILED', logicalPath, 'Inspection failed safely');
+    }
+    if (this.symlinks.has(logicalPath)) return { kind: 'SYMLINK' };
+    if (this.files.has(logicalPath)) return { kind: 'FILE' };
+    if (this.directories.has(logicalPath)) return { kind: 'DIRECTORY' };
+    if (this.otherEntries.has(logicalPath)) return { kind: 'OTHER' };
+    return null;
+  }
+
+  async inspectParentDirectory(logicalPath: string): Promise<FileSystemEntry | null> {
+    this.inspectionCalls.push(`parent:${logicalPath}`);
+    const segments = logicalPath.split('/');
+    segments.pop();
+    const parent = segments.join('/');
+    if (this.symlinks.has(parent)) return { kind: 'SYMLINK' };
+    if (this.directories.has(parent)) return { kind: 'DIRECTORY' };
+    if (this.files.has(parent)) return { kind: 'FILE' };
+    return null;
+  }
+
+  async createFileIfAbsent(logicalPath: string, content: string): Promise<void> {
+    this.mutationCalls.push(`create:${logicalPath}`);
+    this.throwIfConfigured(logicalPath, 'CREATE_FAILED');
+    if (this.files.has(logicalPath)) {
+      throw new FileSystemPortError('CREATE_FAILED', logicalPath, 'Target appeared before create');
+    }
+    this.files.set(logicalPath, content);
+  }
+
+  async updateFileIfRegularFile(logicalPath: string, content: string): Promise<void> {
+    this.mutationCalls.push(`update:${logicalPath}`);
+    this.throwIfConfigured(logicalPath, 'UPDATE_FAILED');
+    if (!this.files.has(logicalPath)) {
+      throw new FileSystemPortError(
+        'UPDATE_FAILED',
+        logicalPath,
+        'Target disappeared before update',
+      );
+    }
+    this.files.set(logicalPath, content);
+  }
+
+  async deleteFileIfRegularFile(logicalPath: string): Promise<void> {
+    this.mutationCalls.push(`delete:${logicalPath}`);
+    this.throwIfConfigured(logicalPath, 'DELETE_FAILED');
+    if (!this.files.has(logicalPath)) {
+      throw new FileSystemPortError(
+        'DELETE_FAILED',
+        logicalPath,
+        'Target disappeared before delete',
+      );
+    }
+    this.files.delete(logicalPath);
+  }
+
+  snapshot(): Readonly<Record<string, string>> {
+    return Object.fromEntries(
+      [...this.files.entries()].sort(([left], [right]) => left.localeCompare(right)),
+    );
+  }
+
+  private throwIfConfigured(
+    logicalPath: string,
+    code: 'CREATE_FAILED' | 'UPDATE_FAILED' | 'DELETE_FAILED',
+  ): void {
+    if (this.failMutationPath === logicalPath) {
+      throw new FileSystemPortError(code, logicalPath, 'Configured mutation failure');
+    }
+  }
+}

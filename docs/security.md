@@ -157,6 +157,50 @@ future identity and data services, and every third-party integration.
   preconditions, protected-path policy, secret scanning, conflict handling, atomic application,
   isolated verification, rollback, Git policy, and durable audit evidence in a separate boundary.
 
+### Safe File Apply trust boundary
+
+- Accept only a Project Change Plan that passes its production validator. Enforce operation limits,
+  canonical ordering, duplicate and conflict policy, safe logical paths, metadata, summaries, and
+  closed Create File, Update File, and Delete File operations before filesystem inspection.
+- Apply mandatory case-insensitive protection to Git internals, environment files, canonical Project
+  Brain state, agent governance, and CI workflows. Additional exact, subtree, and prefix rules may
+  strengthen but never remove mandatory policy.
+- Complete every protected-path and filesystem preflight before the first mutation. Create requires an
+  absent target and existing regular parent; update and delete require existing regular files. Reject
+  symlinks, other entry kinds, missing targets, invalid parents, and inspection failures with zero
+  changes.
+- Filesystem adapters must be root scoped, reject symlink traversal at every ancestor, and use
+  conditional create-if-absent, update-if-regular-file, and delete-if-regular-file primitives. This
+  adapter contract is the final defense against target races after preflight.
+- Multi-file apply is not transactional. Stop on the first mutation failure and report Failed or
+  Partially Applied without rollback. Never claim atomic success when earlier operations remain on
+  disk. Unknown adapter errors must not expose system paths or implementation details.
+- Before production composition, add explicit caller authorization, a concrete adapter conformance
+  suite across supported operating systems, expected-current-content checks, locking, recovery and
+  reconciliation, restricted audit evidence, and operator incident procedures. The engine does not
+  authorize Git, builds, tests, deployment, networking, or subsequent automation.
+
+### Build and Verification trust boundary
+
+- Accept only a File Apply Result that passes its production validator and has Applied status. Invalid,
+  Rejected, Failed, and Partially Applied inputs must invoke zero verification ports.
+- Keep project validation, dependency validation, build execution, test execution, and time behind
+  separate ports. Core must not import a framework, filesystem API, process API, package manager,
+  network client, Git client, deployment adapter, provider SDK, or repair capability.
+- Execute Project, Dependency, Build, and Test stages once each in fixed order for complete evidence.
+  Validate and bound every untrusted adapter result, normalize findings and metadata, and derive overall
+  status from stage evidence rather than trusting an adapter summary.
+- Translate thrown adapters and malformed output to generic failed-stage evidence. Do not expose command
+  lines, system paths, environment values, captured source, test data, stack traces, or raw process
+  output through warnings, errors, metadata, or telemetry.
+- Concrete runners are privileged code-execution boundaries and are not supplied. Before production
+  composition, require explicit caller authorization, project-root containment, fixed command and
+  argument allowlists, isolated working directories, sandboxing, least-privileged identities, CPU,
+  memory, output and active deadline limits, process-tree termination, no-network enforcement, secret
+  redaction, adapter conformance tests, and restricted audit evidence.
+- A Passed or Partially Passed report is evidence only. It never authorizes automatic repair, further
+  file writes, Git operations, rollback, deployment, networking, or subsequent workflow execution.
+
 ### Secrets and data
 
 - Store secrets in the deployment platform's secret manager, never in Git or `NEXT_PUBLIC_` variables.

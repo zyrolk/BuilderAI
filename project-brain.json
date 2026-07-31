@@ -97,6 +97,16 @@
         "id": "change-planner",
         "name": "Project Change Planner",
         "summary": "Provider-independent transformation of a validated Response Package into one deterministic, conflict-checked, effect-free Project Change Plan."
+      },
+      {
+        "id": "file-apply-engine",
+        "name": "Safe File Apply Engine",
+        "summary": "Provider-independent two-phase validation, protected-path preflight, conditional filesystem application, and exact Apply Result reporting behind root-scoped ports."
+      },
+      {
+        "id": "verification-engine",
+        "name": "Build and Verification Engine",
+        "summary": "Provider- and framework-independent orchestration of project, dependency, build, and test verification through validated ports and one deterministic report."
       }
     ],
     "requirements": [
@@ -240,6 +250,38 @@
           "Case-insensitive path aliases, duplicate operation identities, conflicting operation kinds, file/tree conflicts, patch semantics, invalid metadata, summary drift, and broken source references fail with typed path-specific issues.",
           "Operations use canonical create, update, delete, and logical-path order and every plan records that current project-state preconditions remain unverified."
         ]
+      },
+      {
+        "id": "safe-file-apply-engine",
+        "statement": "Apply only validated Project Change Plans through root-scoped filesystem and clock ports using closed conditional Create File, Update File, and Delete File operations.",
+        "acceptanceCriteria": [
+          "Core orchestration imports no filesystem implementation, provider, framework, Git, process, network, build, test, deployment, telemetry, or rollback capability.",
+          "Every result records actual created, updated, deleted, and skipped files, warnings, stable errors, non-negative duration, and defensive scalar metadata."
+        ]
+      },
+      {
+        "id": "file-apply-preflight-atomicity",
+        "statement": "Complete all plan, protected-path, target, parent, entry-kind, and inspection validation before the first filesystem mutation.",
+        "acceptanceCriteria": [
+          "Invalid plans, protected paths, missing or wrong-kind targets, invalid parents, symlinks, operation-limit violations, and inspection failures cause zero filesystem changes.",
+          "Filesystem methods enforce conditional create-if-absent, update-if-regular-file, and delete-if-regular-file semantics after preflight; execution stops on first mutation failure and honestly reports Failed or Partially Applied without rollback."
+        ]
+      },
+      {
+        "id": "deterministic-verification-pipeline",
+        "statement": "Verify only successful File Apply Results through a fixed Project, Dependency, Build, and Test pipeline whose external behavior exists behind explicit ports.",
+        "acceptanceCriteria": [
+          "Invalid or non-Applied inputs invoke zero verification ports, while accepted inputs execute every stage once in canonical order.",
+          "Thrown or malformed port results become safe failed stage evidence without leaking implementation details or suppressing later stages."
+        ]
+      },
+      {
+        "id": "validated-verification-report",
+        "statement": "Produce one versioned deterministic Verification Report whose overall status, stage evidence, findings, duration, and metadata are runtime validated.",
+        "acceptanceCriteria": [
+          "Overall status is Passed when all stages pass, Failed when no stage passes, and Partially Passed for mixed outcomes.",
+          "Stage order, result consistency, flattened findings, bounded metadata, duplicate findings, configuration, and report structure reject drift with typed validation issues."
+        ]
       }
     ],
     "constraints": [
@@ -297,6 +339,16 @@
         "id": "safe-change-planning-sprint-nine",
         "statement": "Sprint 9 is limited to provider-independent, effect-free Project Change Plan generation and excludes filesystem access, Git, automatic modification, build or test execution, rollback, UI, streaming, multi-provider work, and Sprint 10 capabilities.",
         "rationale": "Change intent must be explicit, deterministic, conflict-checked, and reviewable before any project effect can be considered."
+      },
+      {
+        "id": "safe-file-apply-sprint-ten",
+        "statement": "Sprint 10 is limited to provider-independent validated file application behind ports and excludes Git, rollback, build or test execution, deployment, networking, provider changes, UI, streaming, and Sprint 11 work.",
+        "rationale": "The first project effect boundary must remain narrow, protected, preflight-atomic, deterministic, and honest about non-transactional failures."
+      },
+      {
+        "id": "build-verification-sprint-eleven",
+        "statement": "Sprint 11 is limited to provider- and framework-independent verification orchestration behind ports and excludes UI, provider changes, Git, rollback, deployment, automatic repair, networking, streaming, concrete runners, and Sprint 12 work.",
+        "rationale": "Verification policy and evidence must be deterministic before process-capable adapters or subsequent workflow automation are separately approved."
       }
     ],
     "techStack": [
@@ -406,6 +458,16 @@
         "path": "src/core/change-planner",
         "owner": "Domain architecture",
         "responsibility": "Provider-, framework-, storage-, filesystem-, Git-, network-, build-, test-, rollback-, and execution-independent change intent, conflict policy, ordering, risk, summary, reference, and Project Change Plan validation."
+      },
+      {
+        "path": "src/core/file-apply",
+        "owner": "Domain architecture",
+        "responsibility": "Provider-, framework-, Git-, network-, process-, build-, test-, deployment-, telemetry-, and rollback-independent file apply contracts, root-scoped ports, protected-path policy, two-phase preflight, conditional operation orchestration, results, and validation."
+      },
+      {
+        "path": "src/core/verification",
+        "owner": "Domain architecture",
+        "responsibility": "Provider-, framework-, storage-, filesystem-, process-, network-, Git-, deployment-, repair-, and runner-implementation-independent verification pipeline, ports, status derivation, evidence normalization, reporting, and validation."
       }
     ]
   },
@@ -518,6 +580,28 @@
           "verify-change-planner"
         ],
         "completedAt": "2026-07-31T07:30:00.000Z"
+      },
+      {
+        "id": "sprint-ten-safe-file-apply",
+        "summary": "Implemented a provider-independent Safe File Apply Engine with root-scoped filesystem and clock ports, mandatory and configurable protected paths, complete preflight inspection, conditional sequential mutations, exact versioned results, and explicit non-transactional failure reporting.",
+        "taskIds": [
+          "define-file-apply-contract",
+          "implement-file-apply-preflight",
+          "implement-conditional-file-apply",
+          "verify-file-apply-engine"
+        ],
+        "completedAt": "2026-07-31T09:00:00.000Z"
+      },
+      {
+        "id": "sprint-eleven-build-verification",
+        "summary": "Implemented a provider- and framework-independent Verification Engine with a fixed four-stage pipeline, isolated external ports, validated stage contracts, deterministic Passed, Failed, and Partially Passed reporting, and no concrete execution adapter.",
+        "taskIds": [
+          "define-verification-contract",
+          "implement-verification-pipeline",
+          "enforce-verification-validation",
+          "verify-verification-foundation"
+        ],
+        "completedAt": "2026-07-31T10:30:00.000Z"
       }
     ],
     "pendingWork": [
@@ -563,7 +647,12 @@
       },
       {
         "id": "authorize-artifact-application",
-        "summary": "Before any Project Change Plan may change a project, design and approve current-state verification, human authorization, root and symlink containment, protected-path policy, content preconditions, conflict handling, atomic application, isolated verification, rollback, Git policy, audit, and secret-scanning controls in a separate capability.",
+        "summary": "Before the Safe File Apply Engine is connected to a real project, approve caller authorization, a root-scoped adapter conformance suite across supported operating systems, expected-current-content checks, locking, recovery and reconciliation, restricted audit evidence, operator controls, and secret scanning; Git, builds, tests, deployment, and rollback remain separate decisions.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "harden-verification-runners",
+        "summary": "Before connecting real project, dependency, build, or test runners, approve caller authorization, project-root containment, command allowlists, sandboxing, resource and time limits, no-network enforcement, output redaction and bounds, process-tree termination, adapter conformance, and restricted audit evidence.",
         "priority": "HIGH"
       }
     ],
@@ -582,7 +671,9 @@
       "decision-012",
       "decision-013",
       "decision-014",
-      "decision-015"
+      "decision-015",
+      "decision-016",
+      "decision-017"
     ],
     "architecturalRules": [
       {
@@ -619,9 +710,19 @@
         "id": "change-plan-before-project-effect",
         "rule": "Project change intent must cross the validated Project Change Plan boundary before review; a plan never authorizes filesystem, Git, build, test, rollback, persistence, or project-modification effects.",
         "rationale": "Planning must remain deterministic, conflict-aware review evidence and cannot substitute for current-state verification or explicit execution authorization."
+      },
+      {
+        "id": "file-effects-through-safe-apply",
+        "rule": "Authorized file effects must pass through the Safe File Apply Engine, mandatory protected-path policy, complete preflight, and root-scoped conditional filesystem port; partial application must never be reported as atomic success.",
+        "rationale": "A single narrow effect boundary prevents validation bypass, unrestricted filesystem access, protected-path changes, symlink traversal, and misleading multi-file outcomes."
+      },
+      {
+        "id": "verification-through-validated-ports",
+        "rule": "Project, dependency, build, and test verification may occur only after an Applied File Apply Result and only through the fixed Verification Engine pipeline and validated ports; a Verification Report never authorizes repair, Git, rollback, deployment, or another sprint.",
+        "rationale": "A single evidence boundary keeps execution implementations outside core, prevents stage omission and status drift, and does not turn verification into open-ended automation."
       }
     ],
-    "updatedAt": "2026-07-31T07:30:00.000Z"
+    "updatedAt": "2026-07-31T10:30:00.000Z"
   },
   "decisionLog": [
     {
@@ -930,10 +1031,67 @@
       },
       "important": true,
       "recordedAt": "2026-07-31T07:30:00.000Z"
+    },
+    {
+      "id": "decision-016",
+      "title": "Apply file plans through one two-phase root-scoped boundary",
+      "context": "Validated Project Change Plans are review evidence but BuilderAI needs a narrowly controlled filesystem effect boundary that prevents validation bypass, protected-path changes, symlink traversal, target races, and misleading multi-file outcomes without adding Git, process execution, networking, or rollback.",
+      "decision": "Implement src/core/file-apply as a two-phase engine over root-scoped filesystem and clock ports; revalidate the complete plan, enforce mandatory and additional protected paths, inspect every target and create-parent before mutation, invoke only conditional create-if-absent, update-if-regular-file, and delete-if-regular-file methods, stop on first execution failure, and return an exact versioned Apply Result that distinguishes Rejected, Failed, Partially Applied, and Applied.",
+      "rationale": "A single dependency-inverted effect boundary centralizes file safety policy and validation atomicity while making the absence of transactional rollback explicit and independently testable.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Call Node filesystem APIs directly from orchestration",
+        "Let every workflow interpret and apply Change Plans independently",
+        "Implement transactional backup, rollback, Git, build, and test behavior in the first apply engine"
+      ],
+      "consequences": {
+        "positive": [
+          "All rejectable plan and filesystem preconditions complete before the first mutation",
+          "Mandatory protected paths cannot be removed and filesystem implementations must contain paths and reject symlinks",
+          "Conditional mutation methods defend against target races after preflight",
+          "Actual partial outcomes remain visible instead of being reported as atomic success"
+        ],
+        "negative": [
+          "Multi-file application is not transactional and completed operations are not rolled back after a later failure",
+          "A production root-scoped filesystem adapter and operating-system conformance suite remain unimplemented",
+          "Expected-current-content checks, caller authorization, locking, recovery, reconciliation, audit, Git, build, test, deployment, and rollback remain separate decisions"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T09:00:00.000Z"
+    },
+    {
+      "id": "decision-017",
+      "title": "Verify applied projects through one fixed evidence pipeline",
+      "context": "A successful File Apply Result records completed file effects but does not prove that the resulting project, dependencies, build, or tests remain valid; verification needs controlled external execution without coupling core policy to a framework, process API, filesystem, network, or concrete runner.",
+      "decision": "Implement src/core/verification as a fixed sequential Project Validation, Dependency Validation, Build Validation, and Test Validation pipeline; accept only a validated Applied File Apply Result, invoke each capability through its own port, validate and normalize every stage result, continue after contained stage failure, and derive one versioned report whose Passed, Failed, or Partially Passed status cannot drift from stage evidence.",
+      "rationale": "A complete deterministic evidence report gives future workflows one trustworthy verification boundary while dependency inversion keeps privileged execution and framework choices outside core.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Execute shell commands directly from the verification orchestrator",
+        "Stop at the first failed stage and omit remaining evidence",
+        "Allow arbitrary configured stages and adapter-defined overall status",
+        "Automatically repair failed verification"
+      ],
+      "consequences": {
+        "positive": [
+          "Every accepted apply outcome receives the same complete ordered verification evidence",
+          "Malformed and thrown adapter outcomes are isolated as safe failed stages without leaking implementation details",
+          "Overall status, flattened findings, metadata, stage consistency, and ordering are independently runtime validated",
+          "Core remains framework, storage, filesystem, process, network, provider, and runner implementation independent"
+        ],
+        "negative": [
+          "All four stages run even after a failure, which favors evidence completeness over fail-fast execution cost",
+          "The fixed pipeline cannot add or omit stages without a versioned architectural change",
+          "Production runner adapters, sandboxing, command policy, active deadlines, process termination, output limits, authorization, and audit evidence remain unimplemented"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T10:30:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Sprint 9 complete - awaiting architecture review",
+    "currentMilestone": "Sprint 11 complete - awaiting architecture review",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -1057,6 +1215,30 @@
           "verify-change-planner"
         ],
         "completedAt": "2026-07-31T07:30:00.000Z"
+      },
+      {
+        "id": "sprint-ten-safe-file-apply",
+        "name": "Safe File Apply Engine",
+        "outcome": "A provider-independent two-phase engine revalidates and preflights complete Change Plans, enforces non-removable protected paths, applies conditional file operations through a root-scoped port, and returns exact non-transactional outcomes without Git, builds, tests, networking, deployment, or rollback.",
+        "completedTaskIds": [
+          "define-file-apply-contract",
+          "implement-file-apply-preflight",
+          "implement-conditional-file-apply",
+          "verify-file-apply-engine"
+        ],
+        "completedAt": "2026-07-31T09:00:00.000Z"
+      },
+      {
+        "id": "sprint-eleven-build-verification",
+        "name": "Build and Verification Foundation",
+        "outcome": "A provider- and framework-independent Verification Engine accepts only Applied results, runs a fixed four-stage pipeline through validated ports, and returns one complete deterministic report without concrete runners, automatic repair, Git, rollback, deployment, networking, or Sprint 12 behavior.",
+        "completedTaskIds": [
+          "define-verification-contract",
+          "implement-verification-pipeline",
+          "enforce-verification-validation",
+          "verify-verification-foundation"
+        ],
+        "completedAt": "2026-07-31T10:30:00.000Z"
       }
     ],
     "completedTaskIds": [
@@ -1096,9 +1278,17 @@
       "define-change-plan-contract",
       "implement-change-planning",
       "enforce-change-plan-conflicts",
-      "verify-change-planner"
+      "verify-change-planner",
+      "define-file-apply-contract",
+      "implement-file-apply-preflight",
+      "implement-conditional-file-apply",
+      "verify-file-apply-engine",
+      "define-verification-contract",
+      "implement-verification-pipeline",
+      "enforce-verification-validation",
+      "verify-verification-foundation"
     ],
-    "updatedAt": "2026-07-31T07:30:00.000Z"
+    "updatedAt": "2026-07-31T10:30:00.000Z"
   },
   "tasks": [
     {
@@ -1647,6 +1837,126 @@
       "createdAt": "2026-07-31T06:30:00.000Z",
       "updatedAt": "2026-07-31T07:30:00.000Z",
       "completedAt": "2026-07-31T07:30:00.000Z"
+    },
+    {
+      "id": "define-file-apply-contract",
+      "title": "Define the Safe File Apply boundary",
+      "description": "Define versioned Apply Result, status, error, warning, protected-rule, filesystem, clock, configuration, validation, and conditional operation contracts around the existing Project Change Plan.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The engine accepts unknown input only after the production Project Change Plan validator succeeds.",
+        "Filesystem and time effects exist only behind explicit ports and core imports no Git, process, network, build, test, deployment, provider, UI, telemetry, or rollback implementation."
+      ],
+      "dependencyIds": ["verify-change-planner"],
+      "createdAt": "2026-07-31T08:00:00.000Z",
+      "updatedAt": "2026-07-31T08:15:00.000Z",
+      "completedAt": "2026-07-31T08:15:00.000Z"
+    },
+    {
+      "id": "implement-file-apply-preflight",
+      "title": "Implement protected-path and filesystem preflight",
+      "description": "Enforce mandatory and additional case-insensitive protected rules, operation limits, target existence and kind, create-parent requirements, symlink rejection, and inspection error translation before mutation.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Every plan operation is inspected before the first mutation and any validation or inspection error returns Rejected with zero changes.",
+        "Mandatory Git, environment, canonical state, agent governance, and CI workflow protection cannot be removed by configuration."
+      ],
+      "dependencyIds": ["define-file-apply-contract"],
+      "createdAt": "2026-07-31T08:00:00.000Z",
+      "updatedAt": "2026-07-31T08:30:00.000Z",
+      "completedAt": "2026-07-31T08:30:00.000Z"
+    },
+    {
+      "id": "implement-conditional-file-apply",
+      "title": "Implement conditional deterministic file application",
+      "description": "Execute validated operations sequentially through conditional filesystem methods, stop on first failure, and return canonically ordered Applied, Rejected, Failed, or Partially Applied results with exact file outcomes.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Create, update, and delete call only their corresponding conditional root-scoped port methods in validated plan order.",
+        "Execution failures expose actual completed and skipped files, stable safe errors, controlled duration, defensive metadata, and an explicit no-rollback warning."
+      ],
+      "dependencyIds": ["implement-file-apply-preflight"],
+      "createdAt": "2026-07-31T08:00:00.000Z",
+      "updatedAt": "2026-07-31T08:45:00.000Z",
+      "completedAt": "2026-07-31T08:45:00.000Z"
+    },
+    {
+      "id": "verify-file-apply-engine",
+      "title": "Verify the Safe File Apply Engine",
+      "description": "Run successful apply, operation, protection, validation, preflight atomicity, symlink, race, partial failure, result, configuration, coverage, audit, build, boundary, and full CI checks, then wait for Sprint 11 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Comprehensive deterministic tests use only controlled filesystem and clock doubles and cover every approved File Apply responsibility and negative boundary.",
+        "The complete CI pipeline passes and no Git, rollback, build or test execution, deployment, networking, provider change, UI, streaming, concrete production filesystem adapter, or Sprint 11 behavior exists."
+      ],
+      "dependencyIds": ["implement-conditional-file-apply"],
+      "createdAt": "2026-07-31T08:00:00.000Z",
+      "updatedAt": "2026-07-31T09:00:00.000Z",
+      "completedAt": "2026-07-31T09:00:00.000Z"
+    },
+    {
+      "id": "define-verification-contract",
+      "title": "Define the Build and Verification boundary",
+      "description": "Define versioned report, status, stage, finding, context, configuration, error, clock, Project Validator, Dependency Validator, Build Runner, and Test Runner contracts around the successful File Apply Result.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The engine accepts only a File Apply Result that passes its production validator and has Applied status.",
+        "Every external capability and time source exists behind a narrow port while core imports no framework, filesystem, process, network, Git, deployment, provider, UI, persistence, repair, or runner implementation."
+      ],
+      "dependencyIds": ["verify-file-apply-engine"],
+      "createdAt": "2026-07-31T09:30:00.000Z",
+      "updatedAt": "2026-07-31T09:45:00.000Z",
+      "completedAt": "2026-07-31T09:45:00.000Z"
+    },
+    {
+      "id": "implement-verification-pipeline",
+      "title": "Implement deterministic verification orchestration",
+      "description": "Run Project, Dependency, Build, and Test validation sequentially in fixed order, normalize port evidence, contain external failures, and derive exact overall status and flattened findings.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Every accepted input invokes every port exactly once in canonical order and receives a defensive task context.",
+        "All-pass, all-fail, and mixed stage outcomes derive Passed, Failed, and Partially Passed respectively; malformed or thrown port outcomes remain visible and do not suppress later stages."
+      ],
+      "dependencyIds": ["define-verification-contract"],
+      "createdAt": "2026-07-31T09:30:00.000Z",
+      "updatedAt": "2026-07-31T10:00:00.000Z",
+      "completedAt": "2026-07-31T10:00:00.000Z"
+    },
+    {
+      "id": "enforce-verification-validation",
+      "title": "Enforce verification contracts and report consistency",
+      "description": "Validate configuration, canonical pipeline ordering, bounded port output, duplicate findings, stage consistency, report structure, derived status, flattened evidence, duration, metadata, and schema version.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Invalid and non-Applied inputs invoke zero ports, invalid configuration fails before execution, and untrusted port results cannot cross the stage boundary unchecked.",
+        "The report validator rejects ordering, status, evidence, metadata, duration, structure, or version drift with typed path-specific issues."
+      ],
+      "dependencyIds": ["implement-verification-pipeline"],
+      "createdAt": "2026-07-31T09:30:00.000Z",
+      "updatedAt": "2026-07-31T10:15:00.000Z",
+      "completedAt": "2026-07-31T10:15:00.000Z"
+    },
+    {
+      "id": "verify-verification-foundation",
+      "title": "Verify the Build and Verification Foundation",
+      "description": "Run success, failure, partial, ordering, isolation, input, configuration, port, report, coverage, audit, boundary, build, and full CI checks, then wait for Sprint 12 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Comprehensive deterministic tests use only controlled port and clock doubles and cover every approved Build and Verification responsibility and negative boundary.",
+        "The complete CI pipeline passes and no UI, provider change, Git, rollback, deployment, automatic repair, networking, streaming, concrete runner, or Sprint 12 behavior exists."
+      ],
+      "dependencyIds": ["enforce-verification-validation"],
+      "createdAt": "2026-07-31T09:30:00.000Z",
+      "updatedAt": "2026-07-31T10:30:00.000Z",
+      "completedAt": "2026-07-31T10:30:00.000Z"
     }
   ],
   "domainGlossary": {
@@ -1839,8 +2149,36 @@
         "category": "TECHNICAL",
         "definition": "An explicit effect-free Create File, Update File, or Delete File intent within a Project Change Plan.",
         "aliases": ["File Operation"]
+      },
+      {
+        "id": "safe-file-apply-engine-term",
+        "term": "Safe File Apply Engine",
+        "category": "TECHNICAL",
+        "definition": "The two-phase effect boundary that validates and preflights a Project Change Plan before invoking root-scoped conditional file operations and returning an exact Apply Result.",
+        "aliases": ["File Apply Engine"]
+      },
+      {
+        "id": "apply-result-term",
+        "term": "Apply Result",
+        "category": "TECHNICAL",
+        "definition": "A versioned record of actual created, updated, deleted, skipped, warning, error, duration, metadata, and Applied, Rejected, Failed, or Partially Applied outcome data.",
+        "aliases": ["File Apply Result"]
+      },
+      {
+        "id": "verification-pipeline-term",
+        "term": "Verification Pipeline",
+        "category": "TECHNICAL",
+        "definition": "The fixed sequential Project Validation, Dependency Validation, Build Validation, and Test Validation stages invoked through ports after a successful File Apply Result.",
+        "aliases": ["Build and Verification Pipeline"]
+      },
+      {
+        "id": "verification-report-term",
+        "term": "Verification Report",
+        "category": "TECHNICAL",
+        "definition": "A versioned deterministic record of every stage result, flattened findings, controlled duration, metadata, and derived Passed, Failed, or Partially Passed outcome.",
+        "aliases": ["Verification Result"]
       }
     ],
-    "updatedAt": "2026-07-31T07:30:00.000Z"
+    "updatedAt": "2026-07-31T10:30:00.000Z"
   }
 }

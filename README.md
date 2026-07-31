@@ -67,3 +67,20 @@ output data, not authorization to apply changes.
 Plan containing explicit create, update, and delete intents, source references, ordering, risks,
 warnings, and exact summaries. It does not inspect or modify the repository, and every plan states
 that real project preconditions remain unverified. A plan is review data, not permission to apply it.
+
+## Safe file apply boundary
+
+`src/core/file-apply` applies validated Project Change Plans through a root-scoped filesystem port.
+It validates and inspects the complete plan before mutation, enforces mandatory and configurable
+protected paths, rejects symlinks, and returns an exact Apply Result. The engine performs no Git,
+build, test, network, deployment, or rollback behavior; execution-time partial application is reported
+explicitly rather than hidden.
+
+## Build and verification boundary
+
+`src/core/verification` accepts only a validated Applied File Apply Result and runs Project,
+Dependency, Build, and Test stages in fixed order through separate ports. It validates and normalizes
+every stage result, continues after contained stage failures to preserve complete evidence, and derives
+one versioned Passed, Failed, or Partially Passed report. The foundation provides no concrete process
+runner, framework integration, networking, Git, rollback, deployment, or automatic repair; a report is
+verification evidence, not authorization for another effect.
