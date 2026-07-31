@@ -45,13 +45,59 @@ engineering standards, AI-assisted development rules, and security expectations 
 
 See [coding standards](docs/coding-standards.md) for the full definition of done.
 
-## OpenAI provider boundary
+## MVP v1.0 workflow
 
-Sprint 7 supplies one server-side `AIProvider` implementation under `src/providers/openai`. Its model,
-timeouts, character limits, and output-token limit are explicit validated configuration; no default
-model is selected. The API key must be obtained by a future server-only composition root from an
-approved secret manager and passed explicitly to `createOpenAIProvider`. The adapter does not read
-environment variables, and it is not connected to a route, UI, automatic workflow, or live CI test.
+BuilderAI v1.0 composes the established architecture on the server:
+
+```text
+Project Brain → Blueprint Reader → Context Builder → Prompt Orchestrator
+→ Execution Engine → configured AI Provider → Response Processor → Change Planner
+→ explicit human approval → File Apply Engine → Verification Engine → final report
+```
+
+The dashboard remains available without credentials. Live workflow composition is disabled by
+default and is intentionally limited to a trusted, single-operator, loopback environment. It is not
+approved for an internet-facing or untrusted-project deployment.
+
+To enable the local runtime, set these server-only environment variables before `npm run dev` or
+`npm start`:
+
+```text
+BUILDERAI_LIVE_WORKFLOW_ENABLED=true
+BUILDERAI_PROJECT_ROOT=<absolute path to the trusted project>
+BUILDERAI_AI_PROVIDER=<openai or gemini>
+```
+
+Then configure only the selected provider:
+
+```text
+# OpenAI
+OPENAI_API_KEY=<server-only secret>
+OPENAI_MODEL=<explicit supported model identifier>
+
+# Gemini API / Google AI Studio
+GEMINI_API_KEY=<server-only Google AI Studio secret>
+GEMINI_MODEL=gemini-3.5-flash
+```
+
+Optional bounded settings are documented in [MVP operations](docs/mvp-v1.md). Never prefix secrets
+with `NEXT_PUBLIC_`. The runtime accepts same-origin loopback requests only, retains approved plans in
+memory for 15 minutes by default, applies the server-held plan rather than browser data, and returns
+generic external errors.
+
+## Provider boundaries
+
+OpenAI remains available under `src/providers/openai`. Gemini local development support lives under
+`src/providers/gemini`. Both implement the unchanged core `AIProvider` port, accept the same validated
+Prompt Package, return the same provider-neutral response, disable adapter/SDK retries, and keep their
+wire models and official SDK imports isolated. The server composition root selects exactly one adapter
+from `BUILDERAI_AI_PROVIDER`; no core service or browser component performs provider routing.
+
+Provider models, timeouts, character limits, and output-token limits are explicit validated
+configuration. Credentials are loaded only by the server composition root and passed to the selected
+factory; adapters do not read environment variables. Never prefix either API key with `NEXT_PUBLIC_`.
+For a Google AI Studio free-tier project, `gemini-3.5-flash` is the recommended current local test model,
+but quotas and availability are controlled by Google and may vary by project and region.
 
 ## Response processing boundary
 
@@ -81,9 +127,10 @@ explicitly rather than hidden.
 `src/core/verification` accepts only a validated Applied File Apply Result and runs Project,
 Dependency, Build, and Test stages in fixed order through separate ports. It validates and normalizes
 every stage result, continues after contained stage failures to preserve complete evidence, and derives
-one versioned Passed, Failed, or Partially Passed report. The foundation provides no concrete process
-runner, framework integration, networking, Git, rollback, deployment, or automatic repair; a report is
-verification evidence, not authorization for another effect.
+one versioned Passed, Failed, or Partially Passed report. The local v1.0 composition supplies fixed
+npm-based adapters outside core with root containment, no shell, reduced environment, active time
+limits, bounded output, and safe result metadata. A report remains evidence, not authorization for
+another effect.
 
 ## BuilderAI interface
 
@@ -92,7 +139,7 @@ workspace at `/workspace` presents request input, conversation updates, determin
 explicit plan approval checkpoint, and readable Response Package, Change Plan, Apply Result, and
 Verification Report tabs.
 
-The workspace is currently a fail-closed presentation boundary. It is visibly in review mode and does
-not execute provider, filesystem, build, or test behavior because no authenticated and authorized
-server runtime or hardened production adapters are composed. Tests inject controlled workflow ports to
-verify the complete interaction without project effects.
+The workspace stays in visible review mode unless the local server runtime is explicitly and validly
+configured. When enabled, it communicates through same-origin route handlers, requires plan review and
+explicit approval, and never accepts a browser-supplied plan as execution authority. See
+[release notes](docs/release-notes/v1.0.0.md) for release scope and limitations.

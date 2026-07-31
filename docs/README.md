@@ -16,6 +16,10 @@ repeat live Project Brain values.
 - [Coding standards](coding-standards.md): implementation and review expectations.
 - [AI rules](ai-rules.md): safe use of coding assistants and the boundary around product AI.
 - [Security](security.md): threat model, controls, and incident expectations.
+- [MVP v1.0 operations](mvp-v1.md): local runtime configuration, controls, and limitations.
+- [Gemini local development](gemini-local-development.md): Google AI Studio setup and smoke-test checklist.
+- [v1.0.0 release notes](release-notes/v1.0.0.md): release scope, evidence, and known limitations.
+- [Gemini provider ADR](adr/0015-gemini-provider-adapter.md): isolated adapter and local selection decision.
 - [ADR template](adr-template.md): format for durable architectural decisions.
 
 Parse and read the canonical JSON, then read the seven Project Brain policy documents and the required

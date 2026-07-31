@@ -1,3 +1,4 @@
+import { MANDATORY_DOCUMENT_KINDS } from '../config';
 import { CONTEXT_PRIORITIES } from '../types';
 import { ContextBuilderValidationError } from '../types';
 import {
@@ -41,9 +42,47 @@ describe('ContextBuilderService', () => {
     expect(packageValue.priorityOrder).toEqual(CONTEXT_PRIORITIES);
     expect(packageValue.relevantDocumentation[0]?.kind).toBe('project-constitution');
     expect(packageValue.relevantDocumentation.map(({ kind }) => kind)).toEqual(
-      expect.arrayContaining(['project-constitution', 'task-system', 'ai-rules']),
+      expect.arrayContaining(['project-constitution', 'ai-rules']),
     );
+    expect(MANDATORY_DOCUMENT_KINDS).toEqual(['project-constitution', 'ai-rules']);
     expect(packageValue.codingStandards.length).toBeGreaterThan(0);
+  });
+
+  it('compacts repeated Blueprint Reader diagnostics by stable diagnostic code', async () => {
+    const input = await createContextInput();
+    const withWarnings = {
+      ...input,
+      blueprintReaderOutput: {
+        ...input.blueprintReaderOutput,
+        diagnostics: [
+          {
+            code: 'UNKNOWN_DOCUMENT' as const,
+            severity: 'WARNING' as const,
+            message: "Unknown document 'docs/one.md'.",
+            path: 'docs/one.md',
+          },
+          {
+            code: 'UNKNOWN_DOCUMENT' as const,
+            severity: 'WARNING' as const,
+            message: "Unknown document 'docs/two.md'.",
+            path: 'docs/two.md',
+          },
+        ],
+      },
+    };
+
+    const packageValue = await service.build(withWarnings);
+
+    expect(packageValue.knownRisks).toContainEqual({
+      id: 'diagnostic-unknown_document',
+      source: 'DOCUMENT_DIAGNOSTIC',
+      severity: 'WARNING',
+      description:
+        "Blueprint Reader reported 2 'UNKNOWN_DOCUMENT' warnings; inspect its diagnostics for document-level details.",
+    });
+    expect(
+      packageValue.knownRisks.filter(({ source }) => source === 'DOCUMENT_DIAGNOSTIC'),
+    ).toHaveLength(1);
   });
 
   it('resolves transitive task dependencies and relative source imports', async () => {
@@ -282,6 +321,9 @@ describe('ContextBuilderService', () => {
     expect(packageValue.size.omissions).toContainEqual(
       expect.objectContaining({ kind: 'FILE', reason: 'FILE_LIMIT' }),
     );
+    expect(
+      packageValue.size.omissions.filter(({ reason }) => reason === 'FILE_LIMIT'),
+    ).toHaveLength(1);
 
     await expect(service.build(input, { maxSourcePaths: 1 })).rejects.toMatchObject({
       issues: expect.arrayContaining([expect.objectContaining({ code: 'CONTEXT_SIZE_EXCEEDED' })]),

@@ -1,4 +1,4 @@
-import type { ProjectChangePlan } from '../../../core/change-planner';
+import { createOperationId, type ProjectChangePlan } from '../../../core/change-planner';
 import type { FileApplyResult } from '../../../core/file-apply';
 import type { ResponsePackage } from '../../../core/response-processor';
 import type { VerificationReport } from '../../../core/verification';
@@ -36,19 +36,25 @@ export const RESPONSE_PACKAGE: ResponsePackage = {
       logicalPath: 'src/example.ts',
       type: 'SOURCE_FILE',
       content: 'export const example = true;\n',
-      metadata: { intent: 'CREATE_FILE', description: 'Add an example source file' },
+      metadata: {
+        'change-operation': 'CREATE_FILE',
+        description: 'Add an example source file',
+      },
     },
   ],
   manifest: {
     schemaVersion: 1,
-    checksumAlgorithm: 'SHA-256',
+    checksumAlgorithm: 'sha256',
     entries: [
       {
         logicalPath: 'src/example.ts',
         type: 'SOURCE_FILE',
-        checksum: { algorithm: 'SHA-256', value: 'a'.repeat(64) },
+        checksum: { algorithm: 'sha256', value: 'a'.repeat(64) },
         sizeBytes: 29,
-        metadata: { intent: 'CREATE_FILE', description: 'Add an example source file' },
+        metadata: {
+          'change-operation': 'CREATE_FILE',
+          description: 'Add an example source file',
+        },
       },
     ],
     totalSizeBytes: 29,
@@ -64,12 +70,12 @@ export const CHANGE_PLAN: ProjectChangePlan = {
   changeSet: {
     operations: [
       {
-        operationId: 'operation-001',
+        operationId: createOperationId('CREATE_FILE', 'src/example.ts'),
         kind: 'CREATE_FILE',
         logicalPath: 'src/example.ts',
         artifactType: 'SOURCE_FILE',
         description: 'Add an example source file',
-        sourceChecksum: { algorithm: 'SHA-256', value: 'a'.repeat(64) },
+        sourceChecksum: { algorithm: 'sha256', value: 'a'.repeat(64) },
         sourceSizeBytes: 29,
         content: 'export const example = true;\n',
       },
@@ -87,7 +93,7 @@ export const CHANGE_PLAN: ProjectChangePlan = {
       code: 'CREATE_FILE',
       severity: 'LOW',
       message: 'Creates a new source file.',
-      operationIds: ['operation-001'],
+      operationIds: [createOperationId('CREATE_FILE', 'src/example.ts')],
     },
   ],
   warnings: [],
@@ -120,7 +126,7 @@ export const REJECTED_APPLY_RESULT: FileApplyResult = {
       code: 'PROTECTED_PATH',
       message: 'The target is protected.',
       logicalPath: 'src/example.ts',
-      operationId: 'operation-001',
+      operationId: createOperationId('CREATE_FILE', 'src/example.ts'),
     },
   ],
   durationMs: 2,

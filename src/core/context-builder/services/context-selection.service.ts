@@ -30,6 +30,27 @@ function pendingWorkText(work: PendingWork): string {
   return `${work.id} ${work.summary}`;
 }
 
+function diagnosticRisks(
+  diagnostics: ValidatedContextInput['reader']['diagnostics'],
+): readonly ContextRisk[] {
+  const byCode = Map.groupBy(diagnostics, ({ code }) => code);
+  return [...byCode.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map<ContextRisk>(([code, grouped]) => {
+      const first = grouped[0];
+      if (first === undefined) throw new Error(`Diagnostic group '${code}' is empty.`);
+      return {
+        id: diagnosticRiskId(first),
+        source: 'DOCUMENT_DIAGNOSTIC',
+        severity: 'WARNING',
+        description:
+          grouped.length === 1
+            ? first.message
+            : `Blueprint Reader reported ${grouped.length} '${code}' warnings; inspect its diagnostics for document-level details.`,
+      };
+    });
+}
+
 function isMandatoryDocument(document: ContextDocument): boolean {
   return MANDATORY_DOCUMENT_KINDS.includes(document.kind);
 }
@@ -123,12 +144,7 @@ export class ContextSelectionService {
     const goals = this.selectGoals(brain.blueprint.goals, query);
     const documents = this.selectDocuments(reader.documents, query, limits, omissions);
     const risks: ContextRisk[] = [
-      ...reader.diagnostics.map<ContextRisk>((diagnostic, index) => ({
-        id: diagnosticRiskId(diagnostic, index),
-        source: 'DOCUMENT_DIAGNOSTIC',
-        severity: 'WARNING',
-        description: diagnostic.message,
-      })),
+      ...diagnosticRisks(reader.diagnostics),
       ...brain.memory.pendingWork
         .filter((work) => relevanceScore(decisionQuery, pendingWorkText(work)) >= 2)
         .map<ContextRisk>((work) => ({

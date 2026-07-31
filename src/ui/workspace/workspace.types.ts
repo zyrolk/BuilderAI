@@ -44,6 +44,16 @@ export interface WorkspaceWorkflowPort {
   verify(applyResult: FileApplyResult): Promise<VerificationReport>;
 }
 
+export class WorkspaceWorkflowError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'WorkspaceWorkflowError';
+  }
+}
+
 export interface WorkspaceConversationEntry {
   readonly id: number;
   readonly author: 'USER' | 'BUILDER_AI';

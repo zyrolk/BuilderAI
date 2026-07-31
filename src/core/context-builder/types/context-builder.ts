@@ -181,8 +181,8 @@ export interface ValidatedContextInput {
   readonly sourcePaths: readonly string[];
 }
 
-export function diagnosticRiskId(diagnostic: DocumentDiagnostic, index: number): string {
-  return `${diagnostic.code.toLowerCase()}-${index + 1}`;
+export function diagnosticRiskId(diagnostic: DocumentDiagnostic): string {
+  return `diagnostic-${diagnostic.code.toLowerCase()}`;
 }
 
 export function pendingWorkRiskId(work: PendingWork): string {

@@ -112,6 +112,11 @@
         "id": "minimal-builderai-ui",
         "name": "Minimal BuilderAI UI",
         "summary": "Responsive dashboard and human-controlled project workspace that present canonical project state and existing workflow evidence through a typed UI orchestration port."
+      },
+      {
+        "id": "gemini-provider",
+        "name": "Google Gemini Provider",
+        "summary": "An isolated Gemini API implementation of the existing AIProvider port for configuration-selected local development."
       }
     ],
     "requirements": [
@@ -303,6 +308,14 @@
           "UI modules import existing core contracts as types and do not change, duplicate, or bypass core validation and business policy.",
           "The shipped workspace exposes no provider credential, filesystem, process, Git, deployment, repair, authentication, billing, collaboration, or provider-selection implementation."
         ]
+      },
+      {
+        "id": "configuration-selected-provider",
+        "statement": "Select exactly one supported local AI provider through server configuration without changing core contracts.",
+        "acceptanceCriteria": [
+          "OpenAI and Gemini implement the same unchanged AIProvider port.",
+          "Only the selected provider credentials and model are required, and no provider secret enters browser code."
+        ]
       }
     ],
     "constraints": [
@@ -402,6 +415,11 @@
         "name": "OpenAI Node SDK",
         "version": "managed by package.json",
         "purpose": "Official Responses API transport isolated within the OpenAI provider adapter."
+      },
+      {
+        "name": "Google Gen AI SDK",
+        "version": "managed by package.json",
+        "purpose": "Official Gemini Developer API transport isolated within the Gemini provider adapter."
       }
     ],
     "folderOwnership": [
@@ -504,6 +522,21 @@
         "path": "src/ui/workspace",
         "owner": "Product interface",
         "responsibility": "Accessible responsive workspace components, typed workflow presentation port, human approval interaction, progress, conversation, and existing response, plan, apply, and verification report views."
+      },
+      {
+        "path": "src/application/workspace",
+        "owner": "Application architecture",
+        "responsibility": "Server-side orchestration across existing validated project understanding, provider execution, response, planning, approval, apply, and verification boundaries without duplicating core policy."
+      },
+      {
+        "path": "src/infrastructure",
+        "owner": "Platform engineering",
+        "responsibility": "Root-scoped project sources and filesystem effects, bounded verification runners, server-only runtime configuration, request guards, diagnostics, and concrete composition adapters."
+      },
+      {
+        "path": "src/providers/gemini",
+        "owner": "Provider integrations",
+        "responsibility": "Gemini-specific configuration, explicit credentials, SDK transport, deterministic mapping, runtime validation, error translation, and single-call Execution Engine integration."
       }
     ]
   },
@@ -649,6 +682,24 @@
           "verify-minimal-builderai-ui"
         ],
         "completedAt": "2026-07-31T12:00:00.000Z"
+      },
+      {
+        "id": "sprint-thirteen-mvp-release",
+        "summary": "Composed the existing BuilderAI pipeline into a fail-closed local operator runtime with server-held approval state, hardened root-scoped filesystem and bounded verification adapters, correlated diagnostics, complete integration coverage, production documentation, and the v1.0.0 release candidate.",
+        "taskIds": ["compose-mvp-runtime", "harden-mvp-boundaries", "verify-mvp-release"],
+        "completedAt": "2026-07-31T13:30:00.000Z"
+      },
+      {
+        "id": "gemini-local-provider-integration",
+        "summary": "Added an isolated Gemini Developer API adapter, explicit server configuration selection, security and operations documentation, deterministic tests, and audit controls while preserving OpenAI and all core contracts.",
+        "taskIds": ["add-gemini-local-provider"],
+        "completedAt": "2026-07-31T15:00:00.000Z"
+      },
+      {
+        "id": "verified-live-gemini-workspace",
+        "summary": "Verified a credentialed gemini-3.5-flash Workspace preparation from Project Brain through a completed one-operation Change Plan without approving or applying project changes.",
+        "taskIds": ["add-gemini-local-provider"],
+        "completedAt": "2026-07-31T15:30:00.000Z"
       }
     ],
     "pendingWork": [
@@ -726,7 +777,9 @@
       "decision-015",
       "decision-016",
       "decision-017",
-      "decision-018"
+      "decision-018",
+      "decision-019",
+      "decision-020"
     ],
     "architecturalRules": [
       {
@@ -778,9 +831,14 @@
         "id": "ui-through-workflow-port",
         "rule": "The browser interface may present and request existing workflow behavior only through its typed orchestration port; absent an authorized server composition it must remain visibly disconnected and perform no provider, filesystem, process, Git, deployment, or repair effect.",
         "rationale": "A presentation boundary must not become a privileged runtime bypass or fabricate successful project evidence."
+      },
+      {
+        "id": "local-runtime-fail-closed",
+        "rule": "Live MVP effects are allowed only in the explicitly configured same-origin loopback profile, against the server-held validated plan, after human acknowledgement, through root-scoped conditional filesystem and bounded verification adapters; all remote, shared, multi-instance, and untrusted-project use remains prohibited.",
+        "rationale": "The v1.0 composition must not turn a local integration milestone into an unauthenticated hosted execution service or let browser data become effect authority."
       }
     ],
-    "updatedAt": "2026-07-31T12:00:00.000Z"
+    "updatedAt": "2026-07-31T15:30:00.000Z"
   },
   "decisionLog": [
     {
@@ -1175,10 +1233,68 @@
       },
       "important": true,
       "recordedAt": "2026-07-31T12:00:00.000Z"
+    },
+    {
+      "id": "decision-019",
+      "title": "Compose MVP v1.0 as a local-only server runtime",
+      "context": "BuilderAI has validated core boundaries and a fail-closed workspace but needs an end-to-end MVP integration without adding authentication, persistence, deployment, rollback, multi-provider behavior, or new core capabilities.",
+      "decision": "Compose existing services under src/application/workspace; expose bounded same-origin loopback route handlers; keep validated plans in a bounded expiring process-local store addressed by opaque identifiers; require explicit acknowledgement; apply only the server-held plan; provide root-scoped conditional Node filesystem effects and fixed shell-free bounded npm verification adapters outside core; and keep the runtime disabled when explicit server configuration is absent or invalid.",
+      "rationale": "A local-only server composition completes the approved MVP workflow while preserving every core boundary, keeping secrets and privileged capabilities out of the browser, preventing plan substitution and duplicate application, and making unresolved hosted-runtime controls explicit rather than implied.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Move provider, filesystem, or process behavior into client components",
+        "Accept the complete Project Change Plan back from the browser as effect authority",
+        "Add authentication, durable workflow persistence, sandbox infrastructure, and deployment beyond MVP scope",
+        "Leave the v1.0 workspace permanently disconnected"
+      ],
+      "consequences": {
+        "positive": [
+          "The existing Project Brain through Verification pipeline is integrated without changing a core contract",
+          "Explicit approval is bound to an opaque server-held validated plan and completed outcomes replay idempotently",
+          "Provider credentials, SDK construction, filesystem access, process execution, and structured diagnostics remain server-only",
+          "Missing or invalid configuration preserves visible review mode"
+        ],
+        "negative": [
+          "The release is limited to a trusted local operator and trusted target project",
+          "Preparations are process-local and are lost on restart or unavailable across instances",
+          "Verification lacks OS sandboxing, guaranteed no-network enforcement, and complete process-tree isolation",
+          "Multi-file apply remains non-transactional without rollback, Git recovery, or durable audit storage"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T13:30:00.000Z"
+    },
+    {
+      "id": "decision-020",
+      "title": "Add Gemini through the existing provider port",
+      "context": "Local development needs Google AI Studio support without coupling core, UI, or application contracts to another provider SDK or removing OpenAI.",
+      "decision": "Implement google-gemini under src/providers/gemini using the official SDK for one non-streaming structured request; select openai or gemini only in the server composition root through BUILDERAI_AI_PROVIDER and require only the selected provider configuration.",
+      "rationale": "An isolated adapter and exhaustive composition branch extend local provider choice while preserving the provider-neutral contract, existing lifecycle policy, OpenAI behavior, and browser boundary.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Replace OpenAI with Gemini",
+        "Add Gemini SDK and selection fields to core contracts",
+        "Build dynamic routing and provider fallback",
+        "Call Gemini directly from the UI"
+      ],
+      "consequences": {
+        "positive": [
+          "OpenAI and Gemini remain interchangeable at the existing application port",
+          "Provider choice changes through server configuration only",
+          "Gemini credentials, SDK types, wire responses, and errors remain isolated and server-only"
+        ],
+        "negative": [
+          "A second SDK dependency and adapter require independent maintenance and audit review",
+          "Free-tier quota, regional availability, and provider data terms constrain local use",
+          "Provider switching requires a local server restart and has no automatic fallback"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T15:00:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Sprint 12 complete - awaiting architecture review",
+    "currentMilestone": "Gemini local provider integration verified - awaiting architecture review",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -1338,6 +1454,13 @@
           "verify-minimal-builderai-ui"
         ],
         "completedAt": "2026-07-31T12:00:00.000Z"
+      },
+      {
+        "id": "sprint-thirteen-mvp-release",
+        "name": "End-to-End Integration, Hardening and MVP Release",
+        "outcome": "BuilderAI v1.0 composes every existing validated boundary into an opt-in local operator workflow with explicit server-held approval, hardened concrete adapters, final verification evidence, release documentation, and no new product capability or core redesign.",
+        "completedTaskIds": ["compose-mvp-runtime", "harden-mvp-boundaries", "verify-mvp-release"],
+        "completedAt": "2026-07-31T13:30:00.000Z"
       }
     ],
     "completedTaskIds": [
@@ -1389,9 +1512,13 @@
       "define-minimal-ui-boundary",
       "implement-builderai-dashboard",
       "implement-project-workspace",
-      "verify-minimal-builderai-ui"
+      "verify-minimal-builderai-ui",
+      "compose-mvp-runtime",
+      "harden-mvp-boundaries",
+      "verify-mvp-release",
+      "add-gemini-local-provider"
     ],
-    "updatedAt": "2026-07-31T12:00:00.000Z"
+    "updatedAt": "2026-07-31T15:30:00.000Z"
   },
   "tasks": [
     {
@@ -2120,6 +2247,66 @@
       "createdAt": "2026-07-31T11:00:00.000Z",
       "updatedAt": "2026-07-31T12:00:00.000Z",
       "completedAt": "2026-07-31T12:00:00.000Z"
+    },
+    {
+      "id": "compose-mvp-runtime",
+      "title": "Compose the existing BuilderAI workflow",
+      "description": "Connect canonical project understanding, context, prompt, execution, provider, response, planning, explicit approval, file apply, verification, and final evidence through a server-only application service without changing core contracts.",
+      "status": "DONE",
+      "priority": "CRITICAL",
+      "acceptanceCriteria": [
+        "The browser crosses only validated orchestration routes and can never supply the executable plan or invoke apply before explicit acknowledgement.",
+        "A deterministic integration test crosses every existing architecture boundary and proves preparation has zero file effects, application is single-flight and idempotent, and verification follows only Applied results."
+      ],
+      "dependencyIds": ["verify-minimal-builderai-ui"],
+      "createdAt": "2026-07-31T12:15:00.000Z",
+      "updatedAt": "2026-07-31T12:45:00.000Z",
+      "completedAt": "2026-07-31T12:45:00.000Z"
+    },
+    {
+      "id": "harden-mvp-boundaries",
+      "title": "Harden local MVP effect boundaries",
+      "description": "Implement fail-closed server configuration, same-origin loopback request policy, bounded expiring server-held preparations, safe diagnostics, a root-scoped conditional filesystem adapter, and fixed shell-free time- and output-bounded verification adapters for trusted local projects.",
+      "status": "DONE",
+      "priority": "CRITICAL",
+      "acceptanceCriteria": [
+        "Secrets, provider payloads, source, request bodies, raw command output, environment values, stack traces, and system paths never cross client errors or structured runtime logs.",
+        "The release documentation explicitly prohibits remote, shared, multi-instance, and untrusted-project operation until authentication, isolation, recovery, and durable control gaps are resolved."
+      ],
+      "dependencyIds": ["compose-mvp-runtime"],
+      "createdAt": "2026-07-31T12:15:00.000Z",
+      "updatedAt": "2026-07-31T13:00:00.000Z",
+      "completedAt": "2026-07-31T13:00:00.000Z"
+    },
+    {
+      "id": "verify-mvp-release",
+      "title": "Verify and document BuilderAI MVP v1.0",
+      "description": "Complete regression, coverage, browser, production build, dependency audit, security, architecture, operations, release, canonical Project Brain, and final readiness evidence without beginning another sprint.",
+      "status": "DONE",
+      "priority": "CRITICAL",
+      "acceptanceCriteria": [
+        "Formatting, ESLint, strict TypeScript, all tests, coverage thresholds, production audit, full audit review, CI, and standalone production build pass or have an explicit evidence-backed exception.",
+        "The v1.0 handoff states exact capabilities, limitations, residual risks, release profile, folder changes, and final architecture approval gate."
+      ],
+      "dependencyIds": ["harden-mvp-boundaries"],
+      "createdAt": "2026-07-31T12:15:00.000Z",
+      "updatedAt": "2026-07-31T13:30:00.000Z",
+      "completedAt": "2026-07-31T13:30:00.000Z"
+    },
+    {
+      "id": "add-gemini-local-provider",
+      "title": "Add Gemini as a configuration-selected local provider",
+      "description": "Implement, document, configure, test, audit, and locally verify an isolated Gemini adapter while preserving OpenAI and every core architecture contract.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Gemini maps one unchanged Prompt Package to one non-streaming structured request and validates the provider-neutral response.",
+        "Server configuration selects OpenAI or Gemini, all CI gates pass, and a credentialed local Workspace smoke test is recorded."
+      ],
+      "dependencyIds": ["verify-mvp-release"],
+      "createdAt": "2026-07-31T14:30:00.000Z",
+      "updatedAt": "2026-07-31T15:00:00.000Z",
+      "completedAt": "2026-07-31T15:00:00.000Z"
     }
   ],
   "domainGlossary": {
@@ -2354,8 +2541,15 @@
         "category": "TECHNICAL",
         "definition": "The UI-owned composition seam that exposes preparation, approved apply, and verification using existing core contracts without giving browser components direct provider, filesystem, or process dependencies.",
         "aliases": ["UI Workflow Port"]
+      },
+      {
+        "id": "gemini-provider-term",
+        "term": "Google Gemini Provider",
+        "category": "TECHNICAL",
+        "definition": "The isolated AIProvider implementation that maps one validated Prompt Package to one non-streaming Gemini Developer API request and validates the returned structured output.",
+        "aliases": ["Gemini Provider"]
       }
     ],
-    "updatedAt": "2026-07-31T12:00:00.000Z"
+    "updatedAt": "2026-07-31T15:00:00.000Z"
   }
 }

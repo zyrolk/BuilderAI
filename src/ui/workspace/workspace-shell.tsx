@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import type { FileApplyResult } from '../../core/file-apply';
 import type { VerificationReport } from '../../core/verification';
 import { ResultPanel } from './result-panel';
+import { HttpWorkspaceWorkflow } from './http-workspace-workflow';
 import styles from './workspace.module.css';
+import { WorkspaceWorkflowError } from './workspace.types';
 import type {
   PreparedWorkspaceChange,
   ResultPanelTab,
@@ -39,9 +41,19 @@ const PHASE_LABELS: Readonly<Record<WorkspacePhase, string>> = {
 interface WorkspaceShellProps {
   readonly project: WorkspaceProjectView;
   readonly workflow?: WorkspaceWorkflowPort;
+  readonly runtimeAvailable?: boolean;
 }
 
-export function WorkspaceShell({ project, workflow }: WorkspaceShellProps) {
+export function WorkspaceShell({
+  project,
+  workflow: injectedWorkflow,
+  runtimeAvailable = false,
+}: WorkspaceShellProps) {
+  const runtimeWorkflow = useMemo(
+    () => (runtimeAvailable ? new HttpWorkspaceWorkflow() : undefined),
+    [runtimeAvailable],
+  );
+  const workflow = injectedWorkflow ?? runtimeWorkflow;
   const requestId = useId();
   const approvalId = useId();
   const [request, setRequest] = useState('');
@@ -88,8 +100,13 @@ export function WorkspaceShell({ project, workflow }: WorkspaceShellProps) {
           message: `Prepared ${nextPrepared.changePlan.summary.totalOperations} operation${nextPrepared.changePlan.summary.totalOperations === 1 ? '' : 's'} for review. No files have been changed.`,
         },
       ]);
-    } catch {
-      stopWorkflow('The request could not be prepared. No project changes were made.', 1);
+    } catch (workflowError: unknown) {
+      stopWorkflow(
+        workflowError instanceof WorkspaceWorkflowError
+          ? `${workflowError.message} No project changes were made.`
+          : 'The request could not be prepared. No project changes were made.',
+        1,
+      );
     }
   }
 
@@ -217,9 +234,8 @@ export function WorkspaceShell({ project, workflow }: WorkspaceShellProps) {
             <div className={styles.runtimeNotice} role="note">
               <strong>Interface review mode</strong>
               <p>
-                Runtime execution is intentionally disconnected. Production filesystem and
-                verification adapters require separate authorization and hardening before this
-                interface can change a project.
+                Runtime execution is disabled. Configure the documented local-only server runtime
+                before this interface can prepare or apply a project change.
               </p>
             </div>
           )}

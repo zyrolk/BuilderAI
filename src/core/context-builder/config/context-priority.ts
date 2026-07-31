@@ -32,6 +32,5 @@ export const DOCUMENT_PRIORITY: Readonly<
 
 export const MANDATORY_DOCUMENT_KINDS: readonly DocumentKind[] = [
   'project-constitution',
-  'task-system',
   'ai-rules',
 ];

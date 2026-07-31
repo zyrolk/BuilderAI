@@ -90,6 +90,26 @@ future identity and data services, and every third-party integration.
   production release, run a separately authorized minimal smoke test with non-sensitive synthetic
   content and verify account-level retention controls.
 
+### Google Gemini provider trust boundary
+
+- Load `GEMINI_API_KEY` only in the server composition root and inject it into the isolated transport.
+  Never log, persist, return, commit, or expose it through `NEXT_PUBLIC_` configuration.
+- The local adapter targets the Gemini Developer API from Google AI Studio, not Vertex AI. Do not set
+  Vertex configuration for this release profile, and keep provider choice explicit through
+  `BUILDERAI_AI_PROVIDER`.
+- Send only the already selected and validated Prompt Package. The adapter must not independently read
+  Project Brain state, documentation, source, environment variables, or files.
+- Free-tier Gemini services may use submitted content to improve Google products. Restrict free-tier
+  testing to non-sensitive, non-customer, non-production projects unless approved provider terms and a
+  separate privacy/data-processing review permit the disclosure.
+- Keep streaming, tools, functions, files, images, history, and SDK retries disabled. Validate the
+  candidate completion reason, response text, token usage, JSON structure, Output Contract, identity,
+  limits, and artifact kinds before returning a provider-neutral response.
+- Map quota, availability, timeout, cancellation, credential/model, and contract failures to the
+  existing redacted BuilderAI taxonomy. Never surface raw Google response bodies or SDK errors.
+- Free-tier quotas and regional availability are external operational constraints, not BuilderAI
+  guarantees. A 429 or unsupported-region response must fail closed; no provider fallback is allowed.
+
 ### Prompt Package trust boundary
 
 - Accept only a Context Package that passes its production validator. Prompt composition must not read
@@ -175,10 +195,11 @@ future identity and data services, and every third-party integration.
 - Multi-file apply is not transactional. Stop on the first mutation failure and report Failed or
   Partially Applied without rollback. Never claim atomic success when earlier operations remain on
   disk. Unknown adapter errors must not expose system paths or implementation details.
-- Before production composition, add explicit caller authorization, a concrete adapter conformance
-  suite across supported operating systems, expected-current-content checks, locking, recovery and
-  reconciliation, restricted audit evidence, and operator incident procedures. The engine does not
-  authorize Git, builds, tests, deployment, networking, or subsequent automation.
+- The local MVP composition supplies a root-scoped Node adapter with conditional operations and
+  containment tests. Authentication, cross-platform conformance, expected-current-content checks,
+  locking, recovery and reconciliation, restricted audit evidence, and operator incident procedures
+  remain mandatory before remote, shared, or untrusted-project use. The engine does not authorize Git,
+  deployment, networking, or subsequent automation.
 
 ### Build and Verification trust boundary
 
@@ -193,11 +214,12 @@ future identity and data services, and every third-party integration.
 - Translate thrown adapters and malformed output to generic failed-stage evidence. Do not expose command
   lines, system paths, environment values, captured source, test data, stack traces, or raw process
   output through warnings, errors, metadata, or telemetry.
-- Concrete runners are privileged code-execution boundaries and are not supplied. Before production
-  composition, require explicit caller authorization, project-root containment, fixed command and
-  argument allowlists, isolated working directories, sandboxing, least-privileged identities, CPU,
-  memory, output and active deadline limits, process-tree termination, no-network enforcement, secret
-  redaction, adapter conformance tests, and restricted audit evidence.
+- The local MVP supplies fixed npm runner adapters with project-root containment, no shell, a reduced
+  environment, output bounds, active deadlines, safe metadata, and no raw output exposure. They execute
+  only trusted project scripts. Before remote or untrusted-project use, require authentication,
+  isolated working directories, OS sandboxing, least-privileged identities, CPU and memory limits,
+  complete process-tree termination, no-network enforcement, adapter conformance, and restricted audit
+  evidence.
 - A Passed or Partially Passed report is evidence only. It never authorizes automatic repair, further
   file writes, Git operations, rollback, deployment, networking, or subsequent workflow execution.
 
@@ -216,10 +238,32 @@ future identity and data services, and every third-party integration.
   replace identity, project permission, policy validation, or audit evidence.
 - Stop before verification when Apply status is not Applied. Preserve available evidence, expose generic
   failures, and never include raw provider, filesystem, command, environment, stack, or process output.
-- The shipped workspace must fail closed in visible review mode while no authorized server composition
-  exists. Before live effects, require authentication, project authorization, server-side revalidation,
-  anti-CSRF, rate limiting, idempotency, concurrency control, hardened effect adapters, redaction,
-  restricted audit evidence, recovery, and incident procedures.
+- The shipped workspace fails closed in visible review mode unless explicit local server configuration
+  is valid. Live local effects require same-origin loopback JSON, server-side revalidation, an opaque
+  expiring server-held plan, explicit acknowledgement, single-flight claim, idempotent completion,
+  hardened local adapters, and generic redacted errors. This is not authentication. Before public,
+  shared, or multi-instance effects, require identity, project authorization, durable anti-CSRF,
+  abuse/rate controls, distributed idempotency and concurrency, restricted audit evidence, recovery,
+  and incident procedures.
+
+### MVP v1.0 local runtime trust boundary
+
+- Keep live composition disabled unless `BUILDERAI_LIVE_WORKFLOW_ENABLED` is exactly `true` and every
+  required server-only setting passes closed range and syntax validation.
+- Accept only loopback same-origin JSON requests of bounded size. Reject remote hosts, missing or
+  mismatched origins, non-JSON content, oversized payloads, invalid request text, invalid preparation
+  identifiers, missing approval, expired preparations, and concurrent claims before effects.
+- Treat browser response and plan objects as display evidence only. Apply the exact server-held
+  validated plan addressed by an opaque random identifier; never deserialize a browser plan into the
+  effect engine.
+- Keep preparations bounded, expiring, and process-local. A restart invalidates them. Completed results
+  may replay idempotently; an in-flight duplicate must not execute a second apply.
+- Exclude credentials, provider content, source, request bodies, command output, environment values,
+  stack traces, and system paths from route errors and structured logs. Correlate only identifier,
+  stage, outcome, duration, and stable error code.
+- Restrict the release profile to a trusted local operator and trusted target project. Loopback origin
+  checks do not authenticate local processes, and trusted npm scripts are privileged code. These limits
+  are release blockers for internet-facing, shared, multi-user, or untrusted-project deployment.
 
 ### Secrets and data
 

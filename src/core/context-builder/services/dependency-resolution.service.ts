@@ -93,22 +93,26 @@ export class DependencyResolutionService {
 
     const selected: ProjectSourceFile[] = [];
     const omissions: ContextOmission[] = [];
-    const omitted = new Set<string>();
     const visited = new Set<string>();
+    let reads = 0;
+    let fileLimitRecorded = false;
+    const recordFileLimit = (identifier: string): void => {
+      if (fileLimitRecorded) return;
+      omissions.push({ kind: 'FILE', identifier, reason: 'FILE_LIMIT' });
+      fileLimitRecorded = true;
+    };
     const visit = async (sourcePath: string): Promise<void> => {
       if (visited.has(sourcePath)) return;
       visited.add(sourcePath);
-      if (selected.length >= maxReads) {
-        if (!omitted.has(sourcePath)) {
-          omissions.push({ kind: 'FILE', identifier: sourcePath, reason: 'FILE_LIMIT' });
-          omitted.add(sourcePath);
-        }
+      if (reads >= maxReads) {
+        recordFileLimit(sourcePath);
         return;
       }
 
       let content: string;
       try {
         content = await source.readSourceFile(sourcePath);
+        reads += 1;
       } catch (error: unknown) {
         throw new ContextBuilderValidationError([
           {
@@ -123,13 +127,23 @@ export class DependencyResolutionService {
       for (const importPath of importedPaths(file)) {
         const dependencyPath = findImportedPath(importPath, availablePaths);
         if (dependencyPath === undefined) {
-          throw new ContextBuilderValidationError([
-            {
-              code: 'INVALID_REFERENCE',
-              path: '$.sourceFileSource',
-              message: `Source file '${sourcePath}' references unavailable relative import '${importPath}'`,
-            },
-          ]);
+          if (reads >= maxReads) {
+            recordFileLimit(importPath);
+            continue;
+          }
+          try {
+            await source.readSourceFile(importPath);
+            reads += 1;
+          } catch {
+            throw new ContextBuilderValidationError([
+              {
+                code: 'INVALID_REFERENCE',
+                path: '$.sourceFileSource',
+                message: `Source file '${sourcePath}' references unavailable relative import '${importPath}'`,
+              },
+            ]);
+          }
+          continue;
         }
         await visit(dependencyPath);
       }
@@ -146,7 +160,7 @@ export class DependencyResolutionService {
         };
       }),
       omissions,
-      reads: selected.length,
+      reads,
     };
   }
 

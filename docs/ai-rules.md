@@ -61,10 +61,11 @@ artifacts remain untrusted data until an approved consumer validates and handles
 
 Invocation workflows must enter through the versioned Execution Engine request and transition only
 through its legal append-only lifecycle. No adapter may assign execution state or retry independently.
-External transmission requires caller authorization and data classification; the OpenAI adapter's
-`store: false` setting does not replace provider-retention and privacy review. No other provider,
-streaming mode, tool, file, image, history, persistence, telemetry, or automatic workflow is authorized
-by the Sprint 7 adapter.
+External transmission requires caller authorization and data classification. OpenAI's `store: false`
+setting and Gemini's structured-output configuration do not replace provider-retention and privacy
+review. The approved adapters are OpenAI Responses and Google Gemini only; configuration selects one
+for a local run. No fallback routing, streaming mode, tool, file, image, history, persistence,
+telemetry, or automatic workflow is authorized.
 
 Provider output remains untrusted until the Response Processor correlates it with its completed
 Execution Result and emits a validated, normalized, integrity-verified Response Package. Future

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
-import { loadCanonicalProjectBrain } from '../../core/project-brain';
+import { isLocalWorkspaceRuntimeConfigured } from '../../infrastructure/workspace';
+import { loadWorkspaceProjectBrainForView } from '../../infrastructure/workspace/workspace-project-view';
 import { WorkspaceShell, type WorkspaceProjectView } from '../../ui/workspace';
 
 export const metadata: Metadata = {
@@ -8,8 +9,10 @@ export const metadata: Metadata = {
   description: 'Review and control the BuilderAI project workflow.',
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function WorkspacePage() {
-  const brain = loadCanonicalProjectBrain();
+  const brain = loadWorkspaceProjectBrainForView();
   const project: WorkspaceProjectView = {
     id: brain.blueprint.projectId,
     name: brain.blueprint.name,
@@ -21,5 +24,7 @@ export default function WorkspacePage() {
     completedSprintCount: brain.progressLog.completedSprints.length,
   };
 
-  return <WorkspaceShell project={project} />;
+  return (
+    <WorkspaceShell project={project} runtimeAvailable={isLocalWorkspaceRuntimeConfigured()} />
+  );
 }

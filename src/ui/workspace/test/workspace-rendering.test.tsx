@@ -16,9 +16,7 @@ describe('WorkspaceShell rendering', () => {
     expect(screen.getByRole('log')).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: /workflow results/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /prepare change plan/i })).toBeDisabled();
-    expect(
-      screen.getByText(/runtime execution is intentionally disconnected/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/runtime execution is disabled/i)).toBeInTheDocument();
   });
 
   it('provides labelled request input and keyboard-operable result tabs', () => {

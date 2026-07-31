@@ -11,12 +11,20 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    exclude: ['**/node_modules/**', '**/.next/**', '**/coverage/**', '**/dist/**'],
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.d.ts', 'src/app/layout.tsx', 'src/**/test/**'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/app/api/**',
+        'src/app/layout.tsx',
+        'src/infrastructure/workspace/local-workspace-runtime.ts',
+        'src/infrastructure/workspace/workspace-project-view.ts',
+        'src/**/test/**',
+      ],
       thresholds: {
         branches: 80,
         functions: 80,

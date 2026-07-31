@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest';
 
 import { WorkspaceShell } from '../workspace-shell';
+import { WorkspaceWorkflowError } from '../workspace.types';
 import {
   APPLY_RESULT,
   CHANGE_PLAN,
@@ -72,6 +73,12 @@ describe('Workspace workflow transitions', () => {
     expect(screen.getByText('Create File')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /approve and apply/i })).toBeDisabled();
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Response Package' }));
+    expect(screen.getByRole('heading', { name: 'Artifact manifest' })).toBeInTheDocument();
+    expect(screen.getByText('src/example.ts')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Change Plan' }));
+    expect(screen.getByText('Create File')).toBeInTheDocument();
+
     fireEvent.click(screen.getByLabelText(/explicitly approve these file operations/i));
     fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
 
@@ -125,6 +132,30 @@ describe('Workspace workflow transitions', () => {
     expect(alert).toHaveTextContent(/could not be prepared/i);
     expect(alert).not.toHaveTextContent('secret failure');
     expect(screen.getAllByText('Workflow stopped')).toHaveLength(3);
+  });
+
+  it('shows a bounded server workflow diagnostic to the user', async () => {
+    render(
+      <WorkspaceShell
+        project={PROJECT_VIEW}
+        workflow={createWorkflow({
+          prepare: async () => {
+            throw new WorkspaceWorkflowError(
+              'CONTEXT_BUILDER_VALIDATION_FAILED',
+              "Context Builder validation failed: source reference 'project-brain.json' is unavailable.",
+            );
+          },
+        })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Project request'), {
+      target: { value: 'Prepare work.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare change plan' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /source reference 'project-brain.json' is unavailable/i,
+    );
   });
 
   it('retains the apply result when verification fails safely', async () => {

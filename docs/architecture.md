@@ -8,15 +8,15 @@ version: 1
 ## Status and scope
 
 This document defines the baseline architecture for the Project Brain, Blueprint Reader, Context
-Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, first OpenAI provider, Response
+Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, OpenAI and Gemini providers, Response
 Processor, Project Change Planner, Safe File Apply Engine, Build and Verification Engine, and Minimal
-BuilderAI UI. The repository contains a deployable web interface, framework-independent cores, one isolated external adapter
-that can perform a validated non-streaming Responses API call, a pure boundary that packages returned
+BuilderAI UI. The repository contains a deployable web interface, framework-independent cores, isolated external adapters
+that can perform one validated non-streaming provider call, a pure boundary that packages returned
 artifacts, an effect-free planner, a two-phase filesystem effect boundary, and a fixed verification
 pipeline behind ports. Authentication, durable application state, multi-provider routing, streaming,
 tools, files, images, history, background work, telemetry, live privileged UI execution, Git operations,
 automatic repair, transactional rollback, deployment automation, authentication, billing,
-collaboration, provider selection, a concrete production filesystem adapter, and concrete project,
+collaboration, dynamic or multi-provider routing, a concrete production filesystem adapter, and concrete project,
 dependency, build, or test runners remain out of scope.
 
 ## Architectural principles
@@ -39,8 +39,9 @@ dependency, build, or test runners remain out of scope.
 The current system has one deployable unit: a Next.js web application. A browser communicates with
 the application over HTTPS. The application renders the UI and will eventually expose server-side
 use cases through Server Actions or route handlers. No database, queue, identity provider, or product
-workflow is selected. The OpenAI Responses API is the only implemented provider boundary and is not
-wired to a route, UI, background worker, or automatic invocation path.
+workflow is selected. OpenAI Responses and Google Gemini adapters implement the same core port. The
+trusted local composition chooses exactly one through server configuration; core and UI code remain
+provider-independent.
 
 ## Target source boundaries
 
@@ -125,6 +126,14 @@ removed from the lowest canonical priority upward when necessary. Mandatory gove
 context is never truncated; construction fails when the mandatory package cannot fit. The recorded
 character count is the exact serialized JSON length, making the bound testable by any downstream
 consumer.
+
+Mandatory context consists of the structured canonical Project Brain fields selected for the package,
+the typed current task, Project Constitution, AI rules, architecture summary, and coding standards.
+The Task System document is optional supporting policy because the current task already carries the
+validated executable task contract. Repeated Blueprint diagnostics are summarized by stable code, and
+source-read exhaustion records one deterministic omission marker rather than repeating equivalent
+budget evidence for every unread candidate. These rules bound context metadata without raising the
+configured content limit or weakening canonical Project Brain authority.
 
 ## AI Provider Adapter core
 
@@ -235,6 +244,34 @@ cancellation subscription is bridged to one request-scoped abort signal. A live 
 from CI to avoid credentials, spend, and external disclosure; a controlled pre-release smoke test and
 provider data-retention review remain operational gates.
 
+## Google Gemini provider
+
+`src/providers/gemini` is an additional `AIProvider` implementation and does not change a core contract.
+Its transport is the only Gemini source module that imports `@google/genai`. The adapter owns its closed
+configuration and credentials, deterministic Prompt Package mapping, JSON Schema request, SDK transport,
+raw-response and structured-output validation, error translation, and Execution Engine integration.
+
+The mapper submits one text-only `generateContent` request with one candidate, temperature zero,
+`application/json`, the provider-neutral Output Contract expressed as JSON Schema, and no tools, files,
+images, streaming, chat history, or function calling. SDK retries are explicitly limited to the original
+attempt (`attempts: 1`) so the existing engine remains the only retry-policy owner. Runtime validation is
+authoritative even when Gemini accepts the schema.
+
+Because Prompt Output Contract version 1 models array fields only at the top level, the Gemini mapper
+adds provider-side nested JSON Schema for the existing generated-artifact fields, supported artifact
+types, required description, and explicit change-operation metadata. This is request mapping—not a new
+core model—and the Response Processor and Change Planner validators remain authoritative.
+
+The Gemini adapter requires a completed `STOP` candidate, text, and internally consistent token usage;
+it rejects blocked, missing, truncated, malformed, non-JSON, and Output Contract-incompatible responses.
+Cancellation is bridged to an abort signal and each call receives the validated timeout. Provider bodies,
+credentials, and SDK errors are converted to the existing BuilderAI error taxonomy before crossing the
+boundary.
+
+The local composition reads `BUILDERAI_AI_PROVIDER` and constructs only `openai` or `gemini` through an
+exhaustive server-side branch. This is static configuration selection, not a provider registry, router,
+fallback, or multi-provider workflow. OpenAI support and its behavior are unchanged.
+
 ## Response Processor core
 
 `src/core/response-processor` is the sole boundary allowed to transform a correlated, completed
@@ -319,10 +356,11 @@ updated, deleted, and skipped paths, warnings, stable errors, duration, and meta
 is not implemented, a failure after earlier success returns Partially Applied and preserves completed
 effects; every valid-plan result states this limitation explicitly.
 
-The current core supplies the port and an in-memory test adapter, not a production Node filesystem
-adapter or composition root. Production use still requires caller authorization, a root-scoped adapter
-conformance suite, operating-system containment tests, expected-current-content checks, locking,
-recovery, audit evidence, and operator controls.
+The core still supplies only the port. MVP v1.0 adds a local Node adapter under `src/infrastructure`,
+with root containment, ancestor symlink rejection, conditional operations, and negative integration
+tests. The local single-operator profile does not resolve authentication, expected-current-content
+hashes, multi-writer locking, transactional recovery, or durable audit evidence; those remain gates for
+remote, shared, or untrusted-project use.
 
 ## Build and Verification core
 
@@ -348,11 +386,13 @@ Failed means no stage passed, and Partially Passed represents mixed evidence. Th
 recomputes ordering, status, stage consistency, and flattened findings so summary drift cannot cross
 the boundary.
 
-Only ports and controlled test doubles exist in this foundation. Production composition requires
-authorized and project-contained runner adapters, command allowlists, sandboxing, active deadlines,
-resource and output limits, process-tree termination, no-network enforcement, redaction, conformance
-tests, and restricted audit evidence. A Verification Report is evidence; it does not authorize repair,
-Git, rollback, deployment, or another workflow.
+MVP v1.0 supplies local npm runner adapters outside core. Commands and arguments are fixed, invoked
+without a shell, rooted in the configured project, time bounded, output bounded, and given a reduced
+environment; raw output is never exposed through report metadata. The profile accepts only trusted
+project scripts. OS sandboxing, complete resource and process-tree isolation, guaranteed no-network
+execution, authentication, and durable audit evidence remain gates for remote or untrusted use. A
+Verification Report is evidence; it does not authorize repair, Git, rollback, deployment, or another
+workflow.
 
 ## Minimal BuilderAI UI
 
@@ -372,11 +412,34 @@ contracts. Preparation produces a response and plan. A distinct acknowledgement 
 required before apply. Only an Applied result may proceed to verification. The UI displays safe generic
 failures and retains available evidence when a workflow stops.
 
-The shipped route intentionally supplies no runtime implementation. It clearly reports review mode and
-disables execution because authentication, authorization, production filesystem and verification
-adapters, and their operational controls are not approved. Controlled ports are injected only by tests
-to exercise workflow transitions. A future server-only composition can implement the port without
-changing core or presentation contracts, after its security prerequisites are approved.
+The shipped route remains in review mode by default. With explicit valid local configuration, a client
+adapter calls server-only route handlers. Preparation returns review evidence plus an opaque expiring
+identifier; the validated plan remains in a bounded process-local store. Approval sends only that
+identifier and a true acknowledgement. The server claims its own plan, applies it once, and verifies
+only an Applied result. Completed results are replayed idempotently for the preparation lifetime.
+
+The route accepts bounded same-origin loopback JSON only and returns generic no-store errors. This is a
+single-operator local profile, not authentication or project authorization. Public, shared,
+multi-instance, and untrusted-project operation remains prohibited until the security prerequisites in
+`security.md` are implemented.
+
+## MVP v1.0 composition
+
+`src/application/workspace` is the application orchestration layer. It depends inward on existing core
+services and outward on narrow provider, source, filesystem, verification, clock, identifier, and
+logging capabilities. It does not duplicate validation or business policy. A bounded request becomes
+an execution-scoped task layered over a defensive canonical Project Brain clone; it is never persisted
+or treated as canonical mutable state.
+
+`src/infrastructure/workspace` is the server composition root. It alone reads runtime environment
+configuration and provider credentials. `src/app/api/workspace` owns the HTTP boundary, and
+`src/ui/workspace/http-workspace-workflow.ts` owns browser transport and revalidates every typed result.
+Neither provider credentials nor provider SDK construction crosses into the client graph.
+
+The complete prepared path is Project Brain → Blueprint Reader → Context Builder → Prompt Orchestrator
+→ Execution Engine → configured AI Provider → Response Processor → Change Planner. The effect path is explicit
+approval → File Apply Engine → Verification Engine → final report. Each arrow crosses the previously
+defined validated contract; composition does not bypass or replace any core service.
 
 The interface uses semantic landmarks, headings, lists, tables, form labels, live status regions,
 native controls, keyboard-operable tabs, visible focus, responsive layouts, and no decorative motion.
@@ -404,16 +467,16 @@ Server state must not be copied into global client stores without a demonstrated
 
 Provider configuration and credentials are explicit constructor inputs and are validated before an
 SDK client is created. The adapter does not read environment variables or rely on the SDK's implicit
-environment lookup. A future server-only composition root may load credentials from the deployment
-secret manager and inject them; secrets must never use `NEXT_PUBLIC_`, enter canonical state, logs,
-errors, tests, or client bundles. Production fails closed when required configuration is missing.
+environment lookup. The local server-only composition root loads required values and injects them;
+secrets must never use `NEXT_PUBLIC_`, enter canonical state, logs, errors, tests, or client bundles.
+The runtime fails closed when required configuration is missing.
 
 ## Observability
 
-Before the first production workflow, add structured logs with request correlation, error reporting,
-health/readiness signals, and service-level indicators for latency, failures, and availability. Logs
-must exclude secrets and sensitive payloads. Product analytics require an approved data inventory and
-consent model.
+The local workflow emits structured request correlation, stage outcome, duration, and stable error
+codes while excluding secrets and sensitive payloads. Health/readiness signals, durable restricted log
+storage, alerting, and service-level indicators remain prerequisites for a hosted runtime. Product
+analytics require an approved data inventory and consent model.
 
 ## Deployment model
 
