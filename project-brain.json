@@ -107,6 +107,11 @@
         "id": "verification-engine",
         "name": "Build and Verification Engine",
         "summary": "Provider- and framework-independent orchestration of project, dependency, build, and test verification through validated ports and one deterministic report."
+      },
+      {
+        "id": "minimal-builderai-ui",
+        "name": "Minimal BuilderAI UI",
+        "summary": "Responsive dashboard and human-controlled project workspace that present canonical project state and existing workflow evidence through a typed UI orchestration port."
       }
     ],
     "requirements": [
@@ -282,6 +287,22 @@
           "Overall status is Passed when all stages pass, Failed when no stage passes, and Partially Passed for mixed outcomes.",
           "Stage order, result consistency, flattened findings, bounded metadata, duplicate findings, configuration, and report structure reject drift with typed validation issues."
         ]
+      },
+      {
+        "id": "builderai-dashboard-workspace",
+        "statement": "Present canonical project status and the existing request, response, plan, approval, apply, and verification workflow through an accessible responsive dashboard and project workspace.",
+        "acceptanceCriteria": [
+          "Dashboard project facts are loaded through the production canonical Project Brain parser rather than duplicated in UI source.",
+          "The workspace provides project context, request input, conversation updates, deterministic progress, explicit approval, and readable typed evidence panels."
+        ]
+      },
+      {
+        "id": "safe-ui-orchestration-boundary",
+        "statement": "Keep the browser UI dependent on a typed workflow port and fail closed when no authorized server runtime composition exists.",
+        "acceptanceCriteria": [
+          "UI modules import existing core contracts as types and do not change, duplicate, or bypass core validation and business policy.",
+          "The shipped workspace exposes no provider credential, filesystem, process, Git, deployment, repair, authentication, billing, collaboration, or provider-selection implementation."
+        ]
       }
     ],
     "constraints": [
@@ -349,6 +370,11 @@
         "id": "build-verification-sprint-eleven",
         "statement": "Sprint 11 is limited to provider- and framework-independent verification orchestration behind ports and excludes UI, provider changes, Git, rollback, deployment, automatic repair, networking, streaming, concrete runners, and Sprint 12 work.",
         "rationale": "Verification policy and evidence must be deterministic before process-capable adapters or subsequent workflow automation are separately approved."
+      },
+      {
+        "id": "minimal-ui-sprint-twelve",
+        "statement": "Sprint 12 is limited to a minimal responsive BuilderAI dashboard and project workspace over existing typed contracts and excludes core changes, live privileged runtime composition, authentication, billing, collaboration, provider selection, deployment, Git UI, automatic repair, and Sprint 13 work.",
+        "rationale": "The first interface must make workflow evidence and approval understandable without weakening existing execution, filesystem, verification, or authorization boundaries."
       }
     ],
     "techStack": [
@@ -468,6 +494,16 @@
         "path": "src/core/verification",
         "owner": "Domain architecture",
         "responsibility": "Provider-, framework-, storage-, filesystem-, process-, network-, Git-, deployment-, repair-, and runner-implementation-independent verification pipeline, ports, status derivation, evidence normalization, reporting, and validation."
+      },
+      {
+        "path": "src/app",
+        "owner": "Product interface",
+        "responsibility": "Next.js route composition, canonical project view-model construction, route metadata, global presentation baseline, and dashboard and workspace entry points."
+      },
+      {
+        "path": "src/ui/workspace",
+        "owner": "Product interface",
+        "responsibility": "Accessible responsive workspace components, typed workflow presentation port, human approval interaction, progress, conversation, and existing response, plan, apply, and verification report views."
       }
     ]
   },
@@ -602,6 +638,17 @@
           "verify-verification-foundation"
         ],
         "completedAt": "2026-07-31T10:30:00.000Z"
+      },
+      {
+        "id": "sprint-twelve-minimal-builderai-ui",
+        "summary": "Implemented the first BuilderAI dashboard and responsive project workspace with canonical project context, typed workflow orchestration, request and conversation views, deterministic progress, explicit approval, readable evidence tabs, safe disconnected runtime behavior, and accessibility-focused tests without changing core architecture.",
+        "taskIds": [
+          "define-minimal-ui-boundary",
+          "implement-builderai-dashboard",
+          "implement-project-workspace",
+          "verify-minimal-builderai-ui"
+        ],
+        "completedAt": "2026-07-31T12:00:00.000Z"
       }
     ],
     "pendingWork": [
@@ -654,6 +701,11 @@
         "id": "harden-verification-runners",
         "summary": "Before connecting real project, dependency, build, or test runners, approve caller authorization, project-root containment, command allowlists, sandboxing, resource and time limits, no-network enforcement, output redaction and bounds, process-tree termination, adapter conformance, and restricted audit evidence.",
         "priority": "HIGH"
+      },
+      {
+        "id": "connect-authorized-workspace-runtime",
+        "summary": "Before the workspace can perform live project effects, approve authentication and authorization, server-only workflow composition, filesystem and verification adapter hardening, idempotency, CSRF protection, concurrency control, audit evidence, recovery, and safe error and payload handling.",
+        "priority": "HIGH"
       }
     ],
     "importantDecisionIds": [
@@ -673,7 +725,8 @@
       "decision-014",
       "decision-015",
       "decision-016",
-      "decision-017"
+      "decision-017",
+      "decision-018"
     ],
     "architecturalRules": [
       {
@@ -720,9 +773,14 @@
         "id": "verification-through-validated-ports",
         "rule": "Project, dependency, build, and test verification may occur only after an Applied File Apply Result and only through the fixed Verification Engine pipeline and validated ports; a Verification Report never authorizes repair, Git, rollback, deployment, or another sprint.",
         "rationale": "A single evidence boundary keeps execution implementations outside core, prevents stage omission and status drift, and does not turn verification into open-ended automation."
+      },
+      {
+        "id": "ui-through-workflow-port",
+        "rule": "The browser interface may present and request existing workflow behavior only through its typed orchestration port; absent an authorized server composition it must remain visibly disconnected and perform no provider, filesystem, process, Git, deployment, or repair effect.",
+        "rationale": "A presentation boundary must not become a privileged runtime bypass or fabricate successful project evidence."
       }
     ],
-    "updatedAt": "2026-07-31T10:30:00.000Z"
+    "updatedAt": "2026-07-31T12:00:00.000Z"
   },
   "decisionLog": [
     {
@@ -1088,10 +1146,39 @@
       },
       "important": true,
       "recordedAt": "2026-07-31T10:30:00.000Z"
+    },
+    {
+      "id": "decision-018",
+      "title": "Keep the first BuilderAI interface behind a fail-closed workflow port",
+      "context": "BuilderAI needs a first user-facing dashboard and workspace, but the current architecture intentionally has no production filesystem or verification runner adapters and no authentication or authorization boundary for privileged project effects.",
+      "decision": "Implement dashboard and project workspace routes under src/app and reusable client presentation under src/ui/workspace; load project facts through loadCanonicalProjectBrain, depend on existing response, plan, apply, and verification contracts through a typed WorkspaceWorkflowPort, require a separate review acknowledgement before apply, and ship the route in visible review mode when no authorized runtime port is composed.",
+      "rationale": "A fail-closed presentation seam delivers and validates the complete human workflow without changing core business logic, inventing duplicate models, exposing credentials, fabricating success, or connecting an unauthenticated browser to privileged filesystem and process effects.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Call core services and provider SDKs directly from browser components",
+        "Add unauthenticated server actions that execute live file and process adapters",
+        "Return hard-coded successful project results from a demo workflow",
+        "Delay every user interface until production runtime authorization exists"
+      ],
+      "consequences": {
+        "positive": [
+          "Core modules and contracts remain unchanged and browser components have no privileged implementation dependency",
+          "Dashboard facts remain synchronized with canonical Project Brain state",
+          "Workflow transitions, explicit approval, safe failures, result views, responsive behavior, and accessibility can be tested deterministically",
+          "A future authorized server composition can implement the same UI port without rewriting the interface"
+        ],
+        "negative": [
+          "The shipped project workspace is review-only until an authorized runtime composition is separately approved",
+          "No end-to-end live provider, filesystem, build, or test action is available from the browser",
+          "Authentication, authorization, CSRF, idempotency, concurrency, audit, recovery, and hardened adapters remain prerequisites for live effects"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T12:00:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Sprint 11 complete - awaiting architecture review",
+    "currentMilestone": "Sprint 12 complete - awaiting architecture review",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -1239,6 +1326,18 @@
           "verify-verification-foundation"
         ],
         "completedAt": "2026-07-31T10:30:00.000Z"
+      },
+      {
+        "id": "sprint-twelve-minimal-builderai-ui",
+        "name": "Minimal BuilderAI UI",
+        "outcome": "A responsive dashboard and project workspace present canonical project status and the typed request-to-verification workflow with explicit approval, readable evidence, accessible interaction, and fail-closed review mode without core changes or privileged runtime effects.",
+        "completedTaskIds": [
+          "define-minimal-ui-boundary",
+          "implement-builderai-dashboard",
+          "implement-project-workspace",
+          "verify-minimal-builderai-ui"
+        ],
+        "completedAt": "2026-07-31T12:00:00.000Z"
       }
     ],
     "completedTaskIds": [
@@ -1286,9 +1385,13 @@
       "define-verification-contract",
       "implement-verification-pipeline",
       "enforce-verification-validation",
-      "verify-verification-foundation"
+      "verify-verification-foundation",
+      "define-minimal-ui-boundary",
+      "implement-builderai-dashboard",
+      "implement-project-workspace",
+      "verify-minimal-builderai-ui"
     ],
-    "updatedAt": "2026-07-31T10:30:00.000Z"
+    "updatedAt": "2026-07-31T12:00:00.000Z"
   },
   "tasks": [
     {
@@ -1957,6 +2060,66 @@
       "createdAt": "2026-07-31T09:30:00.000Z",
       "updatedAt": "2026-07-31T10:30:00.000Z",
       "completedAt": "2026-07-31T10:30:00.000Z"
+    },
+    {
+      "id": "define-minimal-ui-boundary",
+      "title": "Define the minimal BuilderAI UI boundary",
+      "description": "Define canonical project view data, UI phases, evidence tabs, conversation entries, prepared changes, and an injected Workspace Workflow port over existing core contracts without modifying core modules.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The UI imports existing Response Package, Project Change Plan, File Apply Result, and Verification Report contracts as types and introduces no duplicate engine model.",
+        "Without an authorized runtime port, the production workspace is visibly in review mode and cannot invoke provider, filesystem, process, Git, deployment, or repair behavior."
+      ],
+      "dependencyIds": ["verify-verification-foundation"],
+      "createdAt": "2026-07-31T11:00:00.000Z",
+      "updatedAt": "2026-07-31T11:15:00.000Z",
+      "completedAt": "2026-07-31T11:15:00.000Z"
+    },
+    {
+      "id": "implement-builderai-dashboard",
+      "title": "Implement the BuilderAI dashboard",
+      "description": "Replace the foundation placeholder with a responsive dashboard that loads canonical project identity, vision, milestone, completion, ownership, architecture pipeline, and latest sprint through the production Project Brain parser.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The dashboard exposes clear project status, architecture, activity, and project-workspace navigation without duplicating mutable facts in source.",
+        "The screen uses semantic landmarks, headings, lists, links, definition lists, responsive layouts, visible focus, and readable contrast."
+      ],
+      "dependencyIds": ["define-minimal-ui-boundary"],
+      "createdAt": "2026-07-31T11:00:00.000Z",
+      "updatedAt": "2026-07-31T11:30:00.000Z",
+      "completedAt": "2026-07-31T11:30:00.000Z"
+    },
+    {
+      "id": "implement-project-workspace",
+      "title": "Implement the project workspace",
+      "description": "Implement responsive project, request, conversation, progress, explicit approval, Response Package, Change Plan, Apply Result, and Verification Report regions over the typed workflow port.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Controlled workflow composition transitions through preparation, approval, apply, verification, completion, and safe failure states while never applying before acknowledgement.",
+        "Evidence tabs present operations, risks, artifact manifests, affected paths, statuses, stages, warnings, errors, duration, and empty states readably and accessibly."
+      ],
+      "dependencyIds": ["implement-builderai-dashboard"],
+      "createdAt": "2026-07-31T11:00:00.000Z",
+      "updatedAt": "2026-07-31T11:45:00.000Z",
+      "completedAt": "2026-07-31T11:45:00.000Z"
+    },
+    {
+      "id": "verify-minimal-builderai-ui",
+      "title": "Verify the minimal BuilderAI UI",
+      "description": "Run dashboard, workspace, rendering, workflow transition, failure, status, report, keyboard, accessibility, responsive, coverage, audit, build, boundary, and full CI checks, then wait for Sprint 13 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Deterministic tests cover both screens, the approval gate, complete and stopped workflows, typed evidence tabs, status display, accessible names, tab keyboard behavior, and disconnected production behavior.",
+        "The complete CI pipeline passes and no core change, authentication, billing, collaboration, provider selection, deployment, Git UI, automatic repair, privileged runtime adapter, or Sprint 13 behavior exists."
+      ],
+      "dependencyIds": ["implement-project-workspace"],
+      "createdAt": "2026-07-31T11:00:00.000Z",
+      "updatedAt": "2026-07-31T12:00:00.000Z",
+      "completedAt": "2026-07-31T12:00:00.000Z"
     }
   ],
   "domainGlossary": {
@@ -2177,8 +2340,22 @@
         "category": "TECHNICAL",
         "definition": "A versioned deterministic record of every stage result, flattened findings, controlled duration, metadata, and derived Passed, Failed, or Partially Passed outcome.",
         "aliases": ["Verification Result"]
+      },
+      {
+        "id": "project-workspace-term",
+        "term": "Project Workspace",
+        "category": "BUSINESS",
+        "definition": "The human-controlled BuilderAI interface for entering a project request, reviewing progress and evidence, explicitly approving a Change Plan, and reading Apply and Verification outcomes.",
+        "aliases": ["Workspace"]
+      },
+      {
+        "id": "workspace-workflow-port-term",
+        "term": "Workspace Workflow Port",
+        "category": "TECHNICAL",
+        "definition": "The UI-owned composition seam that exposes preparation, approved apply, and verification using existing core contracts without giving browser components direct provider, filesystem, or process dependencies.",
+        "aliases": ["UI Workflow Port"]
       }
     ],
-    "updatedAt": "2026-07-31T10:30:00.000Z"
+    "updatedAt": "2026-07-31T12:00:00.000Z"
   }
 }

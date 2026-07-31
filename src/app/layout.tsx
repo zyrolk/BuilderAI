@@ -8,7 +8,8 @@ export const metadata: Metadata = {
     default: 'BuilderAI',
     template: '%s | BuilderAI',
   },
-  description: 'A production-ready foundation for BuilderAI.',
+  description:
+    'A human-controlled workspace for planning, reviewing, applying, and verifying BuilderAI project changes.',
 };
 
 interface RootLayoutProps {

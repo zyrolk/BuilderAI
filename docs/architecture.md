@@ -9,14 +9,15 @@ version: 1
 
 This document defines the baseline architecture for the Project Brain, Blueprint Reader, Context
 Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, first OpenAI provider, Response
-Processor, Project Change Planner, Safe File Apply Engine, and Build and Verification Engine. The
-repository contains a deployable web shell, framework-independent cores, one isolated external adapter
+Processor, Project Change Planner, Safe File Apply Engine, Build and Verification Engine, and Minimal
+BuilderAI UI. The repository contains a deployable web interface, framework-independent cores, one isolated external adapter
 that can perform a validated non-streaming Responses API call, a pure boundary that packages returned
 artifacts, an effect-free planner, a two-phase filesystem effect boundary, and a fixed verification
 pipeline behind ports. Authentication, durable application state, multi-provider routing, streaming,
-tools, files, images, history, background work, telemetry, UI workflows, Git operations, automatic
-repair, transactional rollback, deployment automation, a concrete production filesystem adapter, and
-concrete project, dependency, build, or test runners remain out of scope.
+tools, files, images, history, background work, telemetry, live privileged UI execution, Git operations,
+automatic repair, transactional rollback, deployment automation, authentication, billing,
+collaboration, provider selection, a concrete production filesystem adapter, and concrete project,
+dependency, build, or test runners remain out of scope.
 
 ## Architectural principles
 
@@ -352,6 +353,33 @@ authorized and project-contained runner adapters, command allowlists, sandboxing
 resource and output limits, process-tree termination, no-network enforcement, redaction, conformance
 tests, and restricted audit evidence. A Verification Report is evidence; it does not authorize repair,
 Git, rollback, deployment, or another workflow.
+
+## Minimal BuilderAI UI
+
+`src/app` owns the Next.js dashboard and project workspace routes. Server components load current
+project identity, vision, milestone, completion, ownership, and activity only through
+`loadCanonicalProjectBrain`, so UI source does not duplicate mutable Project Brain facts. Route
+composition passes a small presentation view to `src/ui/workspace`.
+
+The dashboard summarizes project status, architecture stages, latest delivery activity, and the entry
+point to the workspace. The responsive workspace separates project and workflow context, request and
+conversation interaction, deterministic progress, and typed result evidence into clear regions. Its
+right panel presents Response Package, Project Change Plan, File Apply Result, and Verification Report
+contracts without reinterpreting their business rules.
+
+Client components depend on `WorkspaceWorkflowPort`, a UI-owned application seam over those existing
+contracts. Preparation produces a response and plan. A distinct acknowledgement and approval action is
+required before apply. Only an Applied result may proceed to verification. The UI displays safe generic
+failures and retains available evidence when a workflow stops.
+
+The shipped route intentionally supplies no runtime implementation. It clearly reports review mode and
+disables execution because authentication, authorization, production filesystem and verification
+adapters, and their operational controls are not approved. Controlled ports are injected only by tests
+to exercise workflow transitions. A future server-only composition can implement the port without
+changing core or presentation contracts, after its security prerequisites are approved.
+
+The interface uses semantic landmarks, headings, lists, tables, form labels, live status regions,
+native controls, keyboard-operable tabs, visible focus, responsive layouts, and no decorative motion.
 
 ## Rendering and API strategy
 

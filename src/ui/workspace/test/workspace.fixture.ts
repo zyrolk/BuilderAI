@@ -1,0 +1,161 @@
+import type { ProjectChangePlan } from '../../../core/change-planner';
+import type { FileApplyResult } from '../../../core/file-apply';
+import type { ResponsePackage } from '../../../core/response-processor';
+import type { VerificationReport } from '../../../core/verification';
+import type { WorkspaceProjectView, WorkspaceWorkflowPort } from '../workspace.types';
+
+export const PROJECT_VIEW: WorkspaceProjectView = {
+  id: 'builder-ai',
+  name: 'BuilderAI',
+  vision: 'Build trustworthy software through controlled project context.',
+  currentMilestone: 'UI foundation under review',
+  architectureStatus: 'Core boundaries validated',
+  moduleCount: 12,
+  completedSprintCount: 11,
+};
+
+export const RESPONSE_PACKAGE: ResponsePackage = {
+  schemaVersion: 1,
+  executionResult: {
+    schemaVersion: 1,
+    executionId: 'execution-ui-001',
+    status: 'COMPLETED',
+    diagnostics: [],
+    timing: {
+      createdAt: '2026-07-31T11:00:00.000Z',
+      finishedAt: '2026-07-31T11:00:01.000Z',
+      durationMs: 1_000,
+    },
+    usage: { promptCharacters: 100, outputCharacters: 200, estimated: false },
+    artifacts: [{ id: 'artifact-001', name: 'src/example.ts', kind: 'FILE', state: 'PLACEHOLDER' }],
+    errors: [],
+    metadata: { sprint: 12 },
+  },
+  generatedArtifacts: [
+    {
+      logicalPath: 'src/example.ts',
+      type: 'SOURCE_FILE',
+      content: 'export const example = true;\n',
+      metadata: { intent: 'CREATE_FILE', description: 'Add an example source file' },
+    },
+  ],
+  manifest: {
+    schemaVersion: 1,
+    checksumAlgorithm: 'SHA-256',
+    entries: [
+      {
+        logicalPath: 'src/example.ts',
+        type: 'SOURCE_FILE',
+        checksum: { algorithm: 'SHA-256', value: 'a'.repeat(64) },
+        sizeBytes: 29,
+        metadata: { intent: 'CREATE_FILE', description: 'Add an example source file' },
+      },
+    ],
+    totalSizeBytes: 29,
+  },
+  diagnostics: [],
+  warnings: [],
+  metadata: { sprint: 12 },
+};
+
+export const CHANGE_PLAN: ProjectChangePlan = {
+  schemaVersion: 1,
+  source: { responsePackageSchemaVersion: 1, executionId: 'execution-ui-001' },
+  changeSet: {
+    operations: [
+      {
+        operationId: 'operation-001',
+        kind: 'CREATE_FILE',
+        logicalPath: 'src/example.ts',
+        artifactType: 'SOURCE_FILE',
+        description: 'Add an example source file',
+        sourceChecksum: { algorithm: 'SHA-256', value: 'a'.repeat(64) },
+        sourceSizeBytes: 29,
+        content: 'export const example = true;\n',
+      },
+    ],
+  },
+  summary: {
+    filesCreated: ['src/example.ts'],
+    filesUpdated: [],
+    filesDeleted: [],
+    totalOperations: 1,
+    warnings: [],
+  },
+  risks: [
+    {
+      code: 'CREATE_FILE',
+      severity: 'LOW',
+      message: 'Creates a new source file.',
+      operationIds: ['operation-001'],
+    },
+  ],
+  warnings: [],
+  metadata: { sprint: 12 },
+};
+
+export const APPLY_RESULT: FileApplyResult = {
+  schemaVersion: 1,
+  status: 'APPLIED',
+  createdFiles: ['src/example.ts'],
+  updatedFiles: [],
+  deletedFiles: [],
+  skippedFiles: [],
+  warnings: [],
+  errors: [],
+  durationMs: 4,
+  metadata: { sprint: 12 },
+};
+
+export const REJECTED_APPLY_RESULT: FileApplyResult = {
+  schemaVersion: 1,
+  status: 'REJECTED',
+  createdFiles: [],
+  updatedFiles: [],
+  deletedFiles: [],
+  skippedFiles: ['src/example.ts'],
+  warnings: [],
+  errors: [
+    {
+      code: 'PROTECTED_PATH',
+      message: 'The target is protected.',
+      logicalPath: 'src/example.ts',
+      operationId: 'operation-001',
+    },
+  ],
+  durationMs: 2,
+  metadata: { sprint: 12 },
+};
+
+export const VERIFICATION_REPORT: VerificationReport = {
+  schemaVersion: 1,
+  status: 'PASSED',
+  stages: [
+    'PROJECT_VALIDATION',
+    'DEPENDENCY_VALIDATION',
+    'BUILD_VALIDATION',
+    'TEST_VALIDATION',
+  ].map((stage) => ({
+    stage: stage as VerificationReport['stages'][number]['stage'],
+    status: 'PASSED',
+    warnings: [],
+    errors: [],
+    durationMs: 3,
+    metadata: {},
+  })),
+  warnings: [],
+  errors: [],
+  durationMs: 12,
+  metadata: { sprint: 12 },
+};
+
+export function createWorkflow(
+  overrides: Partial<WorkspaceWorkflowPort> = {},
+): WorkspaceWorkflowPort {
+  return {
+    prepare: async () => ({ responsePackage: RESPONSE_PACKAGE, changePlan: CHANGE_PLAN }),
+    apply: async () => APPLY_RESULT,
+    verify: async () => VERIFICATION_REPORT,
+    ...overrides,
+  };
+}

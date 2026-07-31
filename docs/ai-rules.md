@@ -91,3 +91,9 @@ behind their declared ports; assistants may not invoke framework or process tool
 reorder stages, trust adapter output without validation, leak adapter details, or derive report status
 independently. A Verification Report is evidence only and never authorizes automatic repair, further
 file changes, Git, rollback, deployment, networking, or Sprint 12 work.
+
+Browser interfaces may request and present the existing workflow only through the typed Workspace
+Workflow port. They may not construct provider, filesystem, process, Git, deployment, or repair
+implementations, duplicate core models, treat a client approval flag as authorization, or fabricate
+successful results. Without an approved server composition the interface must remain visibly
+disconnected and effect-free. Displayed requests and engine evidence remain untrusted text.

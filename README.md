@@ -84,3 +84,15 @@ every stage result, continues after contained stage failures to preserve complet
 one versioned Passed, Failed, or Partially Passed report. The foundation provides no concrete process
 runner, framework integration, networking, Git, rollback, deployment, or automatic repair; a report is
 verification evidence, not authorization for another effect.
+
+## BuilderAI interface
+
+The dashboard at `/` loads live project status through the canonical Project Brain parser. The project
+workspace at `/workspace` presents request input, conversation updates, deterministic progress, an
+explicit plan approval checkpoint, and readable Response Package, Change Plan, Apply Result, and
+Verification Report tabs.
+
+The workspace is currently a fail-closed presentation boundary. It is visibly in review mode and does
+not execute provider, filesystem, build, or test behavior because no authenticated and authorized
+server runtime or hardened production adapters are composed. Tests inject controlled workflow ports to
+verify the complete interaction without project effects.

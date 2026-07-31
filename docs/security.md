@@ -201,6 +201,26 @@ future identity and data services, and every third-party integration.
 - A Passed or Partially Passed report is evidence only. It never authorizes automatic repair, further
   file writes, Git operations, rollback, deployment, networking, or subsequent workflow execution.
 
+### Minimal BuilderAI UI trust boundary
+
+- Load project facts through the canonical Project Brain runtime parser. Do not copy mutable milestones,
+  tasks, decisions, architecture ownership, or completion state into browser source or static UI models.
+- Browser components may depend only on the typed Workspace Workflow port and existing validated core
+  contracts. They must not import or construct provider SDKs, credentials, filesystem adapters, process
+  runners, Git clients, deployment clients, or automatic-repair behavior.
+- Treat request text and all displayed artifact, path, risk, warning, error, metadata, and conversation
+  values as untrusted text. Bound input and output, rely on React escaping, and do not render generated
+  HTML, scripts, links, or executable previews without a separately reviewed sanitizer and policy.
+- Require an explicit plan-review acknowledgement before invoking apply. Reset approval for every new
+  request. Client acknowledgement is a usability checkpoint, not server authorization and must never
+  replace identity, project permission, policy validation, or audit evidence.
+- Stop before verification when Apply status is not Applied. Preserve available evidence, expose generic
+  failures, and never include raw provider, filesystem, command, environment, stack, or process output.
+- The shipped workspace must fail closed in visible review mode while no authorized server composition
+  exists. Before live effects, require authentication, project authorization, server-side revalidation,
+  anti-CSRF, rate limiting, idempotency, concurrency control, hardened effect adapters, redaction,
+  restricted audit evidence, recovery, and incident procedures.
+
 ### Secrets and data
 
 - Store secrets in the deployment platform's secret manager, never in Git or `NEXT_PUBLIC_` variables.
