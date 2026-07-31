@@ -44,3 +44,11 @@ engineering standards, AI-assisted development rules, and security expectations 
 4. Open a pull request and complete its risk and validation sections.
 
 See [coding standards](docs/coding-standards.md) for the full definition of done.
+
+## OpenAI provider boundary
+
+Sprint 7 supplies one server-side `AIProvider` implementation under `src/providers/openai`. Its model,
+timeouts, character limits, and output-token limit are explicit validated configuration; no default
+model is selected. The API key must be obtained by a future server-only composition root from an
+approved secret manager and passed explicitly to `createOpenAIProvider`. The adapter does not read
+environment variables, and it is not connected to a route, UI, automatic workflow, or live CI test.

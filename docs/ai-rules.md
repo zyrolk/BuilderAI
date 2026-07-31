@@ -46,6 +46,22 @@ Product AI is a separate architectural concern. It requires discovery, evaluatio
 modeling, privacy and provider review, cost controls, human oversight, incident handling, and explicit
 approval before implementation. See the AI feature gate in `roadmap.md`.
 
-Any future model-facing adapter must consume only a validated, size-bounded Context Package. It may not
-read Project Brain state, documentation, or source files independently. This rule defines a future
-boundary; it does not authorize an adapter, external transmission, or product AI implementation.
+The Prompt Orchestrator is the only component allowed to transform a validated, size-bounded Context
+Package into prompt material. Future adapters must consume only a validated Prompt Package. They may
+not receive the source Context Package or independently read Project Brain state, documentation, or
+source files. This rule defines a future boundary; it does not authorize an adapter, external
+transmission, or product AI implementation.
+
+Provider adapters must implement the versioned `AIProvider` port and expose an immutable capability
+descriptor. Core configuration contains only provider-neutral policy; credentials, endpoints, SDK
+options, wire models, and implementation settings belong to an approved adapter boundary. Registry
+discovery and compatibility checks do not authorize request execution. Every Prompt Package, request,
+wire response, structured output, and final response must pass its runtime validators, and response
+artifacts remain untrusted data until an approved consumer validates and handles them.
+
+Invocation workflows must enter through the versioned Execution Engine request and transition only
+through its legal append-only lifecycle. No adapter may assign execution state or retry independently.
+External transmission requires caller authorization and data classification; the OpenAI adapter's
+`store: false` setting does not replace provider-retention and privacy review. No other provider,
+streaming mode, tool, file, image, history, persistence, telemetry, or automatic workflow is authorized
+by the Sprint 7 adapter.

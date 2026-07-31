@@ -67,6 +67,26 @@
         "id": "context-builder",
         "name": "Context Builder",
         "summary": "Task-scoped selection, prioritization, dependency resolution, validation, and size-bounded packaging of project context."
+      },
+      {
+        "id": "ai-provider-adapter",
+        "name": "AI Provider Adapter",
+        "summary": "Provider-neutral capability, request, response, configuration, validation, compatibility, registry, and error contracts without an integration or execution workflow."
+      },
+      {
+        "id": "prompt-orchestrator",
+        "name": "Prompt Orchestrator",
+        "summary": "Deterministic transformation of a validated Context Package into one versioned, structured, ordered, deduplicated, and size-bounded Prompt Package."
+      },
+      {
+        "id": "execution-engine",
+        "name": "Execution Engine",
+        "summary": "Provider-neutral validation and deterministic lifecycle, retry, timeout, cancellation, and result orchestration without runtime execution."
+      },
+      {
+        "id": "openai-provider",
+        "name": "OpenAI Responses Provider",
+        "summary": "The first isolated AIProvider implementation, mapping one validated Prompt Package to one non-streaming OpenAI Responses API call and returning validated BuilderAI output."
       }
     ],
     "requirements": [
@@ -121,6 +141,63 @@
           "Oversized, duplicate, conflicting, incomplete, and invalid context is rejected or deterministically omitted according to policy.",
           "The Context Package remains framework-, storage-, and consumer-independent."
         ]
+      },
+      {
+        "id": "provider-neutral-contract",
+        "statement": "Define one versioned provider port and validated request/response boundary without provider-specific dependencies or configuration.",
+        "acceptanceCriteria": [
+          "The core contract imports no SDK, framework, storage, network, credential, environment, or provider implementation.",
+          "Requests accept only a validated Prompt Package; responses use typed artifacts, diagnostics, warnings, statistics, and character-based usage."
+        ]
+      },
+      {
+        "id": "provider-registry-discovery",
+        "statement": "Discover compatible registered providers deterministically without invoking provider behavior.",
+        "acceptanceCriteria": [
+          "Registration validates and snapshots provider identity, capabilities, and closed provider-neutral configuration.",
+          "Discovery accounts for enablement, priority, execution mode, timeout, context size, requested artifacts, and required capabilities."
+        ]
+      },
+      {
+        "id": "deterministic-prompt-package",
+        "statement": "Transform one validated Context Package into one provider-neutral, versioned Prompt Package with stable sections and no duplicated information.",
+        "acceptanceCriteria": [
+          "Identity, architecture, task, goals, constraints, context, instructions, expected output, and metadata have one structured section owner.",
+          "Future provider requests accept the Prompt Package instead of raw Context Package and duplicate task state."
+        ]
+      },
+      {
+        "id": "versioned-prompt-template-budget",
+        "statement": "Select validated prompt template versions deterministically and enforce exact serialized prompt budgets.",
+        "acceptanceCriteria": [
+          "Templates reject unsupported versions, duplicate identity/version pairs, missing sections, and unstable ordering.",
+          "Optional section omissions are recorded, while mandatory prompt content is never truncated."
+        ]
+      },
+      {
+        "id": "deterministic-execution-lifecycle",
+        "statement": "Coordinate each validated Prompt Package through one explicit, append-only execution lifecycle without invoking a provider.",
+        "acceptanceCriteria": [
+          "Only legal versioned state transitions can change an execution snapshot.",
+          "Execution identity, revision, attempt count, timestamps, and transition history remain consistent and validated."
+        ]
+      },
+      {
+        "id": "validated-execution-policy-result",
+        "statement": "Represent retry, timeout, priority, validation, failure, cancellation, and terminal result policy as closed provider-neutral contracts.",
+        "acceptanceCriteria": [
+          "Retry and timeout services return deterministic decisions and perform no waiting, scheduling, cancellation, provider, tool, or network behavior.",
+          "Versioned results accept only terminal snapshots and contain validated diagnostics, timing, usage, artifact placeholders, errors, and metadata."
+        ]
+      },
+      {
+        "id": "isolated-openai-provider",
+        "statement": "Integrate exactly one OpenAI Responses provider without changing provider-neutral core contracts.",
+        "acceptanceCriteria": [
+          "The official SDK, credentials, wire contracts, and provider errors remain isolated under src/providers/openai.",
+          "Every request and response crosses existing validated Prompt Package, AIProvider, and Execution Engine boundaries.",
+          "The adapter performs one non-streaming call with SDK retries disabled and exposes no tools, files, images, history, persistence, or telemetry."
+        ]
       }
     ],
     "constraints": [
@@ -148,6 +225,26 @@
         "id": "no-ai-sprint-three",
         "statement": "Do not implement models, chat, code generation, API calls, deployment, or automation in Sprint 3.",
         "rationale": "The Context Builder is limited to deterministic, bounded preparation of project context."
+      },
+      {
+        "id": "no-provider-integrations-sprint-four",
+        "statement": "Do not implement provider integrations, prompt execution, code generation, chat, network requests, credentials, environment configuration, deployment, or automation in Sprint 4.",
+        "rationale": "The AI Provider Adapter sprint is limited to provider-neutral contracts, validation, discovery, and compatibility policy."
+      },
+      {
+        "id": "no-prompt-execution-sprint-five",
+        "statement": "Do not implement provider integrations, prompt execution, AI execution, streaming, tool execution, network requests, HTTP, credentials, environment configuration, or provider syntax in Sprint 5.",
+        "rationale": "Prompt Orchestration is limited to deterministic, provider-neutral Prompt Package construction and validation."
+      },
+      {
+        "id": "no-runtime-execution-sprint-six",
+        "statement": "Do not implement providers, model execution, HTTP, fetch, networking, credentials, SDK imports, tool execution, active cancellation, scheduling, waiting, or runtime timeout enforcement in Sprint 6.",
+        "rationale": "The Execution Engine foundation is limited to pure provider-neutral lifecycle contracts, validation, and orchestration decisions."
+      },
+      {
+        "id": "single-provider-sprint-seven",
+        "statement": "Sprint 7 integrates only the OpenAI Responses API and excludes routing, streaming, tools, functions, files, images, parallel or background execution, history, agents, UI, persistence, and telemetry.",
+        "rationale": "The first integration must prove the existing architecture through the smallest controlled external boundary."
       }
     ],
     "techStack": [
@@ -170,6 +267,11 @@
         "name": "Vitest",
         "version": "managed by package.json",
         "purpose": "Deterministic unit and adapter tests."
+      },
+      {
+        "name": "OpenAI Node SDK",
+        "version": "managed by package.json",
+        "purpose": "Official Responses API transport isolated within the OpenAI provider adapter."
       }
     ],
     "folderOwnership": [
@@ -222,6 +324,26 @@
         "path": "src/core/context-builder",
         "owner": "Domain architecture",
         "responsibility": "Framework-, storage-, and consumer-independent context selection, prioritization, dependency resolution, validation, and packaging."
+      },
+      {
+        "path": "src/core/ai-provider",
+        "owner": "Domain architecture",
+        "responsibility": "Framework-, storage-, network-, credential-, and provider-independent adapter contracts, validation, compatibility, discovery, and errors."
+      },
+      {
+        "path": "src/core/prompt-orchestrator",
+        "owner": "Domain architecture",
+        "responsibility": "Provider-, framework-, storage-, network-, and execution-independent template selection, prompt section composition, budgeting, output contracts, and validation."
+      },
+      {
+        "path": "src/core/execution-engine",
+        "owner": "Domain architecture",
+        "responsibility": "Provider-, framework-, storage-, network-, timer-, and execution-independent lifecycle contracts, state transitions, policy decisions, cancellation contracts, results, and validation."
+      },
+      {
+        "path": "src/providers/openai",
+        "owner": "Provider integrations",
+        "responsibility": "OpenAI-specific configuration, explicit credentials, SDK transport, deterministic mapping, runtime validation, error translation, and single-call Execution Engine integration."
       }
     ]
   },
@@ -267,6 +389,51 @@
           "verify-context-builder"
         ],
         "completedAt": "2026-07-30T15:00:00.000Z"
+      },
+      {
+        "id": "sprint-four-ai-provider-adapter",
+        "summary": "Defined a closed provider-neutral port, capability, request, response, configuration, validation, compatibility, registry, and error foundation without integrations or execution.",
+        "taskIds": [
+          "define-provider-contract",
+          "implement-provider-validation",
+          "implement-provider-registry",
+          "verify-provider-foundation"
+        ],
+        "completedAt": "2026-07-30T16:00:00.000Z"
+      },
+      {
+        "id": "sprint-five-prompt-orchestration",
+        "summary": "Implemented versioned provider-neutral Prompt Packages, deterministic template selection and section composition, exact budgeting, structured output contracts, validation, and the Prompt Package provider boundary without execution.",
+        "taskIds": [
+          "define-prompt-package",
+          "implement-template-orchestration",
+          "enforce-prompt-budget-validation",
+          "verify-prompt-orchestrator"
+        ],
+        "completedAt": "2026-07-30T17:00:00.000Z"
+      },
+      {
+        "id": "sprint-six-execution-engine",
+        "summary": "Implemented a provider-neutral Execution Engine with versioned request, snapshot, and result contracts; an append-only state machine; deterministic retry and timeout decisions; a cancellation port; and comprehensive validation without runtime execution.",
+        "taskIds": [
+          "define-execution-contracts",
+          "implement-execution-state-machine",
+          "implement-execution-policy-services",
+          "verify-execution-engine"
+        ],
+        "completedAt": "2026-07-30T18:00:00.000Z"
+      },
+      {
+        "id": "sprint-seven-openai-provider",
+        "summary": "Implemented the first concrete AIProvider using the non-streaming OpenAI Responses API with isolated SDK transport, explicit credentials, deterministic mapping, validated structured output, error translation, cancellation bridging, and Execution Engine integration.",
+        "taskIds": [
+          "configure-openai-provider",
+          "implement-openai-mapping",
+          "enforce-openai-contract",
+          "integrate-openai-execution",
+          "verify-openai-provider"
+        ],
+        "completedAt": "2026-07-31T04:30:00.000Z"
       }
     ],
     "pendingWork": [
@@ -299,6 +466,16 @@
         "id": "evaluate-context-relevance-quality",
         "summary": "Define a representative relevance corpus and false-positive, false-negative, and package-size thresholds before approving an external context consumer.",
         "priority": "HIGH"
+      },
+      {
+        "id": "evaluate-prompt-quality-and-safety",
+        "summary": "Before approving prompt execution, define representative prompt-quality evaluation, injection resistance, sensitive-data handling, schema-compliance, omission, and regression thresholds.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "implement-execution-runtime-controls",
+        "summary": "Before any provider may run, approve and implement queue, clock, active deadline and cancellation enforcement, idempotency, concurrency, persistence, recovery, observability, and provider invocation adapters outside the pure Execution Engine core.",
+        "priority": "HIGH"
       }
     ],
     "importantDecisionIds": [
@@ -310,7 +487,11 @@
       "decision-006",
       "decision-007",
       "decision-008",
-      "decision-009"
+      "decision-009",
+      "decision-010",
+      "decision-011",
+      "decision-012",
+      "decision-013"
     ],
     "architecturalRules": [
       {
@@ -332,9 +513,14 @@
         "id": "no-ai-before-approval",
         "rule": "Do not implement AI capabilities without a separately approved milestone.",
         "rationale": "The Project Brain foundation does not authorize product AI."
+      },
+      {
+        "id": "provider-content-authorization",
+        "rule": "Send a Prompt Package to an external provider only after the caller authorizes and classifies its content.",
+        "rationale": "A technically valid Prompt Package may still contain confidential source or project information."
       }
     ],
-    "updatedAt": "2026-07-30T15:00:00.000Z"
+    "updatedAt": "2026-07-31T04:30:00.000Z"
   },
   "decisionLog": [
     {
@@ -488,10 +674,111 @@
       },
       "important": true,
       "recordedAt": "2026-07-30T14:00:00.000Z"
+    },
+    {
+      "id": "decision-010",
+      "title": "Use a closed provider-neutral adapter contract",
+      "context": "Future providers must plug into BuilderAI without coupling the core to an SDK, transport, credentials, provider configuration, or execution workflow.",
+      "decision": "Define a versioned core port with closed capability, Context Package request, response, configuration, validation, compatibility, registry, and typed error contracts; provide no production adapter or execution service.",
+      "rationale": "A closed validated boundary preserves core independence, prevents provider-specific leakage, and makes discovery deterministic and testable without side effects.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Import provider SDK abstractions into core services",
+        "Allow provider-specific dictionaries in configuration and payloads",
+        "Defer all contracts until selecting a provider"
+      ],
+      "consequences": {
+        "positive": [
+          "Future adapters can implement one stable boundary without changing BuilderAI core",
+          "Provider discovery and compatibility remain deterministic, validated, and side-effect free"
+        ],
+        "negative": [
+          "A separately approved execution boundary is still required before any provider can run",
+          "Breaking contract changes require explicit versioning and migration"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T16:00:00.000Z"
+    },
+    {
+      "id": "decision-011",
+      "title": "Insert one deterministic Prompt Package boundary",
+      "context": "Future adapters need governed prompt material without independently formatting raw Context Packages or receiving duplicated task state.",
+      "decision": "Transform each validated Context Package through a versioned provider-neutral template into one ordered, deduplicated, size-bounded Prompt Package; make that package the sole prompt-bearing object in provider requests.",
+      "rationale": "A single structured boundary centralizes prompt policy, budgeting, safety, output expectations, and template evolution without provider coupling or execution.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Allow every provider adapter to format Context Packages independently",
+        "Build provider-specific prompt strings in application services",
+        "Send the Context Package and duplicate task directly to providers"
+      ],
+      "consequences": {
+        "positive": [
+          "Future providers receive one deterministic validated prompt contract",
+          "Prompt ordering, budgets, safety instructions, and output schemas remain provider independent"
+        ],
+        "negative": [
+          "The current schema omits only the complete optional Context section rather than granular items",
+          "Prompt quality and execution safety still require separate evaluation and approval"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T17:00:00.000Z"
+    },
+    {
+      "id": "decision-012",
+      "title": "Use one pure append-only execution lifecycle",
+      "context": "Future provider invocation needs deterministic coordination between the Prompt Package boundary and provider adapters without coupling core policy to queues, clocks, networks, SDKs, or provider behavior.",
+      "decision": "Represent execution as a validated request and immutable versioned snapshot whose state changes only through a closed legal transition graph; keep retry and timeout as pure decisions, cancellation as a port contract, and results restricted to terminal snapshots.",
+      "rationale": "An explicit append-only lifecycle centralizes orchestration invariants while leaving all runtime effects and provider invocation outside the core.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Let each provider adapter own execution state and retry behavior",
+        "Use mutable status assignment without transition history",
+        "Introduce queues, timers, and provider invocation in the foundation"
+      ],
+      "consequences": {
+        "positive": [
+          "Lifecycle, retry, timeout, cancellation, and terminal-result policy are deterministic and independently testable",
+          "Future runtime adapters cannot bypass validated identity and append-only transition evidence"
+        ],
+        "negative": [
+          "The foundation records decisions but does not schedule, wait, cancel, enforce deadlines, persist state, or invoke providers",
+          "Runtime idempotency, concurrency, recovery, and observability require a separately approved boundary"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-30T18:00:00.000Z"
+    },
+    {
+      "id": "decision-013",
+      "title": "Isolate the first provider behind the OpenAI Responses adapter",
+      "context": "BuilderAI needs to prove its provider-neutral Prompt Package, AIProvider, and Execution Engine boundaries with exactly one concrete integration.",
+      "decision": "Implement openai-responses under src/providers/openai using the official SDK for one non-streaming Responses API call, explicit credential injection, deterministic request and response mapping, runtime output validation, stable error translation, and zero adapter or SDK retries.",
+      "rationale": "Keeping all vendor behavior outside core proves the existing ports without coupling BuilderAI policy, lifecycle, or models to a provider SDK.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Call the OpenAI REST API from core",
+        "Add OpenAI fields to provider-neutral contracts",
+        "Introduce multi-provider routing with the first integration"
+      ],
+      "consequences": {
+        "positive": [
+          "Core contracts remain unchanged and provider independent",
+          "Requests and untrusted responses are validated at every boundary",
+          "The Execution Engine remains the owner of lifecycle and retry policy"
+        ],
+        "negative": [
+          "Production use still requires caller authorization, data classification, provider retention review, and a controlled live smoke test",
+          "Nested strict JSON Schema output requires a future versioned provider-neutral Output Contract"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-07-31T04:30:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Sprint 3 complete - awaiting architecture review",
+    "currentMilestone": "Sprint 7 complete - awaiting architecture review",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -542,6 +829,55 @@
           "verify-context-builder"
         ],
         "completedAt": "2026-07-30T15:00:00.000Z"
+      },
+      {
+        "id": "sprint-four-ai-provider-adapter",
+        "name": "AI Provider Adapter Foundation",
+        "outcome": "A versioned, closed, provider-neutral adapter contract with runtime validation, deterministic compatibility and discovery, typed errors, and no provider implementation or execution workflow.",
+        "completedTaskIds": [
+          "define-provider-contract",
+          "implement-provider-validation",
+          "implement-provider-registry",
+          "verify-provider-foundation"
+        ],
+        "completedAt": "2026-07-30T16:00:00.000Z"
+      },
+      {
+        "id": "sprint-five-prompt-orchestration",
+        "name": "Prompt Orchestration Foundation",
+        "outcome": "A deterministic provider-neutral Prompt Orchestrator that emits one validated, versioned, canonically ordered, deduplicated, size-bounded Prompt Package with a structured output contract and no execution behavior.",
+        "completedTaskIds": [
+          "define-prompt-package",
+          "implement-template-orchestration",
+          "enforce-prompt-budget-validation",
+          "verify-prompt-orchestrator"
+        ],
+        "completedAt": "2026-07-30T17:00:00.000Z"
+      },
+      {
+        "id": "sprint-six-execution-engine",
+        "name": "Execution Engine Foundation",
+        "outcome": "A deterministic provider-neutral Execution Engine with validated versioned contracts, append-only lifecycle transitions, pure retry and timeout decisions, cancellation contracts, terminal results, and no runtime execution.",
+        "completedTaskIds": [
+          "define-execution-contracts",
+          "implement-execution-state-machine",
+          "implement-execution-policy-services",
+          "verify-execution-engine"
+        ],
+        "completedAt": "2026-07-30T18:00:00.000Z"
+      },
+      {
+        "id": "sprint-seven-openai-provider",
+        "name": "First AI Provider Adapter",
+        "outcome": "One isolated OpenAI Responses AIProvider maps validated Prompt Packages through a non-streaming SDK call into validated structured BuilderAI responses and terminal Execution Results.",
+        "completedTaskIds": [
+          "configure-openai-provider",
+          "implement-openai-mapping",
+          "enforce-openai-contract",
+          "integrate-openai-execution",
+          "verify-openai-provider"
+        ],
+        "completedAt": "2026-07-31T04:30:00.000Z"
       }
     ],
     "completedTaskIds": [
@@ -556,9 +892,26 @@
       "define-context-package",
       "implement-context-selection",
       "enforce-context-policy",
-      "verify-context-builder"
+      "verify-context-builder",
+      "define-provider-contract",
+      "implement-provider-validation",
+      "implement-provider-registry",
+      "verify-provider-foundation",
+      "define-prompt-package",
+      "implement-template-orchestration",
+      "enforce-prompt-budget-validation",
+      "verify-prompt-orchestrator",
+      "define-execution-contracts",
+      "implement-execution-state-machine",
+      "implement-execution-policy-services",
+      "verify-execution-engine",
+      "configure-openai-provider",
+      "implement-openai-mapping",
+      "enforce-openai-contract",
+      "integrate-openai-execution",
+      "verify-openai-provider"
     ],
-    "updatedAt": "2026-07-30T15:00:00.000Z"
+    "updatedAt": "2026-07-31T04:30:00.000Z"
   },
   "tasks": [
     {
@@ -732,6 +1085,261 @@
       "createdAt": "2026-07-30T14:00:00.000Z",
       "updatedAt": "2026-07-30T15:00:00.000Z",
       "completedAt": "2026-07-30T15:00:00.000Z"
+    },
+    {
+      "id": "define-provider-contract",
+      "title": "Define provider-neutral contracts",
+      "description": "Define the versioned provider port, capabilities, Context Package request, response artifacts, diagnostics, statistics, usage, and typed errors.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Contracts are framework-, storage-, network-, credential-, environment-, and provider-independent.",
+        "No production provider implementation or execution workflow exists."
+      ],
+      "dependencyIds": ["verify-context-builder"],
+      "createdAt": "2026-07-30T15:30:00.000Z",
+      "updatedAt": "2026-07-30T15:40:00.000Z",
+      "completedAt": "2026-07-30T15:40:00.000Z"
+    },
+    {
+      "id": "implement-provider-validation",
+      "title": "Implement provider contract validation",
+      "description": "Validate descriptors, capabilities, closed configuration, requests, responses, exchange invariants, safe artifact paths, and metadata.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Unknown fields and malformed contracts fail with typed, path-specific errors.",
+        "Context identity, task equality, limits, response identity, usage, and artifact requirements are enforced."
+      ],
+      "dependencyIds": ["define-provider-contract"],
+      "createdAt": "2026-07-30T15:30:00.000Z",
+      "updatedAt": "2026-07-30T15:50:00.000Z",
+      "completedAt": "2026-07-30T15:50:00.000Z"
+    },
+    {
+      "id": "implement-provider-registry",
+      "title": "Implement provider registry and compatibility discovery",
+      "description": "Register validated provider references, snapshot descriptors and configuration, reject drift, and discover compatible enabled providers deterministically without invocation.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Duplicate, mismatched, invalid, disabled, drifted, and incompatible registrations are handled deterministically.",
+        "Registry discovery performs no provider execution or external I/O."
+      ],
+      "dependencyIds": ["implement-provider-validation"],
+      "createdAt": "2026-07-30T15:30:00.000Z",
+      "updatedAt": "2026-07-30T15:55:00.000Z",
+      "completedAt": "2026-07-30T15:55:00.000Z"
+    },
+    {
+      "id": "verify-provider-foundation",
+      "title": "Verify AI Provider Adapter foundation",
+      "description": "Run capability, request, response, exchange, configuration, registry, compatibility, and error tests plus the full repository CI gate, then wait for Sprint 5 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "All approved provider foundation behavior has comprehensive deterministic tests.",
+        "The complete CI pipeline passes and no prohibited integration, network, credential, or execution behavior exists."
+      ],
+      "dependencyIds": ["implement-provider-registry"],
+      "createdAt": "2026-07-30T15:30:00.000Z",
+      "updatedAt": "2026-07-30T16:00:00.000Z",
+      "completedAt": "2026-07-30T16:00:00.000Z"
+    },
+    {
+      "id": "define-prompt-package",
+      "title": "Define the versioned Prompt Package",
+      "description": "Define independent prompt sections, identity, task, goals, constraints, architecture, context, instructions, metadata, budget evidence, and structured output contracts.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Every approved prompt concern has one strongly typed section owner.",
+        "The contract imports no provider, framework, storage, network, environment, or execution dependency."
+      ],
+      "dependencyIds": ["verify-provider-foundation"],
+      "createdAt": "2026-07-30T16:30:00.000Z",
+      "updatedAt": "2026-07-30T16:40:00.000Z",
+      "completedAt": "2026-07-30T16:40:00.000Z"
+    },
+    {
+      "id": "implement-template-orchestration",
+      "title": "Implement deterministic template selection and prompt composition",
+      "description": "Select exact or latest validated template versions and build canonical System, Architecture, Task, Rules, Context, Output Contract, and Safety sections without duplicated information.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Composition is deterministic and stable for identical inputs.",
+        "Provider requests accept the Prompt Package rather than raw Context Package and task copies."
+      ],
+      "dependencyIds": ["define-prompt-package"],
+      "createdAt": "2026-07-30T16:30:00.000Z",
+      "updatedAt": "2026-07-30T16:50:00.000Z",
+      "completedAt": "2026-07-30T16:50:00.000Z"
+    },
+    {
+      "id": "enforce-prompt-budget-validation",
+      "title": "Enforce prompt budgets and validation",
+      "description": "Measure exact serialized size, record optional section omissions, reject oversized mandatory prompts, and validate versions, ordering, duplicates, references, metadata, and output contracts.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Optional omissions are explicit and mandatory sections are never truncated.",
+        "Invalid templates and Prompt Packages fail with typed path-specific issues."
+      ],
+      "dependencyIds": ["implement-template-orchestration"],
+      "createdAt": "2026-07-30T16:30:00.000Z",
+      "updatedAt": "2026-07-30T16:55:00.000Z",
+      "completedAt": "2026-07-30T16:55:00.000Z"
+    },
+    {
+      "id": "verify-prompt-orchestrator",
+      "title": "Verify the Prompt Orchestration foundation",
+      "description": "Run template, builder, budget, ordering, duplicate, validation, output-contract, provider-boundary, and full CI verification, then wait for Sprint 6 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "All approved Prompt Orchestration behaviors have comprehensive deterministic tests.",
+        "The complete CI pipeline passes and no prohibited provider, network, credential, streaming, tool, or execution behavior exists."
+      ],
+      "dependencyIds": ["enforce-prompt-budget-validation"],
+      "createdAt": "2026-07-30T16:30:00.000Z",
+      "updatedAt": "2026-07-30T17:00:00.000Z",
+      "completedAt": "2026-07-30T17:00:00.000Z"
+    },
+    {
+      "id": "define-execution-contracts",
+      "title": "Define versioned execution contracts",
+      "description": "Define provider-neutral request, metadata, policy, timeout, retry, cancellation, snapshot, transition, result, diagnostic, usage, artifact-placeholder, and error contracts.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Contracts are framework-, storage-, provider-, SDK-, network-, credential-, timer-, and execution-independent.",
+        "Execution requests accept one validated Prompt Package without duplicated task or context state."
+      ],
+      "dependencyIds": ["verify-prompt-orchestrator"],
+      "createdAt": "2026-07-30T17:30:00.000Z",
+      "updatedAt": "2026-07-30T17:40:00.000Z",
+      "completedAt": "2026-07-30T17:40:00.000Z"
+    },
+    {
+      "id": "implement-execution-state-machine",
+      "title": "Implement the execution state machine",
+      "description": "Create immutable snapshots and append-only transition history for the closed execution lifecycle, rejecting illegal transitions and identity, revision, attempt, or timestamp drift.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "All approved legal transitions are explicit and all other transitions fail with typed errors.",
+        "Every transition returns a new validated snapshot and preserves the prior snapshot."
+      ],
+      "dependencyIds": ["define-execution-contracts"],
+      "createdAt": "2026-07-30T17:30:00.000Z",
+      "updatedAt": "2026-07-30T17:45:00.000Z",
+      "completedAt": "2026-07-30T17:45:00.000Z"
+    },
+    {
+      "id": "implement-execution-policy-services",
+      "title": "Implement pure execution policy services",
+      "description": "Implement deterministic retry and timeout assessments, cancellation intent handling, terminal result construction, and runtime validation without performing effects.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Retry decisions honor failure strategy, retryability, allowlists, attempt limits, delay strategy, and cancellation state.",
+        "Timeout assessment, cancellation transitions, and results perform no waiting, scheduling, runtime cancellation, provider invocation, or I/O."
+      ],
+      "dependencyIds": ["implement-execution-state-machine"],
+      "createdAt": "2026-07-30T17:30:00.000Z",
+      "updatedAt": "2026-07-30T17:50:00.000Z",
+      "completedAt": "2026-07-30T17:50:00.000Z"
+    },
+    {
+      "id": "verify-execution-engine",
+      "title": "Verify the Execution Engine foundation",
+      "description": "Run lifecycle, illegal-transition, retry, timeout, cancellation, request, result, configuration, validation, coverage, and full CI verification, then wait for Sprint 7 approval.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "All approved Execution Engine behaviors have comprehensive deterministic tests.",
+        "The complete CI pipeline passes and no prohibited provider, AI, SDK, network, credential, tool, scheduling, or runtime execution behavior exists."
+      ],
+      "dependencyIds": ["implement-execution-policy-services"],
+      "createdAt": "2026-07-30T17:30:00.000Z",
+      "updatedAt": "2026-07-30T18:00:00.000Z",
+      "completedAt": "2026-07-30T18:00:00.000Z"
+    },
+    {
+      "id": "configure-openai-provider",
+      "title": "Configure the isolated OpenAI provider",
+      "description": "Add validated model, timeout, input, output, token, and explicitly injected credential configuration with the official SDK confined to the provider adapter.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "No credential is stored in source or read implicitly by BuilderAI.",
+        "SDK and per-request retries are disabled so Execution Engine policy remains authoritative."
+      ],
+      "dependencyIds": ["verify-execution-engine"],
+      "createdAt": "2026-07-31T03:30:00.000Z",
+      "updatedAt": "2026-07-31T03:45:00.000Z",
+      "completedAt": "2026-07-31T03:45:00.000Z"
+    },
+    {
+      "id": "implement-openai-mapping",
+      "title": "Implement deterministic OpenAI request and response mapping",
+      "description": "Map an unchanged Prompt Package to one non-streaming Responses API request and normalize the wire response into existing BuilderAI artifacts, usage, and metadata.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Requests disable streaming, background work, storage, truncation, tools, and parallel tool calls.",
+        "Raw provider fields and parsed structured output are validated before crossing the adapter boundary."
+      ],
+      "dependencyIds": ["configure-openai-provider"],
+      "createdAt": "2026-07-31T03:30:00.000Z",
+      "updatedAt": "2026-07-31T04:00:00.000Z",
+      "completedAt": "2026-07-31T04:00:00.000Z"
+    },
+    {
+      "id": "enforce-openai-contract",
+      "title": "Enforce OpenAI provider contracts and error taxonomy",
+      "description": "Validate configuration, credentials, mapped requests, raw responses, output contracts, final exchanges, limits, and translate provider failures into stable BuilderAI errors.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Invalid, missing, conflicting, malformed, or oversized provider data is rejected.",
+        "Errors do not expose credentials or raw provider payloads."
+      ],
+      "dependencyIds": ["implement-openai-mapping"],
+      "createdAt": "2026-07-31T03:30:00.000Z",
+      "updatedAt": "2026-07-31T04:10:00.000Z",
+      "completedAt": "2026-07-31T04:10:00.000Z"
+    },
+    {
+      "id": "integrate-openai-execution",
+      "title": "Integrate the OpenAI adapter with the Execution Engine",
+      "description": "Coordinate the existing validated lifecycle through exactly one provider invocation and produce one terminal Execution Result with validated structured output.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "The adapter cannot assign lifecycle transitions or perform its own retries.",
+        "Cancellation is bridged to one request-scoped abort signal and always unsubscribed."
+      ],
+      "dependencyIds": ["enforce-openai-contract"],
+      "createdAt": "2026-07-31T03:30:00.000Z",
+      "updatedAt": "2026-07-31T04:20:00.000Z",
+      "completedAt": "2026-07-31T04:20:00.000Z"
+    },
+    {
+      "id": "verify-openai-provider",
+      "title": "Verify the first provider adapter",
+      "description": "Run configuration, mapping, validation, error, cancellation, contract, execution integration, coverage, audit, build, and full CI checks without a live paid API request.",
+      "status": "DONE",
+      "priority": "HIGH",
+      "acceptanceCriteria": [
+        "Comprehensive deterministic tests cover the adapter and full pipeline integration.",
+        "The complete CI pipeline passes and no Sprint 7 excluded capability is implemented."
+      ],
+      "dependencyIds": ["integrate-openai-execution"],
+      "createdAt": "2026-07-31T03:30:00.000Z",
+      "updatedAt": "2026-07-31T04:30:00.000Z",
+      "completedAt": "2026-07-31T04:30:00.000Z"
     }
   ],
   "domainGlossary": {
@@ -812,8 +1420,92 @@
         "category": "TECHNICAL",
         "definition": "Configured character, file, and document limits applied while constructing a Context Package.",
         "aliases": ["Context limit"]
+      },
+      {
+        "id": "provider-port-term",
+        "term": "AI Provider Port",
+        "category": "TECHNICAL",
+        "definition": "The versioned provider-neutral contract that a separately approved future adapter must implement.",
+        "aliases": ["Provider Port"]
+      },
+      {
+        "id": "provider-capability-term",
+        "term": "Provider Capability",
+        "category": "TECHNICAL",
+        "definition": "A validated declaration of behavior or capacity supported by a registered provider adapter.",
+        "aliases": ["Capability"]
+      },
+      {
+        "id": "provider-registry-term",
+        "term": "Provider Registry",
+        "category": "TECHNICAL",
+        "definition": "The side-effect-free discovery boundary for validated provider references, descriptors, and compatibility policy.",
+        "aliases": ["Registry"]
+      },
+      {
+        "id": "prompt-package-term",
+        "term": "Prompt Package",
+        "category": "TECHNICAL",
+        "definition": "The sole versioned, structured, validated, ordered, and size-bounded prompt object available to a future provider adapter.",
+        "aliases": []
+      },
+      {
+        "id": "prompt-template-term",
+        "term": "Prompt Template",
+        "category": "TECHNICAL",
+        "definition": "A versioned provider-neutral declaration of canonical Prompt Package sections and invariant instructions.",
+        "aliases": []
+      },
+      {
+        "id": "prompt-budget-term",
+        "term": "Prompt Budget",
+        "category": "TECHNICAL",
+        "definition": "The exact serialized character limit and omission evidence attached to a Prompt Package.",
+        "aliases": []
+      },
+      {
+        "id": "output-contract-term",
+        "term": "Output Contract",
+        "category": "TECHNICAL",
+        "definition": "A provider-neutral structured field contract that a future response is expected to satisfy.",
+        "aliases": ["Expected Output"]
+      },
+      {
+        "id": "execution-engine-term",
+        "term": "Execution Engine",
+        "category": "TECHNICAL",
+        "definition": "The provider-neutral core that validates and coordinates execution lifecycle decisions without invoking a provider or performing runtime effects.",
+        "aliases": ["Execution Orchestrator"]
+      },
+      {
+        "id": "execution-snapshot-term",
+        "term": "Execution Snapshot",
+        "category": "TECHNICAL",
+        "definition": "An immutable versioned view of one execution identity, state, attempt, revision, timestamps, and append-only transition history.",
+        "aliases": []
+      },
+      {
+        "id": "execution-policy-term",
+        "term": "Execution Policy",
+        "category": "TECHNICAL",
+        "definition": "A closed provider-neutral declaration of priority, validation, failure, retry, and timeout rules used to derive orchestration decisions.",
+        "aliases": []
+      },
+      {
+        "id": "execution-result-term",
+        "term": "Execution Result",
+        "category": "TECHNICAL",
+        "definition": "A versioned terminal lifecycle record containing diagnostics, timing, usage, artifact placeholders, errors, and scalar metadata.",
+        "aliases": []
+      },
+      {
+        "id": "openai-responses-provider-term",
+        "term": "OpenAI Responses Provider",
+        "category": "TECHNICAL",
+        "definition": "The isolated AIProvider implementation that maps one validated Prompt Package to one non-streaming OpenAI Responses API call and validates the returned structured output.",
+        "aliases": ["OpenAI Provider"]
       }
     ],
-    "updatedAt": "2026-07-30T14:00:00.000Z"
+    "updatedAt": "2026-07-31T04:30:00.000Z"
   }
 }

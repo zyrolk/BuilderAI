@@ -55,6 +55,73 @@ future identity and data services, and every third-party integration.
 - Future consumers must accept only the validated Context Package contract rather than independently
   reading canonical state, documentation, or repository files.
 
+### AI Provider Adapter trust boundary
+
+- The core provider contract contains no credentials, endpoints, environment access, SDK types, HTTP
+  clients, or network behavior. Reject undeclared configuration fields rather than retaining them.
+- Validate capability descriptors and configuration when registering a provider. Snapshot descriptors
+  and reject identity or capability drift after registration.
+- Select only enabled providers whose declared limits and capabilities satisfy the validated request.
+  Discovery and selection must not invoke provider behavior.
+- Treat every future provider response, diagnostic, artifact, path, usage value, and metadata field as
+  untrusted. Enforce exact request identity, output limits, safe relative artifact paths, Prompt
+  Package accounting, and required artifact kinds before a response crosses the adapter boundary.
+- Core timeout and cancellation contracts do not themselves provide enforcement. A concrete adapter
+  must enforce its request deadline and cancellation propagation. Production workflows additionally
+  require concurrency limits, payload redaction, authorization, audit policy, and safe failure behavior.
+
+### OpenAI Responses provider trust boundary
+
+- The OpenAI adapter accepts only a validated `AIProviderRequest` containing the Prompt Package. It
+  must not read Project Brain state, documentation, source files, environment variables, or secrets
+  independently.
+- The caller must authorize and classify the Prompt Package before external transmission. Adapter
+  configuration sets `store: false`, but production use still requires approved provider retention,
+  residency, legal, privacy, and incident-response terms.
+- Inject credentials from a server-side secret boundary. Never persist, log, return, place in scalar
+  metadata, expose to a client bundle, or include them in provider error messages.
+- Keep streaming, background mode, tools, functions, files, images, history, and parallel tool calls
+  disabled. SDK and adapter retries remain disabled so retries cannot duplicate disclosure or spend
+  outside Execution Engine policy.
+- Validate the wire response, completion status, JSON structure, Output Contract, identity, limits,
+  artifact kinds, timing, and usage before returning data. Map failures to stable BuilderAI errors
+  without exposing raw provider bodies.
+- CI uses a deterministic transport double and sends no source or Prompt Package externally. Before
+  production release, run a separately authorized minimal smoke test with non-sensitive synthetic
+  content and verify account-level retention controls.
+
+### Prompt Package trust boundary
+
+- Accept only a Context Package that passes its production validator. Prompt composition must not read
+  canonical state, documentation, source files, storage, or environment configuration independently.
+- Keep prompt sections structured and provider-neutral. Do not interpolate provider syntax, execute
+  instructions, resolve external references, fetch content, or invoke tools while building a package.
+- Treat documentation and source snapshots as untrusted data. Separate governance instructions from
+  contextual content, exclude documents already consumed into another section, and deduplicate exact
+  instruction content before packaging.
+- Enforce stable section order, mandatory governance/task/safety sections, task and module references,
+  exact serialized character budgets, and explicit evidence for every omitted optional section.
+- A Prompt Package does not authorize logging, persistence, networking, provider execution, or external
+  disclosure. Those actions require separate data classification, authorization, redaction, retention,
+  audit, and incident controls.
+
+### Execution Engine trust boundary
+
+- Validate the complete Execution Request, including its Prompt Package, closed policy, scalar metadata,
+  timeout, retry, and cancellation contract before creating lifecycle state.
+- Treat execution identity and transition history as security-relevant audit evidence. Reject identity,
+  revision, attempt, timestamp, history, or state-transition drift; never replace or rewrite history.
+- The Executing state is descriptive and performs no provider or tool invocation. Retry delays and
+  timeout assessments are decisions only; they do not schedule work, wait, create timers, or enforce a
+  deadline. Cancellation tokens are contracts and provide no active cancellation by themselves.
+- Accept terminal Results only from validated terminal snapshots. Validate diagnostics, errors, usage,
+  metadata, and artifact placeholders as untrusted data; placeholders must never be interpreted as
+  files or executable output.
+- Before runtime execution is approved, add authorization, idempotency, concurrency limits, bounded
+  queues, trusted clocks, active deadline and cancellation enforcement, persistence and recovery,
+  redaction, restricted telemetry, audit retention, and safe provider-response handling outside this
+  pure core.
+
 ### Secrets and data
 
 - Store secrets in the deployment platform's secret manager, never in Git or `NEXT_PUBLIC_` variables.
@@ -89,10 +156,12 @@ unless a time-bounded, owner-approved exception documents compensating controls.
 ### Active exception: development-only glob expansion advisory
 
 - **Advisory:** `GHSA-mh99-v99m-4gvg`
-- **Scope:** `brace-expansion@1.1.17`, transitively used by ESLint plugins. It is absent from the
-  production dependency tree and production artifact.
-- **Reason:** As of 2026-07-30, the affected 1.x line has no patched release. Moving to ESLint 10 is
-  not currently supported by the lint plugins bundled with Next.js 16.2.
+- **Scope:** `brace-expansion@1.1.17` through `minimatch@3.1.5` in the ESLint toolchain. The full audit
+  reports nine affected development packages through this one advisory; the production-only audit is
+  clean. The separate `brace-expansion@5.0.8` path is patched.
+- **Reason:** As of 2026-07-31, the affected 1.x line has no patched release. npm's suggested major
+  ESLint update does not remediate the nested lint-plugin paths, while its suggested Next lint-config
+  downgrade is architecturally incompatible with the current Next.js version.
 - **Compensating controls:** lint receives repository-controlled patterns only; pull requests run in
   time-bounded, least-privileged CI; production audits remain blocking; Dependabot checks weekly.
 - **Owner and review:** engineering owner; review by 2026-08-30 or when Next's lint stack supports
