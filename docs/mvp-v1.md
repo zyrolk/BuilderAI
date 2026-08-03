@@ -19,14 +19,19 @@ Required live settings:
 | --------------------------------- | ------------------------------------------- |
 | `BUILDERAI_LIVE_WORKFLOW_ENABLED` | Must equal `true` to leave review mode      |
 | `BUILDERAI_PROJECT_ROOT`          | Absolute root of the trusted target project |
-| `BUILDERAI_AI_PROVIDER`           | Exactly `openai` or `gemini`                |
+| `BUILDERAI_AI_PROVIDER`           | Exactly `openai`, `gemini`, or `openrouter` |
 
 Only the selected provider's settings are required:
 
-| Provider | Credential       | Model          |
-| -------- | ---------------- | -------------- |
-| OpenAI   | `OPENAI_API_KEY` | `OPENAI_MODEL` |
-| Gemini   | `GEMINI_API_KEY` | `GEMINI_MODEL` |
+| Provider   | Credential           | Model              |
+| ---------- | -------------------- | ------------------ |
+| OpenAI     | `OPENAI_API_KEY`     | `OPENAI_MODEL`     |
+| Gemini     | `GEMINI_API_KEY`     | `GEMINI_MODEL`     |
+| OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` |
+
+OpenRouter also accepts optional `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`),
+`OPENROUTER_HTTP_REFERER`, and `OPENROUTER_APP_TITLE` for attribution headers. There is no hardcoded
+free-model default; the model must be explicit.
 
 `GEMINI_API_KEY` is the recommended Google AI Studio variable. Do not use client-visible variables or
 set `GOOGLE_GENAI_USE_VERTEXAI`; this local adapter targets the Gemini Developer API, not Vertex AI.
@@ -39,7 +44,7 @@ Optional settings are range validated:
 | ----------------------------------------- | ------: | ---------------------- |
 | `BUILDERAI_PROVIDER_TIMEOUT_MS`           |  120000 | 1,000–600,000 ms       |
 | `BUILDERAI_PROVIDER_MAX_TIMEOUT_MS`       |  120000 | 1,000–600,000 ms       |
-| `BUILDERAI_PREPARATION_TTL_MS`            |  900000 | 60,000–3,600,000 ms    |
+| `BUILDERAI_PREPARATION_TTL_MS`            | 3600000 | 60,000–3,600,000 ms    |
 | `BUILDERAI_MAX_PREPARATIONS`              |      50 | 1–500                  |
 | `BUILDERAI_VERIFICATION_TIMEOUT_MS`       |  600000 | 10,000–1,800,000 ms    |
 | `BUILDERAI_VERIFICATION_MAX_OUTPUT_BYTES` | 1000000 | 1,024–10,000,000 bytes |

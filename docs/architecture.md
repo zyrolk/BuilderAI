@@ -8,7 +8,8 @@ version: 1
 ## Status and scope
 
 This document defines the baseline architecture for the Project Brain, Blueprint Reader, Context
-Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, OpenAI and Gemini providers, Response
+Builder, Prompt Orchestrator, AI Provider Adapter, Execution Engine, OpenAI, Gemini, and OpenRouter
+providers, Response
 Processor, Project Change Planner, Safe File Apply Engine, Build and Verification Engine, and Minimal
 BuilderAI UI. The repository contains a deployable web interface, framework-independent cores, isolated external adapters
 that can perform one validated non-streaming provider call, a pure boundary that packages returned
@@ -103,6 +104,17 @@ valid, but any error diagnostic makes the result invalid.
 the repository `docs` boundary, reads UTF-8 content, and rejects traversal outside the configured
 project root. Other adapters may implement the same port without changing reader policy.
 
+`src/infrastructure/project` implements the local `ProjectFileSource` adapter used by Context Builder.
+It discovers candidate repository-relative source and configuration paths under explicit default scan
+roots (`src/`, `app/`, `prisma/`, monorepo roots, test roots, and others documented in ADR-022),
+plus an enumerated root-level configuration allowlist (`package.json`, `tsconfig*.json`, framework
+and tooling configs). Discovery applies extension and directory denylists, skips missing roots without
+error, rejects env files and lockfiles, and never follows symlinked directories outside the project
+root. An optional `BUILDERAI_EXTRA_SOURCE_SCAN_ROOTS` environment variable adds safe relative roots
+for unusual layouts. Listing produces a bounded candidate catalog (`maxSourcePaths`, default 15,000);
+Context Builder still selects and reads only a small subset (`maxSourceReads`, `maxFiles`) under the
+calibrated character budget (ADR-018).
+
 ## Context Builder core
 
 `src/core/context-builder` transforms validated Project Brain state, a valid Blueprint Reader result,
@@ -114,6 +126,12 @@ Selection uses explicit task-dependency and relative-import graphs first, then d
 relevance for goals, modules, decisions, pending risks, documents, and source-file seeds. Camel-case,
 kebab-case, and prose terms are normalized consistently. Weak single-term matches do not select an
 item. The package declares the canonical priority order from constitution through related source files.
+
+Source-file retrieval (ADR-023) ranks the full Phase 1 candidate catalog by path-only scoring (token
+overlap with plural variants, path segments, filenames, generic role hints, conditional schema/test/config
+boosts, and bounded Project Brain module boosts), reads a fixed shortlist of up to 36 paths, reranks with
+bounded content overlap, expands relative imports from the top eight parents, and applies size-aware
+admission before the existing `maxFiles` and character budgets apply.
 
 The Context Package carries structured project identity, milestone, current and related tasks, goals,
 constraints, architecture, modules, files, decisions, coding standards, risks, blockers, and relevant
@@ -134,6 +152,16 @@ validated executable task contract. Repeated Blueprint diagnostics are summarize
 source-read exhaustion records one deterministic omission marker rather than repeating equivalent
 budget evidence for every unread candidate. These rules bound context metadata without raising the
 configured content limit or weakening canonical Project Brain authority.
+
+The default character limit is calibrated from real-repository measurement, not an arbitrary round
+number (ADR-018). Building a Context Package from the canonical Project Brain and a realistic
+worst-case task saturates well below the configured default once every relevant file, document, and
+decision is included, leaving explicit reserved headroom for governance-content growth so relevant
+source files are not starved out by mandatory content alone. The Context Builder and Prompt
+Orchestrator cores remain provider-unaware; the local workspace runtime composition root proves, at
+startup, that the Context Builder budget, the Prompt Orchestrator budget, and the active AI provider's
+`maximumInputCharacters` remain safely ordered with reserved headroom at each boundary, failing fast on
+a misconfiguration instead of waiting for a live user request.
 
 ## AI Provider Adapter core
 
@@ -192,6 +220,11 @@ Runtime validation covers package and template versions, structure, required sec
 duplicates, task and module references, metadata, omissions, exact budget accounting, and the output
 contract. Prompt construction does not authorize execution or external disclosure.
 
+The default prompt budget is likewise calibrated from real-repository measurement against the
+Context Builder's calibrated default, with explicit reserved headroom so the optional Context section
+should not need to be dropped under real content (ADR-018). See the Context Builder core section above
+for the composition-root invariant that keeps Context, Prompt, and provider budgets safely ordered.
+
 ## Execution Engine core
 
 `src/core/execution-engine` is the only core boundary allowed to coordinate a future execution
@@ -237,12 +270,19 @@ Responses must be completed, structurally valid, valid JSON, compatible with the
 within the originating request limits before they become BuilderAI artifacts.
 
 `OpenAIExecutionService` is a narrow composition service. It advances the existing Execution Engine
-through legal states, maps one Execution Request to one provider request, invokes the adapter once,
-and constructs one validated terminal Result. It does not implement retry scheduling, routing,
-persistence, or background execution. The SDK enforces the per-call timeout, while the existing
-cancellation subscription is bridged to one request-scoped abort signal. A live API test is excluded
-from CI to avoid credentials, spend, and external disclosure; a controlled pre-release smoke test and
-provider data-retention review remain operational gates.
+through legal states, maps one Execution Request to one provider request, and constructs one validated
+terminal Result. On a `PROVIDER_UNAVAILABLE` failure it invokes the Execution Engine's own existing
+`retry()` decision and, when the decision allows it, waits out one small deterministic fixed delay
+(bounded at exactly one retry — two total provider attempts) and drives the snapshot back through
+`Queued → Preparing → Ready → Executing` before invoking the adapter again with the same Execution
+Request, `executionId`, and Prompt Package; every non-retryable or exhausted failure reaches terminal
+`Failed` before the original provider error is rethrown (ADR-019). It does not implement unbounded
+retry, routing, persistence, or background execution, and it never grants a retried attempt a fresh
+full timeout: every attempt's provider-call timeout is capped to whatever remains of the one overall
+execution timeout budget, computed via the existing timeout policy, and cancellation is honored during
+the retry delay. A live API test is excluded from CI to avoid credentials, spend, and external
+disclosure; a controlled pre-release smoke test and provider data-retention review remain operational
+gates.
 
 ## Google Gemini provider
 
@@ -254,7 +294,9 @@ raw-response and structured-output validation, error translation, and Execution 
 The mapper submits one text-only `generateContent` request with one candidate, temperature zero,
 `application/json`, the provider-neutral Output Contract expressed as JSON Schema, and no tools, files,
 images, streaming, chat history, or function calling. SDK retries are explicitly limited to the original
-attempt (`attempts: 1`) so the existing engine remains the only retry-policy owner. Runtime validation is
+attempt (`attempts: 1`) so the existing Execution Engine remains the sole retry-policy decision owner;
+`GeminiExecutionService` orchestrates the same bounded, single-retry, timeout-budget-capped sequence
+described for `OpenAIExecutionService` above, symmetrically (ADR-019). Runtime validation is
 authoritative even when Gemini accepts the schema.
 
 Because Prompt Output Contract version 1 models array fields only at the top level, the Gemini mapper
@@ -268,9 +310,23 @@ Cancellation is bridged to an abort signal and each call receives the validated 
 credentials, and SDK errors are converted to the existing BuilderAI error taxonomy before crossing the
 boundary.
 
-The local composition reads `BUILDERAI_AI_PROVIDER` and constructs only `openai` or `gemini` through an
-exhaustive server-side branch. This is static configuration selection, not a provider registry, router,
-fallback, or multi-provider workflow. OpenAI support and its behavior are unchanged.
+The local composition reads `BUILDERAI_AI_PROVIDER` and constructs only `openai`, `gemini`, or
+`openrouter` through an exhaustive server-side branch. This is static configuration selection, not a
+provider registry, router, fallback, or multi-provider workflow. OpenAI and Gemini support and behavior
+are unchanged.
+
+## OpenRouter Chat Completions provider
+
+`src/providers/openrouter` is a third isolated `AIProvider` implementation (ADR-028). Its sole SDK
+transport reuses the existing `openai` npm package with a configurable OpenRouter base URL and
+`chat.completions.create()`; it does not use the OpenAI Responses API. The adapter maps the Prompt Output
+Contract to Chat Completions `response_format.json_schema`, enforces `finish_reason` policy (`stop`,
+`length` → retryable truncation, policy reasons → terminal contract violation), and keeps BuilderAI
+structured-output validation authoritative after the provider response.
+
+`OpenRouterExecutionService` reuses the same bounded single-retry, timeout-budget-capped orchestration
+described for the other execution services (ADR-019). Credentials and optional attribution headers are
+explicit constructor inputs validated before any network call.
 
 ## Response Processor core
 
@@ -284,9 +340,9 @@ One `STRUCTURED_DATA` provider artifact owns the generated-artifact candidate li
 does not add full content to Execution Result placeholders or retain raw provider payloads in the
 package. It validates completion state, request/execution identity, prompt and output accounting,
 provider-to-execution artifact placeholders, and shared metadata before extracting candidates.
-Generated artifact types are closed to Source File, Documentation, Configuration, Test, and Patch.
-Logical paths must be safe repository-relative POSIX paths and are unique under case-insensitive
-comparison.
+Generated artifact types are closed to Source File, Documentation, Configuration, and Test (per
+ADR-017, which removed Patch from the contract). Logical paths must be safe repository-relative POSIX
+paths and are unique under case-insensitive comparison.
 
 Normalization converts line endings to LF, canonicalizes artifact, diagnostic, warning, and metadata
 ordering, and returns defensive copies. Configurable limits bound artifact count, individual and
@@ -306,15 +362,28 @@ separately approved future capability.
 
 `src/core/change-planner` is the sole boundary allowed to transform a validated Response Package into
 a versioned Project Change Plan. It imports provider-neutral Response Processor contracts but no
-provider implementation, SDK, framework, filesystem, Git client, storage adapter, network client,
-build tool, test runner, rollback mechanism, or project mutation workflow.
+provider implementation, SDK, framework, Git client, storage adapter, network client, build tool, test
+runner, rollback mechanism, or project mutation workflow. It never performs asynchronous I/O and never
+authorizes a filesystem effect.
 
 Every generated artifact must explicitly declare `change-operation` metadata as Create File, Update
-File, or Delete File. The planner does not infer path existence because it has no project-state or
-filesystem port. It consequently adds an `UNVERIFIED_PROJECT_STATE` warning to every plan. Create and
-update operations contain the exact normalized desired content; delete operations contain no content
-and require an empty source artifact. Patch artifacts are rejected because patch application is not
-an exact-result file operation in the closed plan contract.
+File, or Delete File. Create and update operations contain the exact normalized desired content; delete
+operations contain no content and require an empty source artifact. The Patch artifact type no longer
+exists anywhere in the artifact contract (ADR-017): the Response Processor rejects it before a Response
+Package can even be constructed, so every artifact the planner ever sees can deterministically become
+one exact-result operation. Native patch application remains an unapproved future capability.
+
+The planner may optionally accept one synchronous, read-only `WorkspaceVisibilityPort` (per ADR-016),
+supplied through the constructor or a `plan()` call, exposing only `directoryExists` and `fileExists`.
+When no port is supplied, the planner still cannot infer path existence and every plan carries an
+`UNVERIFIED_PROJECT_STATE` warning, exactly as ADR-010 defined. When a port is supplied, `plan()` rejects
+a create target that already exists or whose parent directory is missing, and rejects an update or
+delete target that does not exist, mirroring the Safe File Apply Engine's own preflight rules; the plan
+then carries a `PARTIALLY_VERIFIED_PROJECT_STATE` warning stating plainly that only target existence was
+checked and that symlinks, permissions, content drift, and concurrent changes remain unverified. The port
+is read-only, resolves through `lstat` so it never follows symlinks, and cannot create, modify, or delete
+anything; it is a best-effort early signal only, and it never replaces Safe File Apply's own authoritative
+revalidation.
 
 Operations preserve Response Package version, execution identity, logical path, artifact type,
 description, checksum, and UTF-8 size as provenance. Validation rejects unsafe paths, unsupported
@@ -324,10 +393,10 @@ references. The canonical safety-oriented order is create, update, then delete, 
 logical-path ordering.
 
 Plans contain one change set, exact path summaries, structured deterministic risks, inherited response
-warnings, and scalar metadata. Planning performs no I/O and does not authorize an effect. Verifying
-real path existence, content preconditions, symlinks, permissions, repository policy, conflict-free
-application, atomic writes, rollback, secret scanning, Git changes, or build and test outcomes requires
-a separately approved capability.
+warnings, and scalar metadata. Verifying content preconditions, permissions, repository policy,
+conflict-free application, atomic writes, rollback, secret scanning, Git changes, or build and test
+outcomes still requires a separately approved capability; only existence preconditions are covered by
+the optional visibility port, and only Safe File Apply may act on them.
 
 ## Safe File Apply Engine core
 
@@ -365,9 +434,11 @@ remote, shared, or untrusted-project use.
 ## Build and Verification core
 
 `src/core/verification` accepts only a File Apply Result that passes its existing production validator
-and has Applied status. Rejected, Failed, Partially Applied, or malformed inputs invoke no verification
-capability. The module imports no framework, filesystem, process runner, network client, Git client,
-deployment adapter, provider implementation, storage implementation, or automatic repair behavior.
+and actually mutated the workspace — Applied or Partially Applied status. Rejected, Failed (both always
+zero-mutation under the validated File Apply Result contract), or malformed inputs invoke no verification
+capability (P1-7, ADR-021). The module imports no framework, filesystem, process runner, network client,
+Git client, deployment adapter, provider implementation, storage implementation, or automatic repair
+behavior.
 
 The pipeline is closed and sequential: Project Validation, Dependency Validation, Build Validation,
 then Test Validation. Each capability has a dedicated port; the monotonic time source is also a port.
@@ -409,14 +480,25 @@ contracts without reinterpreting their business rules.
 
 Client components depend on `WorkspaceWorkflowPort`, a UI-owned application seam over those existing
 contracts. Preparation produces a response and plan. A distinct acknowledgement and approval action is
-required before apply. Only an Applied result may proceed to verification. The UI displays safe generic
-failures and retains available evidence when a workflow stops.
+required before apply. Only a result that actually mutated the workspace — Applied or Partially Applied —
+proceeds to verification; a Rejected or Failed result stops before verification (P1-7, ADR-021). The UI
+displays safe generic failures and retains available evidence when a workflow stops.
 
 The shipped route remains in review mode by default. With explicit valid local configuration, a client
 adapter calls server-only route handlers. Preparation returns review evidence plus an opaque expiring
 identifier; the validated plan remains in a bounded process-local store. Approval sends only that
-identifier and a true acknowledgement. The server claims its own plan, applies it once, and verifies
-only an Applied result. Completed results are replayed idempotently for the preparation lifetime.
+identifier and a true acknowledgement. The server claims its own plan and applies it. Verification then
+runs for any result that actually mutated the workspace — Applied or Partially Applied; a Rejected or
+Failed result, which the validated File Apply Result contract guarantees mutated nothing, never reaches
+verification (P1-7, ADR-021). An Apply attempt whose result proves zero filesystem mutations occurred —
+Rejected, or Failed with every created, updated, and deleted list empty — leaves the preparation
+reclaimable rather than terminal, bounded to at most one further explicit attempt (two total) and never
+automatic; the caller must invoke approval again with the same identifier, which triggers a genuine new
+File Apply call with a complete fresh preflight (P1-6, ADR-020). The original expiry is never reset or
+extended by a reclaim. Every other outcome — Partially Applied (now carrying its own verification
+evidence), or Applied regardless of the verification result — and a zero-mutation failure that has
+already used both attempts remain permanently terminal and are replayed idempotently for the preparation
+lifetime, exactly as before.
 
 The route accepts bounded same-origin loopback JSON only and returns generic no-store errors. This is a
 single-operator local profile, not authentication or project authorization. Public, shared,

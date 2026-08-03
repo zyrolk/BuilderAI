@@ -65,7 +65,7 @@ To enable the local runtime, set these server-only environment variables before 
 ```text
 BUILDERAI_LIVE_WORKFLOW_ENABLED=true
 BUILDERAI_PROJECT_ROOT=<absolute path to the trusted project>
-BUILDERAI_AI_PROVIDER=<openai or gemini>
+BUILDERAI_AI_PROVIDER=<openai, gemini, or openrouter>
 ```
 
 Then configure only the selected provider:
@@ -78,20 +78,29 @@ OPENAI_MODEL=<explicit supported model identifier>
 # Gemini API / Google AI Studio
 GEMINI_API_KEY=<server-only Google AI Studio secret>
 GEMINI_MODEL=gemini-3.5-flash
+
+# OpenRouter (Chat Completions via OpenAI SDK transport)
+OPENROUTER_API_KEY=<server-only secret>
+OPENROUTER_MODEL=<explicit supported model identifier>
+# OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+# OPENROUTER_HTTP_REFERER=<optional attribution URL>
+# OPENROUTER_APP_TITLE=<optional attribution title>
 ```
 
 Optional bounded settings are documented in [MVP operations](docs/mvp-v1.md). Never prefix secrets
 with `NEXT_PUBLIC_`. The runtime accepts same-origin loopback requests only, retains approved plans in
-memory for 15 minutes by default, applies the server-held plan rather than browser data, and returns
+memory for 60 minutes by default, applies the server-held plan rather than browser data, and returns
 generic external errors.
 
 ## Provider boundaries
 
 OpenAI remains available under `src/providers/openai`. Gemini local development support lives under
-`src/providers/gemini`. Both implement the unchanged core `AIProvider` port, accept the same validated
-Prompt Package, return the same provider-neutral response, disable adapter/SDK retries, and keep their
-wire models and official SDK imports isolated. The server composition root selects exactly one adapter
-from `BUILDERAI_AI_PROVIDER`; no core service or browser component performs provider routing.
+`src/providers/gemini`. OpenRouter lives under `src/providers/openrouter` and uses Chat Completions
+transport through the existing `openai` npm package with a configurable OpenRouter base URL. All three
+implement the unchanged core `AIProvider` port, accept the same validated Prompt Package, return the same
+provider-neutral response, disable adapter/SDK retries, and keep their wire models and official SDK imports
+isolated. The server composition root selects exactly one adapter from `BUILDERAI_AI_PROVIDER`; no core
+service or browser component performs provider routing.
 
 Provider models, timeouts, character limits, and output-token limits are explicit validated
 configuration. Credentials are loaded only by the server composition root and passed to the selected
@@ -103,9 +112,9 @@ but quotas and availability are controlled by Google and may vary by project and
 
 `src/core/response-processor` converts a correlated completed provider response and Execution Result
 into one versioned, normalized, manifest-backed Response Package. It supports only source,
-documentation, configuration, test, and patch artifacts and performs no filesystem, Git, network,
-persistence, telemetry, execution, or project-modification operation. A valid package is reviewable
-output data, not authorization to apply changes.
+documentation, configuration, and test artifacts (ADR-017 removed patch artifacts from the contract)
+and performs no filesystem, Git, network, persistence, telemetry, execution, or project-modification
+operation. A valid package is reviewable output data, not authorization to apply changes.
 
 ## Project change planning boundary
 

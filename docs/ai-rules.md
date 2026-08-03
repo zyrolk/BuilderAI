@@ -76,9 +76,13 @@ capability.
 
 Future project-change consumers must receive only a validated Project Change Plan produced from a
 validated Response Package. File operation intent must be explicit; assistants may not infer current
-project state or reinterpret patch artifacts as file operations. A plan describes proposed create,
-update, and delete operations but never authorizes filesystem access, Git changes, builds, tests,
-rollback, persistence, or automatic modification.
+project state or reinterpret an unsupported artifact type as a file operation. The closed artifact
+contract contains no patch type (ADR-017); native patch application remains an unapproved future
+capability. Planning may optionally consult one
+read-only, synchronous Workspace Visibility port to check whether a declared create, update, or delete
+target's existence precondition already holds (ADR-016); this never authorizes a write, and a plan still
+never authorizes filesystem mutation, Git changes, builds, tests, rollback, persistence, or automatic
+modification.
 
 Filesystem changes may occur only through the Safe File Apply Engine after caller authorization. The
 engine must revalidate the plan, enforce mandatory and configured protected paths, complete all
