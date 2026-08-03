@@ -13,6 +13,7 @@ import {
   type ProjectChangeOperation,
   type ProjectChangePlan,
 } from '../types';
+import type { WorkspaceVisibilityPort } from '../ports';
 import {
   ChangePlanReferenceValidator,
   ChangePlannerConfigurationValidator,
@@ -36,6 +37,7 @@ export class ChangePlannerService {
 
   constructor(
     private readonly configuration: ChangePlannerConfiguration = DEFAULT_CHANGE_PLANNER_CONFIGURATION,
+    private readonly workspaceVisibility?: WorkspaceVisibilityPort,
   ) {
     this.configurationValidator.validate(configuration);
     this.risk = new ChangeRiskService(configuration);
@@ -43,12 +45,17 @@ export class ChangePlannerService {
     this.referenceValidator = new ChangePlanReferenceValidator(this.planValidator);
   }
 
-  plan(responsePackage: unknown): ProjectChangePlan {
+  plan(responsePackage: unknown, workspaceVisibility?: WorkspaceVisibilityPort): ProjectChangePlan {
     this.validateResponsePackage(responsePackage);
-    const operations = this.createOperations(responsePackage);
+    const resolvedVisibility = workspaceVisibility ?? this.workspaceVisibility;
+    const operations = this.createOperations(responsePackage, resolvedVisibility);
     this.conflictDetector.validate(operations);
     const orderedOperations = this.ordering.order(operations);
-    const warnings = this.risk.createWarnings(orderedOperations, responsePackage.warnings);
+    const warnings = this.risk.createWarnings(
+      orderedOperations,
+      responsePackage.warnings,
+      resolvedVisibility !== undefined,
+    );
     const plan: ProjectChangePlan = {
       schemaVersion: PROJECT_CHANGE_PLAN_SCHEMA_VERSION,
       source: {
@@ -83,7 +90,10 @@ export class ChangePlannerService {
     }
   }
 
-  private createOperations(responsePackage: ResponsePackage): readonly ProjectChangeOperation[] {
+  private createOperations(
+    responsePackage: ResponsePackage,
+    workspaceVisibility?: WorkspaceVisibilityPort,
+  ): readonly ProjectChangeOperation[] {
     const issues: ChangePlanValidationIssue[] = [];
     if (responsePackage.generatedArtifacts.length > this.configuration.maximumOperations) {
       issues.push({
@@ -104,14 +114,6 @@ export class ChangePlannerService {
           code: 'UNSUPPORTED_CHANGE',
           path: `${path}.metadata.change-operation`,
           message: 'must declare CREATE_FILE, UPDATE_FILE, or DELETE_FILE',
-        });
-        return;
-      }
-      if (artifact.type === 'PATCH') {
-        issues.push({
-          code: 'UNSUPPORTED_CHANGE',
-          path: `${path}.type`,
-          message: 'PATCH artifacts cannot describe an exact file result',
         });
         return;
       }
@@ -137,6 +139,18 @@ export class ChangePlannerService {
         });
         return;
       }
+      if (workspaceVisibility !== undefined) {
+        const visibilityIssue = checkWorkspacePrecondition(
+          intent,
+          artifact.logicalPath,
+          workspaceVisibility,
+          `${path}.logicalPath`,
+        );
+        if (visibilityIssue !== null) {
+          issues.push(visibilityIssue);
+          return;
+        }
+      }
       const base = {
         operationId: createOperationId(intent, artifact.logicalPath),
         logicalPath: artifact.logicalPath,
@@ -158,4 +172,50 @@ export class ChangePlannerService {
 
 function isChangeOperationKind(value: unknown): value is ChangeOperationKind {
   return ['CREATE_FILE', 'UPDATE_FILE', 'DELETE_FILE'].includes(String(value));
+}
+
+function parentDirectoryFor(logicalPath: string): string {
+  const parent = logicalPath.includes('/')
+    ? logicalPath.slice(0, logicalPath.lastIndexOf('/'))
+    : '.';
+  return parent === '' ? '.' : parent;
+}
+
+/**
+ * Mirrors the Safe File Apply Engine's own preconditions (absent create target with an existing
+ * parent directory; an existing regular file for update and delete) so a plan the workspace already
+ * disagrees with is rejected at planning time instead of only failing later during apply.
+ */
+function checkWorkspacePrecondition(
+  intent: ChangeOperationKind,
+  logicalPath: string,
+  workspaceVisibility: WorkspaceVisibilityPort,
+  issuePath: string,
+): ChangePlanValidationIssue | null {
+  if (intent === 'CREATE_FILE') {
+    if (workspaceVisibility.fileExists(logicalPath)) {
+      return {
+        code: 'INVALID_REFERENCE',
+        path: issuePath,
+        message: `create target '${logicalPath}' must not already exist in workspace`,
+      };
+    }
+    const parentPath = parentDirectoryFor(logicalPath);
+    if (!workspaceVisibility.directoryExists(parentPath)) {
+      return {
+        code: 'INVALID_REFERENCE',
+        path: issuePath,
+        message: `parent directory '${parentPath}' must exist in workspace`,
+      };
+    }
+    return null;
+  }
+  if (!workspaceVisibility.fileExists(logicalPath)) {
+    return {
+      code: 'INVALID_REFERENCE',
+      path: issuePath,
+      message: `${intent === 'UPDATE_FILE' ? 'update' : 'delete'} target '${logicalPath}' must exist in workspace`,
+    };
+  }
+  return null;
 }

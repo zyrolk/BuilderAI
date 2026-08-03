@@ -15,7 +15,7 @@ interface ChangeOperationBase {
   readonly operationId: string;
   readonly kind: ChangeOperationKind;
   readonly logicalPath: string;
-  readonly artifactType: Exclude<ResponseArtifactType, 'PATCH'>;
+  readonly artifactType: ResponseArtifactType;
   readonly description: string;
   readonly sourceChecksum: ArtifactChecksum;
   readonly sourceSizeBytes: number;

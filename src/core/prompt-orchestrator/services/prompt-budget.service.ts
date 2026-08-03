@@ -8,6 +8,35 @@ import {
 
 export type PromptPackageDraft = Omit<PromptPackage, 'budget'>;
 
+/**
+ * Recomputes `budget.characters` using the same self-referential JSON.stringify
+ * fixpoint used during normal PromptPackage construction and validation.
+ */
+export function recomputePromptPackageBudget(prompt: PromptPackage): PromptPackage {
+  const draft: PromptPackageDraft = {
+    schemaVersion: prompt.schemaVersion,
+    template: prompt.template,
+    sections: prompt.sections,
+    metadata: prompt.metadata,
+  };
+  const packageValue = buildPackage(
+    draft,
+    prompt.sections,
+    prompt.budget.maximumCharacters,
+    prompt.budget.omittedSections,
+  );
+  if (packageValue.budget.characters > packageValue.budget.maximumCharacters) {
+    throw new PromptOrchestratorValidationError([
+      {
+        code: 'PROMPT_SIZE_EXCEEDED',
+        path: '$.budget.characters',
+        message: `prompt needs ${packageValue.budget.characters} characters but the limit is ${packageValue.budget.maximumCharacters}`,
+      },
+    ]);
+  }
+  return packageValue;
+}
+
 export class PromptBudgetService {
   enforce(draft: PromptPackageDraft, maximumCharacters: number): PromptPackage {
     const sections = [...draft.sections];

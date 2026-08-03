@@ -40,13 +40,27 @@ export interface ContextLimits {
   readonly maxSourceReads: number;
 }
 
+/**
+ * `maxCharacters` is calibrated from real-repository measurement (P0-3, ADR-018), not an
+ * arbitrary round number. Building a Context Package from the canonical Project Brain and a
+ * realistic worst-case (4,000-character) task saturates at 83,833 characters once every relevant
+ * file (up to `maxFiles`), document (up to `maxDocuments`), and relevance-scored decision is
+ * included. 95,000 keeps that full candidate set intact with roughly 11,000 characters (~12%) of
+ * reserved headroom for governance-content growth, while remaining safely below the Prompt
+ * Orchestrator's `maximumCharacters` (see `MINIMUM_CONTEXT_TO_PROMPT_HEADROOM_CHARACTERS` in
+ * `src/infrastructure/workspace/budget-invariant.ts`, which enforces the relationship at
+ * composition time).
+ */
 export const DEFAULT_CONTEXT_LIMITS: ContextLimits = {
-  maxCharacters: 50_000,
+  maxCharacters: 95_000,
   maxFiles: 12,
   maxDocuments: 8,
-  maxSourcePaths: 5_000,
-  maxSourceReads: 24,
+  maxSourcePaths: 15_000,
+  maxSourceReads: 36,
 };
+
+/** Reserved headroom subtracted before source-file admission (ADR-018, ADR-023). */
+export const CONTEXT_PACKAGE_RESERVED_HEADROOM_CHARACTERS = 5_000;
 
 export interface ProjectSourceFile {
   readonly path: string;
@@ -58,6 +72,7 @@ export interface ContextBuildInput {
   readonly blueprintReaderOutput: BlueprintReadResult;
   readonly currentTaskId: string;
   readonly sourceFileSource: ProjectFileSource;
+  readonly iterationPathHints?: readonly string[];
 }
 
 export interface ProjectIdentityContext {
@@ -179,6 +194,7 @@ export interface ValidatedContextInput {
   readonly currentTask: ProjectTask;
   readonly sourceFileSource: ProjectFileSource;
   readonly sourcePaths: readonly string[];
+  readonly iterationPathHints: readonly string[];
 }
 
 export function diagnosticRiskId(diagnostic: DocumentDiagnostic): string {

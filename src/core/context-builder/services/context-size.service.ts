@@ -93,6 +93,28 @@ function removeLowestPriority(context: MutableOptionalContext): ContextOmission 
 }
 
 export class ContextSizeService {
+  measure(
+    draft: ContextPackageDraft,
+    limits: ContextLimits,
+    omissions: readonly ContextOmission[],
+    sourcePaths: number,
+    sourceReads: number,
+  ): number {
+    return buildPackage(
+      draft,
+      {
+        relevantModules: [...draft.relevantModules],
+        relevantFiles: [...draft.relevantFiles],
+        relevantDecisions: [...draft.relevantDecisions],
+        relevantDocumentation: [...draft.relevantDocumentation],
+      },
+      limits,
+      omissions,
+      sourcePaths,
+      sourceReads,
+    ).size.characters;
+  }
+
   enforce(
     draft: ContextPackageDraft,
     limits: ContextLimits,

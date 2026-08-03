@@ -107,17 +107,14 @@ export class ContextSelectionService {
     const fileResolution = await this.dependencyResolver.resolveFiles(
       sourcePaths,
       sourceFileSource,
-      query,
+      taskCorpus,
       scoredModules,
       reader.analysis.modules,
       limits.maxSourceReads,
+      input.iterationPathHints,
     );
     omissions.push(...fileResolution.omissions);
-    const filesWithoutDuplicates = deduplicateFiles(fileResolution.files, omissions);
-    const files = filesWithoutDuplicates.slice(0, limits.maxFiles);
-    for (const file of filesWithoutDuplicates.slice(limits.maxFiles)) {
-      omissions.push({ kind: 'FILE', identifier: file.path, reason: 'FILE_LIMIT' });
-    }
+    const files = deduplicateFiles(fileResolution.files, omissions);
 
     const modulePaths = new Set(scoredModules.map(({ path }) => path));
     for (const file of files) if (file.modulePath !== undefined) modulePaths.add(file.modulePath);

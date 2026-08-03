@@ -52,7 +52,12 @@ export class PromptOrchestratorService {
       configuration.templateId,
       configuration.templateVersion,
     );
-    const sections = this.sectionBuilder.build(template, input.context, expectedOutput);
+    const sections = this.sectionBuilder.build(
+      template,
+      input.context,
+      expectedOutput,
+      input.iterationFeedback,
+    );
     const draft: PromptPackageDraft = {
       schemaVersion: 1,
       template: { id: template.id, version: template.version },

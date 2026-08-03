@@ -1,4 +1,8 @@
-import { FileApplyResultValidator, type FileApplyResult } from '../../file-apply';
+import {
+  FileApplyResultValidator,
+  isVerificationEligibleFileApplyResult,
+  type FileApplyResult,
+} from '../../file-apply';
 import type { VerificationConfiguration } from '../config';
 import { DEFAULT_VERIFICATION_CONFIGURATION } from '../config';
 import type { VerificationClockPort, VerificationPorts } from '../ports';
@@ -70,12 +74,12 @@ export class VerificationEngineService {
         },
       ]);
     }
-    if (value.status !== 'APPLIED') {
+    if (!isVerificationEligibleFileApplyResult(value)) {
       throw new VerificationValidationError([
         {
           code: 'INVALID_APPLY_RESULT',
           path: '$.status',
-          message: 'must equal APPLIED',
+          message: 'must equal APPLIED or PARTIALLY_APPLIED',
         },
       ]);
     }

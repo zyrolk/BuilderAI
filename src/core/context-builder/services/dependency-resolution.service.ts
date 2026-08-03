@@ -1,12 +1,20 @@
 import type { ModuleAnalysis } from '../../blueprint-reader';
 import type { ProjectBrain, ProjectTask } from '../../project-brain';
+import { CONTEXT_RETRIEVAL_SCORING } from '../config/context-retrieval-policy';
+import { buildReadShortlist, rankCandidatePaths } from '../internal/path-relevance';
 import {
   directoryName,
   normalizeProjectPath,
   pathBelongsToModule,
   resolveRelativePath,
 } from '../internal/path';
-import { relevanceScore } from '../internal/text-relevance';
+import { inferTaskCategories, isTestPrimaryTask } from '../internal/task-category';
+import {
+  boundedContentScore,
+  effectiveAdmissionScore,
+  expandQueryTokens,
+  tokenize,
+} from '../internal/text-relevance';
 import type { ProjectFileSource } from '../ports';
 import type { ContextOmission, ContextSourceFile, ProjectSourceFile } from '../types';
 import { ContextBuilderValidationError } from '../types';
@@ -18,6 +26,11 @@ export interface FileResolution {
   readonly files: readonly ContextSourceFile[];
   readonly omissions: readonly ContextOmission[];
   readonly reads: number;
+}
+
+interface ScoredSourceFile extends ProjectSourceFile {
+  readonly combinedScore: number;
+  readonly effectiveScore: number;
 }
 
 function taskText(task: ProjectTask): string {
@@ -52,6 +65,35 @@ function owningModule(
     .sort((left, right) => right.path.length - left.path.length)[0];
 }
 
+const TEST_FILE_PATTERN = /\.(spec|test)\.(cjs|js|jsx|mjs|ts|tsx)$/u;
+
+function isTestSourcePath(sourcePath: string): boolean {
+  return TEST_FILE_PATTERN.test(sourcePath) || sourcePath.includes('/__tests__/');
+}
+
+function isSecondaryTestArtifact(sourcePath: string): boolean {
+  return isTestSourcePath(sourcePath) || sourcePath.includes('.fixture.');
+}
+
+function compareScoredFiles(
+  left: ScoredSourceFile,
+  right: ScoredSourceFile,
+  testPrimary: boolean,
+): number {
+  const scoreFor = (file: ScoredSourceFile): number => {
+    if (testPrimary || !isSecondaryTestArtifact(file.path)) return file.effectiveScore;
+    return file.effectiveScore * 0.75;
+  };
+  const leftScore = scoreFor(left);
+  const rightScore = scoreFor(right);
+  return (
+    rightScore - leftScore ||
+    right.combinedScore - left.combinedScore ||
+    left.path.length - right.path.length ||
+    left.path.localeCompare(right.path)
+  );
+}
+
 export class DependencyResolutionService {
   resolveTasks(brain: ProjectBrain, currentTask: ProjectTask): readonly ProjectTask[] {
     const tasksById = new Map(brain.tasks.map((task) => [task.id, task]));
@@ -74,26 +116,40 @@ export class DependencyResolutionService {
   async resolveFiles(
     sourcePaths: readonly string[],
     source: ProjectFileSource,
-    query: ReadonlySet<string>,
+    taskCorpus: string,
     relevantModules: readonly ModuleAnalysis[],
     allModules: readonly ModuleAnalysis[],
     maxReads: number,
+    iterationPathHints: readonly string[] = [],
   ): Promise<FileResolution> {
-    const normalizedPaths = sourcePaths.map(normalizeProjectPath).sort();
+    const normalizedPaths = sourcePaths.map(normalizeProjectPath);
     const availablePaths = new Set(normalizedPaths);
-    const score = (sourcePath: string): number => relevanceScore(query, sourcePath);
-    const seeds = normalizedPaths
-      .filter(
-        (sourcePath) =>
-          relevantModules.some((moduleRecord) =>
-            pathBelongsToModule(sourcePath, moduleRecord.path),
-          ) || score(sourcePath) >= 2,
-      )
-      .sort((left, right) => score(right) - score(left) || left.localeCompare(right));
+    const queryVariants = expandQueryTokens(tokenize(taskCorpus));
+    const categories = inferTaskCategories(taskCorpus);
+    const testPrimary = isTestPrimaryTask(taskCorpus, categories);
+    const scoredModulePaths = new Set(relevantModules.map(({ path }) => path));
+    const pathHints = new Set(iterationPathHints);
+    const rankedPaths = rankCandidatePaths(
+      normalizedPaths,
+      queryVariants,
+      categories,
+      scoredModulePaths,
+      taskCorpus,
+      pathHints,
+    );
+    const pathScoreByPath = new Map(rankedPaths.map(({ path, pathScore }) => [path, pathScore]));
+    const eligiblePaths = rankedPaths.filter(
+      ({ pathScore }) => pathScore >= CONTEXT_RETRIEVAL_SCORING.MIN_PATH_SCORE_FOR_READ,
+    );
+    const shortlist = buildReadShortlist(
+      eligiblePaths,
+      categories,
+      CONTEXT_RETRIEVAL_SCORING.READ_SHORTLIST_CAPACITY,
+      taskCorpus,
+    );
 
-    const selected: ProjectSourceFile[] = [];
     const omissions: ContextOmission[] = [];
-    const visited = new Set<string>();
+    const scoredFiles = new Map<string, ScoredSourceFile>();
     let reads = 0;
     let fileLimitRecorded = false;
     const recordFileLimit = (identifier: string): void => {
@@ -101,9 +157,13 @@ export class DependencyResolutionService {
       omissions.push({ kind: 'FILE', identifier, reason: 'FILE_LIMIT' });
       fileLimitRecorded = true;
     };
-    const visit = async (sourcePath: string): Promise<void> => {
-      if (visited.has(sourcePath)) return;
-      visited.add(sourcePath);
+
+    const readFile = async (
+      sourcePath: string,
+      pathScore: number,
+      contentScoreBoost: number,
+    ): Promise<void> => {
+      if (scoredFiles.has(sourcePath)) return;
       if (reads >= maxReads) {
         recordFileLimit(sourcePath);
         return;
@@ -122,46 +182,85 @@ export class DependencyResolutionService {
           },
         ]);
       }
-      const file = { path: sourcePath, content };
-      selected.push(file);
-      for (const importPath of importedPaths(file)) {
-        const dependencyPath = findImportedPath(importPath, availablePaths);
-        if (dependencyPath === undefined) {
-          if (reads >= maxReads) {
-            recordFileLimit(importPath);
-            continue;
-          }
-          try {
-            await source.readSourceFile(importPath);
-            reads += 1;
-          } catch {
-            throw new ContextBuilderValidationError([
-              {
-                code: 'INVALID_REFERENCE',
-                path: '$.sourceFileSource',
-                message: `Source file '${sourcePath}' references unavailable relative import '${importPath}'`,
-              },
-            ]);
-          }
-          continue;
-        }
-        await visit(dependencyPath);
-      }
-    };
-    for (const seed of seeds) await visit(seed);
 
-    return {
-      files: selected.map((file) => {
+      const contentScore = boundedContentScore(
+        queryVariants,
+        content,
+        CONTEXT_RETRIEVAL_SCORING.CONTENT_OVERLAP,
+        CONTEXT_RETRIEVAL_SCORING.CONTENT_SCORE_CAP,
+      );
+      const combinedScore = pathScore + contentScore + contentScoreBoost;
+      scoredFiles.set(sourcePath, {
+        path: sourcePath,
+        content,
+        combinedScore,
+        effectiveScore: effectiveAdmissionScore(combinedScore, content.length),
+      });
+    };
+
+    for (const sourcePath of shortlist) {
+      await readFile(sourcePath, pathScoreByPath.get(sourcePath) ?? 0, 0);
+    }
+
+    const rerankedParents = [...scoredFiles.values()].sort((left, right) =>
+      compareScoredFiles(left, right, testPrimary),
+    );
+    const importParents = rerankedParents.slice(
+      0,
+      CONTEXT_RETRIEVAL_SCORING.DEPENDENCY_PARENT_LIMIT,
+    );
+
+    const visitImport = async (parent: ScoredSourceFile, importPath: string): Promise<void> => {
+      const dependencyPath = findImportedPath(importPath, availablePaths);
+      if (dependencyPath === undefined) {
+        if (reads >= maxReads) {
+          recordFileLimit(importPath);
+          return;
+        }
+        try {
+          await source.readSourceFile(importPath);
+          reads += 1;
+        } catch {
+          throw new ContextBuilderValidationError([
+            {
+              code: 'INVALID_REFERENCE',
+              path: '$.sourceFileSource',
+              message: `Source file '${parent.path}' references unavailable relative import '${importPath}'`,
+            },
+          ]);
+        }
+        return;
+      }
+      if (scoredFiles.has(dependencyPath)) return;
+      await readFile(
+        dependencyPath,
+        Math.max(
+          pathScoreByPath.get(dependencyPath) ?? 0,
+          parent.combinedScore * CONTEXT_RETRIEVAL_SCORING.IMPORT_PARENT_DECAY,
+        ),
+        0,
+      );
+    };
+
+    for (const parent of importParents) {
+      for (const importPath of importedPaths(parent)) {
+        await visitImport(parent, importPath);
+      }
+    }
+
+    const files = [...scoredFiles.values()]
+      .sort((left, right) => compareScoredFiles(left, right, testPrimary))
+      .map((file) => {
         const owner = owningModule(file.path, allModules);
         return {
-          ...file,
-          priority: 'RELATED_SOURCE_FILES',
+          path: file.path,
+          content: file.content,
+          priority: 'RELATED_SOURCE_FILES' as const,
           ...(owner === undefined ? {} : { modulePath: owner.path }),
         };
-      }),
-      omissions,
-      reads,
-    };
+      });
+
+    return { files, omissions, reads };
   }
 
   taskCorpus(currentTask: ProjectTask, relatedTasks: readonly ProjectTask[]): string {

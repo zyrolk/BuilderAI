@@ -1,5 +1,12 @@
 import type { ContextPackage } from '../../context-builder';
+import type { FileApplyStatus } from '../../file-apply';
+import type { ResponseMetadata } from '../../response-processor';
 import type { ProjectConstraint, ProjectGoal, ProjectTask } from '../../project-brain';
+import type {
+  VerificationStage,
+  VerificationStageStatus,
+  VerificationStatus,
+} from '../../verification';
 
 export const PROMPT_PACKAGE_SCHEMA_VERSION = 1 as const;
 export const PROMPT_TEMPLATE_SCHEMA_VERSION = 1 as const;
@@ -9,11 +16,56 @@ export const PROMPT_SECTION_ORDER = [
   'SYSTEM',
   'ARCHITECTURE',
   'TASK',
+  'ITERATION',
   'RULES',
   'CONTEXT',
   'OUTPUT_CONTRACT',
   'SAFETY',
 ] as const;
+
+export const PROMPT_ITERATION_FEEDBACK_SCHEMA_VERSION = 1 as const;
+export const PROMPT_ITERATION_FEEDBACK_KIND = 'CORRECTION' as const;
+export const PROMPT_ITERATION_FEEDBACK_MAX_CHARACTERS = 4_000 as const;
+
+export interface PromptIterationFinding {
+  readonly code: string;
+  readonly message: string;
+  readonly logicalPath?: string;
+  readonly stage?: VerificationStage;
+}
+
+export interface PromptIterationApplyEvidence {
+  readonly status: FileApplyStatus;
+  readonly createdPaths: readonly string[];
+  readonly updatedPaths: readonly string[];
+  readonly deletedPaths: readonly string[];
+  readonly skippedPaths: readonly string[];
+  readonly errors: readonly PromptIterationFinding[];
+  readonly warnings: readonly PromptIterationFinding[];
+}
+
+export interface PromptIterationVerificationStage {
+  readonly stage: VerificationStage;
+  readonly status: VerificationStageStatus;
+  readonly errors: readonly PromptIterationFinding[];
+  readonly warnings: readonly PromptIterationFinding[];
+  readonly metadata: ResponseMetadata;
+}
+
+export interface PromptIterationVerificationEvidence {
+  readonly status: VerificationStatus;
+  readonly stages: readonly PromptIterationVerificationStage[];
+  readonly topErrors: readonly PromptIterationFinding[];
+}
+
+export interface PromptIterationContent {
+  readonly schemaVersion: typeof PROMPT_ITERATION_FEEDBACK_SCHEMA_VERSION;
+  readonly kind: typeof PROMPT_ITERATION_FEEDBACK_KIND;
+  readonly sourcePreparationId?: string;
+  readonly priorRequestSummary?: string;
+  readonly apply: PromptIterationApplyEvidence;
+  readonly verification?: PromptIterationVerificationEvidence;
+}
 
 export type PromptSectionKind = (typeof PROMPT_SECTION_ORDER)[number];
 
@@ -81,6 +133,12 @@ export interface PromptTaskSection extends PromptSectionBase {
   readonly constraints: readonly ProjectConstraint[];
 }
 
+export interface PromptIterationSection extends PromptSectionBase {
+  readonly kind: 'ITERATION';
+  readonly instructions: readonly PromptInstruction[];
+  readonly feedback: PromptIterationContent;
+}
+
 export interface PromptRulesSection extends PromptSectionBase {
   readonly kind: 'RULES';
   readonly instructions: readonly PromptInstruction[];
@@ -137,6 +195,7 @@ export type PromptSection =
   | PromptSystemSection
   | PromptArchitectureSection
   | PromptTaskSection
+  | PromptIterationSection
   | PromptRulesSection
   | PromptContextSection
   | PromptOutputContractSection
@@ -178,6 +237,7 @@ export interface PromptBuildInput {
   readonly context: ContextPackage;
   readonly expectedOutput?: PromptOutputContract;
   readonly metadata?: PromptMetadata;
+  readonly iterationFeedback?: PromptIterationContent;
 }
 
 export type PromptValidationCode =

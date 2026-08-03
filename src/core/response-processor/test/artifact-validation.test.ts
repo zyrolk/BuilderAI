@@ -10,13 +10,12 @@ describe('GeneratedArtifactValidator', () => {
     createResponseProcessorConfiguration(),
   );
 
-  it('accepts the five closed artifact types', () => {
+  it('accepts the four closed artifact types', () => {
     const artifacts = [
       createGeneratedArtifact({ logicalPath: 'src/a.ts', type: 'SOURCE_FILE' }),
       createGeneratedArtifact({ logicalPath: 'docs/a.md', type: 'DOCUMENTATION' }),
       createGeneratedArtifact({ logicalPath: 'config/a.json', type: 'CONFIGURATION' }),
       createGeneratedArtifact({ logicalPath: 'test/a.test.ts', type: 'TEST' }),
-      createGeneratedArtifact({ logicalPath: 'patches/a.patch', type: 'PATCH' }),
     ];
     expect(() => validator.validate(artifacts)).not.toThrow();
   });
@@ -24,6 +23,14 @@ describe('GeneratedArtifactValidator', () => {
   it('rejects unsupported artifact types and unknown fields', () => {
     expect(() =>
       validator.validate([{ ...createGeneratedArtifact(), type: 'BINARY', executable: true }]),
+    ).toThrow(ResponseProcessorValidationError);
+  });
+
+  it('rejects PATCH as no longer a supported artifact type', () => {
+    expect(() =>
+      validator.validate([
+        { ...createGeneratedArtifact({ logicalPath: 'patches/a.patch' }), type: 'PATCH' },
+      ]),
     ).toThrow(ResponseProcessorValidationError);
   });
 

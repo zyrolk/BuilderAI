@@ -111,6 +111,65 @@ describe('successful verification', () => {
     );
   });
 
+  it('runs the complete pipeline for a PARTIALLY_APPLIED result (P1-7)', async () => {
+    const harness = createPortHarness();
+    const input = createAppliedResult({
+      status: 'PARTIALLY_APPLIED',
+      createdFiles: ['src/new.ts'],
+      updatedFiles: [],
+      deletedFiles: [],
+      skippedFiles: ['src/obsolete.ts'],
+      errors: [
+        {
+          code: 'FILESYSTEM_OPERATION_FAILED',
+          message: 'The delete operation failed midway through the plan.',
+          logicalPath: 'src/obsolete.ts',
+        },
+      ],
+    });
+
+    const report = await new VerificationEngineService(
+      harness.ports,
+      undefined,
+      createDeterministicClock(),
+    ).verify(input);
+
+    expect(harness.calls).toEqual(VERIFICATION_STAGES);
+    expect(report.status).toBe('PASSED');
+  });
+
+  it('reports only the actually-mutated files for a PARTIALLY_APPLIED context, never skipped ones (P1-7)', async () => {
+    const harness = createPortHarness();
+    const input = createAppliedResult({
+      status: 'PARTIALLY_APPLIED',
+      createdFiles: ['src/new.ts'],
+      updatedFiles: ['src/existing.ts'],
+      deletedFiles: [],
+      skippedFiles: ['src/obsolete.ts'],
+      errors: [
+        {
+          code: 'FILESYSTEM_OPERATION_FAILED',
+          message: 'The delete operation failed midway through the plan.',
+          logicalPath: 'src/obsolete.ts',
+        },
+      ],
+    });
+    const engine = new VerificationEngineService(
+      harness.ports,
+      undefined,
+      createDeterministicClock(),
+    );
+
+    await engine.verify(input);
+
+    expect(harness.contexts[0]?.affectedFiles).toEqual({
+      created: ['src/new.ts'],
+      updated: ['src/existing.ts'],
+      deleted: [],
+    });
+    expect(harness.contexts[0]?.fileApplyResult.skippedFiles).toEqual(['src/obsolete.ts']);
+  });
+
   it('provides a finite non-negative system clock adapter', () => {
     const value = new SystemVerificationClockService().now();
 

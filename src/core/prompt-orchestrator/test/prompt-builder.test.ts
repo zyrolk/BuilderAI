@@ -1,7 +1,7 @@
 import { ContextBuilderService } from '../../context-builder';
 import { createContextInput } from '../../context-builder/test/context-builder.fixture';
 import {
-  PROMPT_SECTION_ORDER,
+  DEFAULT_PROMPT_OUTPUT_CONTRACT,
   PromptOrchestratorService,
   PromptOrchestratorValidationError,
 } from '..';
@@ -14,8 +14,73 @@ describe('prompt package builder', () => {
     const second = await service.build({ context, metadata: { task: 'test' } });
 
     expect(first).toEqual(second);
-    expect(first.sections.map(({ kind }) => kind)).toEqual(PROMPT_SECTION_ORDER);
+    expect(first.sections.map(({ kind }) => kind)).not.toContain('ITERATION');
     expect(first.budget.characters).toBe(JSON.stringify(first).length);
+  });
+
+  it('includes the optional ITERATION section for explicit correction prepares', async () => {
+    const context = await new ContextBuilderService().build(await createContextInput());
+    const service = new PromptOrchestratorService();
+    const iterationFeedback = {
+      schemaVersion: 1 as const,
+      kind: 'CORRECTION' as const,
+      apply: {
+        status: 'APPLIED' as const,
+        createdPaths: ['src/example.ts'],
+        updatedPaths: [],
+        deletedPaths: [],
+        skippedPaths: [],
+        errors: [],
+        warnings: [],
+      },
+      verification: {
+        status: 'FAILED' as const,
+        stages: [],
+        topErrors: [{ code: 'BUILD_FAILED', message: 'Compilation failed.' }],
+      },
+    };
+    const packageValue = await service.build({ context, iterationFeedback });
+    const iteration = packageValue.sections.find(({ kind }) => kind === 'ITERATION');
+    expect(iteration?.kind).toBe('ITERATION');
+    const rulesIndex = packageValue.sections.findIndex(({ kind }) => kind === 'RULES');
+    const iterationIndex = packageValue.sections.findIndex(({ kind }) => kind === 'ITERATION');
+    expect(iterationIndex).toBeGreaterThan(-1);
+    expect(rulesIndex).toBeGreaterThan(iterationIndex);
+  });
+
+  it('includes minimal-artifact correction guidance only for iteration prepares', async () => {
+    const context = await new ContextBuilderService().build(await createContextInput());
+    const service = new PromptOrchestratorService();
+    const ordinary = await service.build({ context, metadata: { task: 'test' } });
+    expect(ordinary.sections.map(({ kind }) => kind)).not.toContain('ITERATION');
+
+    const iterationFeedback = {
+      schemaVersion: 1 as const,
+      kind: 'CORRECTION' as const,
+      apply: {
+        status: 'APPLIED' as const,
+        createdPaths: [],
+        updatedPaths: ['src/application/workspace/example.ts'],
+        deletedPaths: [],
+        skippedPaths: [],
+        errors: [],
+        warnings: [],
+      },
+    };
+    const correction = await service.build({ context, iterationFeedback });
+    const iteration = correction.sections.find(({ kind }) => kind === 'ITERATION');
+    expect(iteration?.kind).toBe('ITERATION');
+    if (iteration?.kind !== 'ITERATION') throw new Error('Expected ITERATION section.');
+    const instructionText = iteration.instructions.map(({ text }) => text).join(' ');
+    expect(instructionText).toMatch(/Emit artifacts only for files/i);
+    expect(instructionText).toMatch(/Do not emit unchanged files/i);
+    expect(instructionText).toMatch(/complete resulting file content/i);
+    expect(correction.template.version).toBe(3);
+
+    const output = correction.sections.find(({ kind }) => kind === 'OUTPUT_CONTRACT');
+    expect(output?.kind === 'OUTPUT_CONTRACT' && output.expectedOutput).toEqual(
+      DEFAULT_PROMPT_OUTPUT_CONTRACT,
+    );
   });
 
   it('places identity, task, goals, constraints, architecture, context, rules, and output contract once', async () => {

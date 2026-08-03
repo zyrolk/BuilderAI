@@ -26,7 +26,7 @@ describe('DependencyResolutionService', () => {
     const resolution = await service.resolveFiles(
       ['src/core/project-brain/feature-reader.ts'],
       sourceWithExternalReference('{"schemaVersion":1}'),
-      new Set(['feature', 'reader']),
+      'Define the feature reader for project brain context.',
       [],
       [],
       4,
@@ -43,7 +43,7 @@ describe('DependencyResolutionService', () => {
       service.resolveFiles(
         ['src/core/project-brain/feature-reader.ts'],
         sourceWithExternalReference(),
-        new Set(['feature', 'reader']),
+        'Define the feature reader for project brain context.',
         [],
         [],
         4,

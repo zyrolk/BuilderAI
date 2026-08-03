@@ -1,6 +1,7 @@
 import type { ContextDocument, ContextPackage } from '../../context-builder';
 import type {
   PromptInstruction,
+  PromptIterationContent,
   PromptOutputContract,
   PromptSection,
   PromptTemplate,
@@ -22,10 +23,12 @@ export class PromptSectionBuilder {
     template: PromptTemplate,
     context: ContextPackage,
     expectedOutput: PromptOutputContract,
+    iterationFeedback?: PromptIterationContent,
   ): readonly PromptSection[] {
-    const sections = template.sections.map((section) =>
-      this.buildSection(section, context, expectedOutput),
-    );
+    const sections = template.sections.flatMap((section) => {
+      const built = this.buildSection(section, context, expectedOutput, iterationFeedback);
+      return built === undefined ? [] : [built];
+    });
     return deduplicateInstructions(sections);
   }
 
@@ -33,7 +36,8 @@ export class PromptSectionBuilder {
     templateSection: PromptTemplateSection,
     context: ContextPackage,
     expectedOutput: PromptOutputContract,
-  ): PromptSection {
+    iterationFeedback?: PromptIterationContent,
+  ): PromptSection | undefined {
     const base = {
       id: templateSection.id,
       required: templateSection.required,
@@ -68,6 +72,14 @@ export class PromptSectionBuilder {
           task: context.currentTask,
           goals: context.goals,
           constraints: context.constraints,
+        };
+      case 'ITERATION':
+        if (iterationFeedback === undefined) return undefined;
+        return {
+          ...base,
+          kind: 'ITERATION',
+          instructions: templateInstructions(templateSection.instructions),
+          feedback: iterationFeedback,
         };
       case 'RULES':
         return {

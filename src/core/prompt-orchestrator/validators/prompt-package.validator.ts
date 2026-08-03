@@ -120,6 +120,10 @@ export class PromptPackageValidator {
         case 'TASK':
           validateExactKeys(section, [...common, 'task', 'goals', 'constraints'], path, issues);
           break;
+        case 'ITERATION':
+          validateExactKeys(section, [...common, 'instructions', 'feedback'], path, issues);
+          this.validateInstructionKeys(section.instructions, `${path}.instructions`, issues);
+          break;
         case 'RULES':
         case 'SAFETY':
           validateExactKeys(section, [...common, 'instructions'], path, issues);
@@ -193,7 +197,7 @@ export class PromptPackageValidator {
       if (!isNonEmptyString(section.id)) {
         addIssue(issues, 'INVALID_PROMPT_STRUCTURE', '$.sections.id', 'is required');
       }
-      if (section.kind !== 'CONTEXT' && !section.required) {
+      if (section.kind !== 'CONTEXT' && section.kind !== 'ITERATION' && !section.required) {
         addIssue(
           issues,
           'MISSING_REQUIRED_SECTION',
@@ -202,6 +206,14 @@ export class PromptPackageValidator {
         );
       }
       if (section.kind === 'CONTEXT' && section.required) {
+        addIssue(
+          issues,
+          'INVALID_PROMPT_STRUCTURE',
+          `$.sections.${section.id}.required`,
+          'must be false',
+        );
+      }
+      if (section.kind === 'ITERATION' && section.required) {
         addIssue(
           issues,
           'INVALID_PROMPT_STRUCTURE',
@@ -480,6 +492,8 @@ function hasPromptSectionStructure(value: unknown): value is PromptSection {
         hasRecordArray(value.context.openBlockers) &&
         hasRecordArray(value.context.relevantDocumentation)
       );
+    case 'ITERATION':
+      return hasInstructionArray(value.instructions) && isRecord(value.feedback);
     case 'OUTPUT_CONTRACT':
       return isRecord(value.expectedOutput);
     default:

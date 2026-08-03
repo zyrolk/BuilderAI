@@ -39,14 +39,23 @@ export class ChangeRiskService {
   createWarnings(
     operations: readonly ProjectChangeOperation[],
     responseWarnings: readonly { readonly code: string; readonly message: string }[],
+    workspaceStateVerified: boolean,
   ): readonly ProjectChangeWarning[] {
+    const operationIds = operations.map(({ operationId }) => operationId).sort(compareText);
     const warnings: ProjectChangeWarning[] = [
-      {
-        code: 'UNVERIFIED_PROJECT_STATE',
-        message:
-          'The planner does not read project state, so create, update, and delete preconditions are not verified.',
-        operationIds: operations.map(({ operationId }) => operationId).sort(compareText),
-      },
+      workspaceStateVerified
+        ? {
+            code: 'PARTIALLY_VERIFIED_PROJECT_STATE',
+            message:
+              'The planner checked create, update, and delete target existence against the workspace. Symlinks, permissions, content drift, and concurrent changes remain unverified until Safe File Apply executes.',
+            operationIds,
+          }
+        : {
+            code: 'UNVERIFIED_PROJECT_STATE',
+            message:
+              'The planner does not read project state, so create, update, and delete preconditions are not verified.',
+            operationIds,
+          },
       ...responseWarnings.map(({ code, message }) => ({
         code: `RESPONSE_${code}`,
         message,

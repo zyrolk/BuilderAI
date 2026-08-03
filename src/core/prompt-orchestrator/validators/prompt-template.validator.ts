@@ -79,11 +79,14 @@ export class PromptTemplateValidator {
       else addIssue(issues, 'INVALID_TEMPLATE', `${path}.kind`, 'is required');
       if (typeof section.required !== 'boolean') {
         addIssue(issues, 'INVALID_TEMPLATE', `${path}.required`, 'must be a boolean');
-      } else if (section.kind !== 'CONTEXT' && !section.required) {
+      } else if (section.kind !== 'CONTEXT' && section.kind !== 'ITERATION' && !section.required) {
         addIssue(issues, 'INVALID_TEMPLATE', `${path}.required`, 'must be true for this section');
       }
       if (section.kind === 'CONTEXT' && section.required) {
         addIssue(issues, 'INVALID_TEMPLATE', `${path}.required`, 'must be false for CONTEXT');
+      }
+      if (section.kind === 'ITERATION' && section.required) {
+        addIssue(issues, 'INVALID_TEMPLATE', `${path}.required`, 'must be false for ITERATION');
       }
       if (!Array.isArray(section.instructions)) {
         addIssue(issues, 'INVALID_TEMPLATE', `${path}.instructions`, 'must be an array');

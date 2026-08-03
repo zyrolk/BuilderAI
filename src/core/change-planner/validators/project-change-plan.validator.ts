@@ -1,4 +1,9 @@
-import { isSafeLogicalPath, RESPONSE_PACKAGE_SCHEMA_VERSION } from '../../response-processor';
+import {
+  isSafeLogicalPath,
+  RESPONSE_ARTIFACT_TYPES,
+  RESPONSE_PACKAGE_SCHEMA_VERSION,
+  type ResponseArtifactType,
+} from '../../response-processor';
 import type { ChangePlannerConfiguration } from '../config';
 import { DEFAULT_CHANGE_PLANNER_CONFIGURATION } from '../config';
 import { ChangeConflictDetectorService } from '../services/change-conflict-detector.service';
@@ -161,11 +166,7 @@ export class ProjectChangePlanValidator {
         'must be a normalized repository-relative POSIX path',
       );
     }
-    if (
-      !['SOURCE_FILE', 'DOCUMENTATION', 'CONFIGURATION', 'TEST'].includes(
-        String(value.artifactType),
-      )
-    ) {
+    if (!isResponseArtifactType(value.artifactType)) {
       addIssue(issues, 'UNSUPPORTED_CHANGE', `${path}.artifactType`, 'is unsupported');
     }
     if (typeof value.description !== 'string' || value.description.trim().length === 0) {
@@ -393,6 +394,13 @@ function isChangeOperationKind(value: unknown): value is ChangeOperationKind {
   return (
     typeof value === 'string' &&
     CHANGE_OPERATION_KINDS.some((operationKind) => operationKind === value)
+  );
+}
+
+function isResponseArtifactType(value: unknown): value is ResponseArtifactType {
+  return (
+    typeof value === 'string' &&
+    RESPONSE_ARTIFACT_TYPES.some((artifactType) => artifactType === value)
   );
 }
 

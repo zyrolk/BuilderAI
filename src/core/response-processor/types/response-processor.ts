@@ -14,7 +14,6 @@ export const RESPONSE_ARTIFACT_TYPES = [
   'DOCUMENTATION',
   'CONFIGURATION',
   'TEST',
-  'PATCH',
 ] as const;
 
 export type ResponseArtifactType = (typeof RESPONSE_ARTIFACT_TYPES)[number];

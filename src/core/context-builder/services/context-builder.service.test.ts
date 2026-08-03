@@ -27,8 +27,8 @@ describe('ContextBuilderService', () => {
       'src/core/context-builder',
     ]);
     expect(packageValue.relevantFiles.map(({ path }) => path)).toEqual([
-      'src/core/context-builder/context-builder.ts',
       'src/core/context-builder/dependency.ts',
+      'src/core/context-builder/context-builder.ts',
     ]);
     expect(packageValue.relevantDecisions.map(({ id }) => id)).toEqual(['context-boundary']);
     expect(packageValue.knownRisks).toContainEqual(
@@ -301,8 +301,8 @@ describe('ContextBuilderService', () => {
     const packageValue = await service.build({ ...input, sourceFileSource: source });
 
     expect(source.readPaths).toEqual([
-      'src/core/context-builder/context-builder.ts',
       'src/core/context-builder/dependency.ts',
+      'src/core/context-builder/context-builder.ts',
     ]);
     expect(packageValue.size.sourceReads).toBe(2);
     expect(source.readPaths).not.toContain('src/features/authentication/authentication.ts');

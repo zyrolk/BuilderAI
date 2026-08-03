@@ -213,6 +213,33 @@ export class ContextInputValidator {
       currentTask,
       sourceFileSource: input.sourceFileSource,
       sourcePaths,
+      iterationPathHints: validateIterationPathHints(input.iterationPathHints, issues),
     };
   }
+}
+
+function validateIterationPathHints(
+  value: readonly string[] | undefined,
+  issues: ContextValidationIssue[],
+): readonly string[] {
+  if (value === undefined || value.length === 0) return [];
+  const hints: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, candidate] of value.entries()) {
+    if (typeof candidate !== 'string') continue;
+    const normalized = normalizeProjectPath(candidate);
+    if (!isSafeProjectPath(normalized)) {
+      issues.push({
+        code: 'INVALID_REFERENCE',
+        path: `$.iterationPathHints[${index}]`,
+        message: 'must be a safe repository-relative path',
+      });
+      continue;
+    }
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    hints.push(normalized);
+    if (hints.length >= 8) break;
+  }
+  return hints;
 }

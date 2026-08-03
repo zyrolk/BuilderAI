@@ -15,30 +15,58 @@ describe('local workspace request guard', () => {
     expect(() => assertTrustedLocalRequest(request)).not.toThrow();
   });
 
+  it('accepts trusted local bodyless GET with browser-style headers', () => {
+    const request = new Request('http://localhost:3000/api/workspace/feature/plan', {
+      method: 'GET',
+      headers: { origin: 'http://localhost:3000', Accept: 'application/json' },
+    });
+
+    expect(() => assertTrustedLocalRequest(request)).not.toThrow();
+  });
+
   it.each([
     [
-      'remote host',
+      'remote host GET',
+      'GET',
+      'https://builder.example/api/workspace/feature/plan',
+      'https://builder.example',
+      undefined,
+    ],
+    [
+      'cross origin GET',
+      'GET',
+      'http://localhost:3000/api/workspace/feature/plan',
+      'http://evil.example',
+      undefined,
+    ],
+    [
+      'remote host POST',
+      'POST',
       'https://builder.example/api/workspace/prepare',
       'https://builder.example',
       'application/json',
     ],
     [
-      'cross origin',
+      'cross origin POST',
+      'POST',
       'http://localhost:3000/api/workspace/prepare',
       'http://evil.example',
       'application/json',
     ],
     [
-      'non JSON',
+      'non JSON POST',
+      'POST',
       'http://localhost:3000/api/workspace/prepare',
       'http://localhost:3000',
       'text/plain',
     ],
-  ])('rejects %s', (_case, url, origin, contentType) => {
+  ])('rejects %s', (_case, method, url, origin, contentType) => {
+    const headers: Record<string, string> = { origin };
+    if (contentType !== undefined) headers['content-type'] = contentType;
     const request = new Request(url, {
-      method: 'POST',
-      headers: { origin, 'content-type': contentType },
-      body: '{}',
+      method,
+      headers,
+      ...(method === 'POST' ? { body: '{}' } : {}),
     });
     expect(() => assertTrustedLocalRequest(request)).toThrow(LocalRequestRejectedError);
   });

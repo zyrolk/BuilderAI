@@ -13,7 +13,7 @@ describe('prompt budgeting', () => {
       { context },
       {
         templateId: 'builderai-standard',
-        templateVersion: 1,
+        templateVersion: 3,
         maximumCharacters:
           full.budget.characters - Math.floor(JSON.stringify(contextSection).length / 2),
       },
@@ -31,7 +31,7 @@ describe('prompt budgeting', () => {
     await expect(
       new PromptOrchestratorService().build(
         { context },
-        { templateId: 'builderai-standard', templateVersion: 1, maximumCharacters: 100 },
+        { templateId: 'builderai-standard', templateVersion: 3, maximumCharacters: 100 },
       ),
     ).rejects.toBeInstanceOf(PromptOrchestratorValidationError);
   });

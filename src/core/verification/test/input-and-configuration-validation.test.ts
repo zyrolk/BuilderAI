@@ -11,14 +11,14 @@ import {
 import { createAppliedResult, createPortHarness } from './verification.fixture';
 
 describe('verification input and configuration validation', () => {
-  it.each(['REJECTED', 'FAILED', 'PARTIALLY_APPLIED'] as const)(
-    'rejects a %s File Apply Result without invoking ports',
+  it.each(['REJECTED', 'FAILED'] as const)(
+    'rejects a %s File Apply Result (zero mutations) without invoking ports (P1-7)',
     async (status) => {
       const harness = createPortHarness();
       const errors = [{ code: 'INVALID_RESULT' as const, message: 'Apply did not complete' }];
       const input = createAppliedResult({
         status,
-        createdFiles: status === 'PARTIALLY_APPLIED' ? ['src/new.ts'] : [],
+        createdFiles: [],
         updatedFiles: [],
         deletedFiles: [],
         skippedFiles: status === 'REJECTED' ? ['src/new.ts'] : [],

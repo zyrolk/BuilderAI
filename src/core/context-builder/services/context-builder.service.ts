@@ -1,9 +1,17 @@
 import {
+  CONTEXT_PACKAGE_RESERVED_HEADROOM_CHARACTERS,
   CONTEXT_PRIORITIES,
   DEFAULT_CONTEXT_LIMITS,
   ContextBuilderValidationError,
 } from '../types';
-import type { ContextBuildInput, ContextLimits, ContextPackage } from '../types';
+import type {
+  ContextBuildInput,
+  ContextLimits,
+  ContextOmission,
+  ContextPackage,
+  ContextSourceFile,
+} from '../types';
+import { admitSourceFilesByMeasuredBudget } from '../internal/source-file-admission';
 import { ContextInputValidator, ContextPackageValidator } from '../validators';
 import { ContextSelectionService } from './context-selection.service';
 import { ContextSizeService, type ContextPackageDraft } from './context-size.service';
@@ -35,7 +43,7 @@ export class ContextBuilderService {
     }
     const validated = this.inputValidator.validate(input, limits, sourcePaths);
     const selection = await this.selectionService.select(validated, limits);
-    const draft: ContextPackageDraft = {
+    const draftWithoutFiles: ContextPackageDraft = {
       schemaVersion: 1,
       priorityOrder: CONTEXT_PRIORITIES,
       projectIdentity: {
@@ -50,17 +58,39 @@ export class ContextBuilderService {
       constraints: selection.constraints,
       architectureSummary: validated.reader.analysis.architecture,
       relevantModules: selection.modules,
-      relevantFiles: selection.files,
+      relevantFiles: [],
       relevantDecisions: selection.decisions,
       codingStandards: selection.codingStandards,
       knownRisks: selection.risks,
       openBlockers: selection.blockers,
       relevantDocumentation: selection.documents,
     };
+    const targetMaxCharacters = limits.maxCharacters - CONTEXT_PACKAGE_RESERVED_HEADROOM_CHARACTERS;
+    const measureFiles = (
+      files: readonly ContextSourceFile[],
+      fileOmissions: readonly ContextOmission[],
+    ) =>
+      this.sizeService.measure(
+        { ...draftWithoutFiles, relevantFiles: files },
+        limits,
+        [...selection.omissions, ...fileOmissions],
+        selection.sourcePaths,
+        selection.sourceReads,
+      );
+    const { admitted, omissions: fileOmissions } = admitSourceFilesByMeasuredBudget(
+      selection.files,
+      limits.maxFiles,
+      targetMaxCharacters,
+      measureFiles,
+    );
+    const draft: ContextPackageDraft = {
+      ...draftWithoutFiles,
+      relevantFiles: admitted,
+    };
     const packageValue = this.sizeService.enforce(
       draft,
       limits,
-      selection.omissions,
+      [...selection.omissions, ...fileOmissions],
       selection.sourcePaths,
       selection.sourceReads,
     );
