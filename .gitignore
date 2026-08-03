@@ -47,5 +47,5 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 
-# deployment providers
-.vercel
+# local BuilderAI workflow state
+.builderai/

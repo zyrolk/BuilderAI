@@ -86,15 +86,37 @@
 }
 
 .sidebar,
-.resultsPanel {
+.resultsPanel,
+.resultsColumn {
   min-width: 0;
   background: rgb(12 16 25 / 72%);
 }
 .sidebar {
   border-right: 1px solid #202531;
 }
+.resultsColumn {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #202531;
+}
 .resultsPanel {
   border-left: 1px solid #202531;
+}
+.resultsColumn .resultsPanel {
+  border-left: 0;
+  flex: 1 1 auto;
+}
+.activityHistorySection {
+  border-top: 1px solid #202531;
+  flex: 0 0 auto;
+  max-height: 50vh;
+  overflow: auto;
+}
+.historyRefreshing {
+  margin: 0;
+  padding: 0.45rem 1rem 0;
+  color: #7f8798;
+  font-size: 0.64rem;
 }
 .sidebarBlock {
   padding: 1.25rem;
@@ -707,11 +729,169 @@
 .compactFindings {
   margin-top: 0.65rem;
 }
+.stageMetadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  margin: 0.6rem 0 0;
+}
+.stageMetadata div {
+  display: flex;
+  gap: 0.3rem;
+}
+.stageMetadata dt {
+  margin: 0;
+  color: #757e90;
+  font-size: 0.6rem;
+}
+.stageMetadata dd {
+  margin: 0;
+  color: #bcb3a7;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.activityHistoryPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.activityHistoryCount {
+  color: #7f8798;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.activityHistoryLayout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 14rem) minmax(0, 1fr);
+  gap: 0;
+  min-height: 18rem;
+}
+.activityHistoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0 1rem 1rem;
+  border-right: 1px solid #202531;
+  outline: none;
+}
+.activityHistoryItem,
+.activityHistoryItemSelected {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid #252b39;
+  border-radius: 0.75rem;
+  background: #101522;
+  color: #dce0ea;
+  text-align: left;
+  cursor: pointer;
+}
+.activityHistoryItemSelected {
+  border-color: #6f63ff;
+  background: rgb(111 99 255 / 10%);
+  box-shadow: inset 0 0 0 1px rgb(111 99 255 / 35%);
+}
+.activityHistoryItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.activityHistoryItemHeader strong {
+  font-size: 0.74rem;
+}
+.activityHistoryItem time,
+.activityHistoryItemSelected time {
+  color: #7f8798;
+  font-size: 0.64rem;
+}
+.activityHistoryItemPaths {
+  margin: 0;
+  color: #9aa3b5;
+  font-size: 0.62rem;
+}
+.activityHistoryDetail {
+  padding: 0 1.25rem 1.25rem;
+}
+.activityHistoryDetailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.activityHistoryDetailHeader h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.activityHistoryMeta {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+}
+.activityHistoryMeta div {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+}
+.activityHistoryMeta dt {
+  min-width: 6.5rem;
+  margin: 0;
+  color: #757e90;
+  font-size: 0.64rem;
+}
+.activityHistoryMeta dd {
+  margin: 0;
+  color: #dce0ea;
+  font-size: 0.72rem;
+}
+.activityHistorySummary {
+  margin: 0 0 1rem;
+  padding-left: 1.1rem;
+  color: #b8bfcd;
+  font-size: 0.68rem;
+}
+.statusRunning,
+.statusCompleted,
+.statusPartial,
+.statusPassed,
+.statusFailed {
+  display: inline-block;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.statusRunning {
+  background: #1d2940;
+  color: #8eb6ff;
+}
+.statusCompleted {
+  background: #15382c;
+  color: #69dfae;
+}
+.statusPartial {
+  background: #3a2f18;
+  color: #f2c46b;
+}
+.statusPassed {
+  background: #15382c;
+  color: #69dfae;
+}
+.statusFailed {
+  background: #3b1b22;
+  color: #ff8995;
+}
 
 @media (max-width: 1180px) {
   .workspaceGrid {
     grid-template-columns: 13rem minmax(28rem, 1fr);
   }
+  .resultsColumn,
   .resultsPanel {
     grid-column: 1 / -1;
     border-top: 1px solid #202531;
@@ -719,6 +899,14 @@
   }
   .tabPanel {
     min-height: 18rem;
+  }
+  .activityHistoryLayout {
+    grid-template-columns: 1fr;
+  }
+  .activityHistoryList {
+    border-right: 0;
+    border-bottom: 1px solid #202531;
+    padding-bottom: 0.85rem;
   }
 }
 
@@ -780,4 +968,57 @@
   .formFooter button {
     max-width: 10rem;
   }
+}
+
+.featurePanel {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.featurePlanCard header {
+  margin-bottom: 0.75rem;
+}
+
+.featurePlanCard header p {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.featureTaskList {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.featureTaskList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.featureTaskList li[data-status='READY'] {
+  border-color: rgba(120, 190, 255, 0.35);
+}
+
+.featureTaskList li[data-status='IN_PROGRESS'] {
+  border-color: rgba(255, 200, 120, 0.35);
+}
+
+.featureTaskList li[data-status='COMPLETED'] {
+  border-color: rgba(120, 220, 160, 0.35);
+}
+
+.featureTaskActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: flex-end;
 }

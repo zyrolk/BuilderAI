@@ -3,15 +3,43 @@ import type { ChangePlannerService } from '../../core/change-planner';
 import type { ContextBuilderService, ProjectFileSource } from '../../core/context-builder';
 import type { ExecutionCancellationToken } from '../../core/execution-engine';
 import type { ExecutionRequest } from '../../core/execution-engine';
-import type { FileApplyEngineService } from '../../core/file-apply';
+import {
+  isVerificationEligibleFileApplyResult,
+  isZeroMutationFileApplyResult,
+  type FileApplyEngineService,
+  type FileApplyResult,
+} from '../../core/file-apply';
 import { parseProjectBrain, type ProjectBrain, type ProjectTask } from '../../core/project-brain';
-import type { PromptOrchestratorService } from '../../core/prompt-orchestrator';
+import type {
+  PromptIterationContent,
+  PromptOrchestratorService,
+} from '../../core/prompt-orchestrator';
 import type { ResponseProcessorService } from '../../core/response-processor';
-import type { VerificationEngineService } from '../../core/verification';
-import { InMemoryPreparationStore } from './in-memory-preparation.store';
+import type { VerificationEngineService, VerificationReport } from '../../core/verification';
+import type { ActivityHistoryService } from './activity-history.service';
+import type { WorkspaceActivity } from './activity-history.types';
+import {
+  createFileApplicationCompletedActivity,
+  createFileApplicationFailedActivity,
+  createVerificationCompletedActivity,
+  summarizeChangePlan,
+  type ActivityHistoryIdentity,
+} from './workspace-activity-history.mapper';
+import {
+  buildFeatureTaskRequest,
+  createFeatureTransientTask,
+  createShadowDependencyTasks,
+} from './feature-plan.service';
+import type { FeatureTaskPrepareInput } from './workspace-runtime.types';
+import { InMemoryPreparationStore, MAXIMUM_APPLY_ATTEMPTS } from './in-memory-preparation.store';
+import {
+  extractIterationPathHints,
+  normalizeIterationFeedback,
+} from './iteration-feedback.service';
 import {
   DEFAULT_WORKSPACE_RUNTIME_CONFIGURATION,
   WorkspaceRuntimeError,
+  type FeatureTaskPreparationBinding,
   type ProviderExecutionPort,
   type WorkspaceCompletion,
   type WorkspacePreparation,
@@ -35,6 +63,7 @@ interface WorkspaceRuntimeDependencies {
   readonly clock: WorkspaceRuntimeClock;
   readonly ids: WorkspaceRuntimeIdGenerator;
   readonly logger: WorkspaceRuntimeLogger;
+  readonly activityHistory?: ActivityHistoryService;
   readonly configuration?: WorkspaceRuntimeConfiguration;
 }
 
@@ -51,8 +80,16 @@ export class WorkspaceRuntimeService {
     );
   }
 
-  async prepare(request: string): Promise<WorkspacePreparation> {
+  async prepare(request: string, iterationFeedbackInput?: unknown): Promise<WorkspacePreparation> {
     const normalizedRequest = validateRequest(request);
+    const normalizedFeedback =
+      iterationFeedbackInput === undefined
+        ? undefined
+        : normalizeIterationFeedback(iterationFeedbackInput, {
+            priorRequestSummary: readOptionalPriorSummary(iterationFeedbackInput),
+          });
+    const iterationPathHints =
+      normalizedFeedback === undefined ? [] : extractIterationPathHints(normalizedFeedback);
     const correlationId = this.dependencies.ids.generate();
     const startedAt = this.dependencies.clock.now();
     this.log(correlationId, 'PREPARE', 'STARTED');
@@ -71,16 +108,20 @@ export class WorkspaceRuntimeService {
       }
       const requestedAt = startedAt.toISOString();
       const transientTask = createTransientTask(correlationId, normalizedRequest, requestedAt);
-      const executionBrain = createExecutionBrain(canonicalBrain, transientTask);
+      const executionBrain = createExecutionBrain(canonicalBrain, [transientTask]);
       const context = await this.dependencies.contextBuilder.build({
         projectBrain: executionBrain,
         blueprintReaderOutput: readerOutput,
         currentTaskId: transientTask.id,
         sourceFileSource: this.dependencies.sourceFiles,
+        ...(iterationPathHints.length === 0 ? {} : { iterationPathHints }),
       });
       const prompt = await this.dependencies.promptOrchestrator.build({
         context,
         metadata: { 'correlation-id': correlationId, source: 'workspace' },
+        ...(normalizedFeedback === undefined
+          ? {}
+          : { iterationFeedback: normalizedFeedback as PromptIterationContent }),
       });
       const executionRequest = createExecutionRequest(
         correlationId,
@@ -110,6 +151,127 @@ export class WorkspaceRuntimeService {
     }
   }
 
+  async prepareFeatureTask(input: FeatureTaskPrepareInput): Promise<WorkspacePreparation> {
+    const taskRequest =
+      input.request.trim().length > 0 ? input.request.trim() : buildFeatureTaskRequest(input.task);
+    const normalizedRequest = validateRequest(taskRequest);
+    const normalizedFeedback = input.iterationFeedback;
+    const iterationPathHints = mergePathHints(
+      input.task.expectedAreas,
+      input.iterationPathHints ?? [],
+      normalizedFeedback === undefined ? [] : extractIterationPathHints(normalizedFeedback),
+    );
+    const correlationId = this.dependencies.ids.generate();
+    const startedAt = this.dependencies.clock.now();
+    const featureBinding: FeatureTaskPreparationBinding = {
+      featurePlanId: input.plan.featurePlanId,
+      taskId: input.task.taskId,
+    };
+    this.log(correlationId, 'PREPARE_FEATURE_TASK', 'STARTED');
+    await this.recordFeatureActivity({
+      binding: featureBinding,
+      correlationId,
+      activity: {
+        type: 'TASK_PREPARATION_STARTED',
+        payload: {},
+      },
+    });
+    try {
+      const canonicalBrain = this.dependencies.loadProjectBrain();
+      const readerOutput = await this.dependencies.blueprintReader.read();
+      if (
+        !readerOutput.valid ||
+        readerOutput.analysis === undefined ||
+        readerOutput.summary === undefined
+      ) {
+        throw new WorkspaceRuntimeError(
+          'PROJECT_CONTEXT_INVALID',
+          'Project documentation did not pass Blueprint Reader validation.',
+        );
+      }
+      const requestedAt = startedAt.toISOString();
+      const shadowTasks = createShadowDependencyTasks(input.plan, input.task, requestedAt);
+      const transientTask = createFeatureTransientTask(
+        input.plan,
+        input.task,
+        normalizedRequest,
+        correlationId,
+        requestedAt,
+        shadowTasks,
+      );
+      const executionBrain = createExecutionBrain(canonicalBrain, [...shadowTasks, transientTask]);
+      const context = await this.dependencies.contextBuilder.build({
+        projectBrain: executionBrain,
+        blueprintReaderOutput: readerOutput,
+        currentTaskId: transientTask.id,
+        sourceFileSource: this.dependencies.sourceFiles,
+        ...(iterationPathHints.length === 0 ? {} : { iterationPathHints }),
+      });
+      const prompt = await this.dependencies.promptOrchestrator.build({
+        context,
+        metadata: {
+          'correlation-id': correlationId,
+          source: 'workspace-feature-task',
+          'feature-plan-id': input.plan.featurePlanId,
+          'task-id': input.task.taskId,
+        },
+        ...(normalizedFeedback === undefined
+          ? {}
+          : { iterationFeedback: normalizedFeedback as PromptIterationContent }),
+      });
+      const executionRequest = createExecutionRequest(
+        correlationId,
+        prompt,
+        requestedAt,
+        this.configuration.providerTimeoutMs,
+      );
+      const providerOutput = await this.dependencies.providerExecution.execute(executionRequest);
+      const responsePackage = await this.dependencies.responseProcessor.process({
+        providerResponse: providerOutput.providerResponse,
+        executionResult: providerOutput.executionResult,
+        metadata: { 'correlation-id': correlationId },
+      });
+      const changePlan = this.dependencies.changePlanner.plan(responsePackage);
+      const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
+      this.store.save(correlationId, changePlan, expiresAt, featureBinding);
+      const durationMs = Math.max(0, this.dependencies.clock.now().getTime() - startedAt.getTime());
+      await this.recordFeatureActivity({
+        binding: featureBinding,
+        correlationId,
+        activity: {
+          type: 'TASK_PREPARATION_COMPLETED',
+          payload: {
+            durationMs,
+            changePlanSummary: summarizeChangePlan(changePlan),
+          },
+        },
+      });
+      this.log(correlationId, 'PREPARE_FEATURE_TASK', 'SUCCEEDED', startedAt);
+      return {
+        preparationId: correlationId,
+        expiresAt: expiresAt.toISOString(),
+        responsePackage,
+        changePlan,
+      };
+    } catch (error: unknown) {
+      const durationMs = Math.max(0, this.dependencies.clock.now().getTime() - startedAt.getTime());
+      await this.recordFeatureActivity({
+        binding: featureBinding,
+        correlationId,
+        activity: {
+          type: 'TASK_PREPARATION_FAILED',
+          payload: {
+            durationMs,
+            errorCode: safeCode(error),
+            errorMessage: safeMessage(error),
+          },
+        },
+      });
+      this.log(correlationId, 'PREPARE_FEATURE_TASK', 'FAILED', startedAt, safeCode(error));
+      throw error;
+    }
+  }
+
   async approveAndApply(preparationId: string, approved: boolean): Promise<WorkspaceCompletion> {
     if (!approved) {
       throw new WorkspaceRuntimeError('APPROVAL_REQUIRED', 'Explicit approval is required.');
@@ -121,22 +283,160 @@ export class WorkspaceRuntimeService {
     this.log(preparationId, 'APPLY_AND_VERIFY', 'STARTED');
     const claim = this.store.claim(preparationId);
     if (claim.kind === 'COMPLETED') return claim.completion;
+    const featureBinding = claim.featureTaskBinding;
+    const applyStartedAt = this.dependencies.clock.now();
+    if (featureBinding !== undefined) {
+      await this.recordFeatureActivity({
+        binding: featureBinding,
+        correlationId: preparationId,
+        activity: {
+          type: 'FILE_APPLICATION_STARTED',
+          payload: { changePlanId: claim.plan.source.executionId },
+        },
+      });
+    }
     try {
-      const applyResult = await this.dependencies.fileApply.apply(claim.plan);
+      let applyResult: FileApplyResult;
+      try {
+        applyResult = await this.dependencies.fileApply.apply(claim.plan);
+      } catch (applyError: unknown) {
+        if (featureBinding !== undefined) {
+          const durationMs = Math.max(
+            0,
+            this.dependencies.clock.now().getTime() - applyStartedAt.getTime(),
+          );
+          await this.recordFeatureActivity({
+            binding: featureBinding,
+            correlationId: preparationId,
+            activity: {
+              type: 'FILE_APPLICATION_FAILED',
+              payload: {
+                durationMs,
+                status: 'FAILED',
+                errorCode: safeCode(applyError),
+                errorMessage: safeMessage(applyError),
+              },
+            },
+          });
+        }
+        throw applyError;
+      }
+      if (featureBinding !== undefined) {
+        await this.recordApplyOutcome(featureBinding, preparationId, applyResult);
+      }
+      let verificationReport: VerificationReport | undefined;
+      if (isVerificationEligibleFileApplyResult(applyResult)) {
+        if (featureBinding !== undefined) {
+          await this.recordFeatureActivity({
+            binding: featureBinding,
+            correlationId: preparationId,
+            activity: { type: 'VERIFICATION_STARTED', payload: {} },
+          });
+        }
+        try {
+          verificationReport = await this.dependencies.verification.verify(applyResult);
+          if (featureBinding !== undefined) {
+            await this.recordActivitySafely(
+              createVerificationCompletedActivity(
+                createActivityIdentity(featureBinding, preparationId, this.dependencies),
+                verificationReport,
+              ),
+              preparationId,
+            );
+          }
+        } catch (verificationError: unknown) {
+          if (featureBinding !== undefined) {
+            const durationMs = Math.max(
+              0,
+              this.dependencies.clock.now().getTime() - applyStartedAt.getTime(),
+            );
+            await this.recordFeatureActivity({
+              binding: featureBinding,
+              correlationId: preparationId,
+              activity: {
+                type: 'VERIFICATION_FAILED',
+                payload: {
+                  durationMs,
+                  errorCode: safeCode(verificationError),
+                  errorMessage: safeMessage(verificationError),
+                },
+              },
+            });
+          }
+          throw verificationError;
+        }
+      }
       const completion: WorkspaceCompletion =
-        applyResult.status === 'APPLIED'
-          ? {
-              applyResult,
-              verificationReport: await this.dependencies.verification.verify(applyResult),
-            }
-          : { applyResult };
-      this.store.complete(preparationId, completion);
+        verificationReport === undefined ? { applyResult } : { applyResult, verificationReport };
+      /**
+       * Bounded, caller-driven Apply retry for provably zero-mutation failures (P1-6 / ADR-020).
+       * `PARTIALLY_APPLIED` and `APPLIED` (regardless of verification outcome) never satisfy
+       * `isZeroMutationFileApplyResult` and always fall through to the unconditional `complete()` below,
+       * exactly as before this change. Reclaim never happens automatically; a caller must invoke
+       * `approveAndApply` again with the same `preparationId` to trigger a genuine new
+       * `FileApplyEngineService.apply()` call, including its full fresh preflight.
+       */
+      if (isZeroMutationFileApplyResult(applyResult) && claim.attempt < MAXIMUM_APPLY_ATTEMPTS) {
+        this.store.releaseForRetry(preparationId);
+      } else {
+        this.store.complete(preparationId, completion);
+      }
       this.log(preparationId, 'APPLY_AND_VERIFY', 'SUCCEEDED', startedAt);
       return structuredClone(completion);
     } catch (error: unknown) {
       this.store.fail(preparationId);
       this.log(preparationId, 'APPLY_AND_VERIFY', 'FAILED', startedAt, safeCode(error));
       throw error;
+    }
+  }
+
+  private async recordApplyOutcome(
+    binding: FeatureTaskPreparationBinding,
+    correlationId: string,
+    applyResult: FileApplyResult,
+  ): Promise<void> {
+    const identity = createActivityIdentity(binding, correlationId, this.dependencies);
+    if (applyResult.status === 'APPLIED' || applyResult.status === 'PARTIALLY_APPLIED') {
+      await this.recordActivitySafely(
+        createFileApplicationCompletedActivity(identity, applyResult),
+        correlationId,
+      );
+      return;
+    }
+    await this.recordActivitySafely(
+      createFileApplicationFailedActivity(identity, applyResult),
+      correlationId,
+    );
+  }
+
+  private async recordFeatureActivity(input: {
+    readonly binding: FeatureTaskPreparationBinding;
+    readonly correlationId: string;
+    readonly activity: Pick<WorkspaceActivity, 'type' | 'payload'>;
+  }): Promise<void> {
+    const activity = {
+      ...createActivityIdentity(input.binding, input.correlationId, this.dependencies),
+      type: input.activity.type,
+      payload: input.activity.payload,
+    } as WorkspaceActivity;
+    await this.recordActivitySafely(activity, input.correlationId);
+  }
+
+  private async recordActivitySafely(
+    activity: WorkspaceActivity,
+    correlationId: string,
+  ): Promise<void> {
+    const recorder = this.dependencies.activityHistory;
+    if (recorder === undefined) return;
+    try {
+      await recorder.recordActivity(activity);
+    } catch (error: unknown) {
+      this.dependencies.logger.record({
+        correlationId,
+        stage: 'ACTIVITY_HISTORY_RECORD',
+        outcome: 'FAILED',
+        code: safeCode(error),
+      });
     }
   }
 
@@ -177,9 +477,32 @@ function createTransientTask(id: string, request: string, timestamp: string): Pr
   };
 }
 
-function createExecutionBrain(brain: ProjectBrain, task: ProjectTask): ProjectBrain {
-  return parseProjectBrain({ ...brain, tasks: [...brain.tasks, task] });
+function createExecutionBrain(brain: ProjectBrain, tasks: readonly ProjectTask[]): ProjectBrain {
+  return parseProjectBrain({ ...brain, tasks: [...brain.tasks, ...tasks] });
 }
+
+function mergePathHints(...lists: readonly (readonly string[])[]): readonly string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const list of lists) {
+    for (const hint of list) {
+      if (seen.has(hint)) continue;
+      seen.add(hint);
+      merged.push(hint);
+      if (merged.length >= 8) return merged;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Bounded retry policy for transient provider outages (P1-5 / ADR-019).
+ * Exactly one retry (two total provider attempts) is permitted, and only for
+ * PROVIDER_UNAVAILABLE failures. The delay is a small deterministic fixed
+ * amount; the Execution Engine remains the sole retry-policy decision owner
+ * and caps every attempt to the single overall timeout budget below.
+ */
+const RETRY_DELAY_MS = 300;
 
 function createExecutionRequest(
   executionId: string,
@@ -199,13 +522,13 @@ function createExecutionRequest(
     policy: {
       priority: 'NORMAL',
       validationMode: 'STRICT',
-      failureStrategy: 'FAIL_FAST',
+      failureStrategy: 'RETRY_THEN_FAIL',
       retry: {
-        maximumRetries: 0,
-        delayStrategy: 'NONE',
-        baseDelayMs: 0,
-        maximumDelayMs: 0,
-        retryableErrorCodes: [],
+        maximumRetries: 1,
+        delayStrategy: 'FIXED',
+        baseDelayMs: RETRY_DELAY_MS,
+        maximumDelayMs: RETRY_DELAY_MS,
+        retryableErrorCodes: ['OUTPUT_TRUNCATED', 'PROVIDER_UNAVAILABLE'],
       },
       timeout: { durationMs: timeoutMs, startsAt: 'QUEUED' },
     },
@@ -255,4 +578,29 @@ function safeCode(error: unknown): string {
     if (typeof code === 'string' && /^[A-Z0-9_]{1,80}$/u.test(code)) return code;
   }
   return 'WORKFLOW_FAILED';
+}
+
+function safeMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  return 'Workspace operation failed.';
+}
+
+function createActivityIdentity(
+  binding: FeatureTaskPreparationBinding,
+  correlationId: string,
+  dependencies: Pick<WorkspaceRuntimeDependencies, 'clock' | 'ids'>,
+): ActivityHistoryIdentity {
+  return {
+    activityId: dependencies.ids.generate(),
+    correlationId,
+    featurePlanId: binding.featurePlanId,
+    taskId: binding.taskId,
+    timestamp: dependencies.clock.now().toISOString(),
+  };
+}
+
+function readOptionalPriorSummary(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const summary = Reflect.get(value, 'priorRequestSummary');
+  return typeof summary === 'string' ? summary : undefined;
 }

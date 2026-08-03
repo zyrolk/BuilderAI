@@ -30,5 +30,27 @@ describe('Workspace report rendering', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Verification Report' }));
     expect(screen.getByText('Verification status')).toBeInTheDocument();
     expect(screen.getByText('Test Validation')).toBeInTheDocument();
-  });
+  }, 15_000);
+
+  it('renders safe scalar stage metadata (string, number, boolean) for Verification stages (P1-8)', async () => {
+    render(<WorkspaceShell project={PROJECT_VIEW} workflow={createWorkflow()} />);
+    fireEvent.change(screen.getByLabelText('Project request'), {
+      target: { value: 'Add example.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare change plan' }));
+    await screen.findByRole('heading', { name: 'Review before applying' });
+    fireEvent.click(screen.getByLabelText(/explicitly approve/i));
+    fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
+    await waitFor(() => expect(screen.getAllByText('Workflow complete')).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Verification Report' }));
+
+    expect(screen.getAllByText('Exit Code').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Package Manager')).toBeInTheDocument();
+    expect(screen.getByText('npm')).toBeInTheDocument();
+    expect(screen.getByText('Output Bytes')).toBeInTheDocument();
+    expect(screen.getByText('482')).toBeInTheDocument();
+    expect(screen.getByText('Output Truncated')).toBeInTheDocument();
+    expect(screen.getByText('No')).toBeInTheDocument();
+  }, 15_000);
 });

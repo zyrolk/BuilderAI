@@ -4,7 +4,7 @@ import {
   LocalRequestRejectedError,
   readBoundedJson,
 } from '../../../../infrastructure/workspace';
-import { getLocalWorkspaceRuntime } from '../../../../infrastructure/workspace/local-workspace-runtime';
+import { getLocalWorkspaceRuntime } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

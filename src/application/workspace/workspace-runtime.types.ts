@@ -5,6 +5,9 @@ import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
 import type { VerificationReport } from '../../core/verification';
 
+import type { FeaturePlan, FeatureTask } from './feature-plan.types';
+import type { IterationFeedback } from './iteration-feedback.types';
+
 export interface ProviderExecutionOutput {
   readonly providerResponse: AIProviderResponse;
   readonly executionResult: ExecutionResult;
@@ -41,6 +44,19 @@ export interface WorkspaceRuntimeLogger {
     readonly outcome: 'STARTED' | 'SUCCEEDED' | 'FAILED';
     readonly durationMs?: number;
     readonly code?: string;
+    readonly attempt?: number;
+    readonly boundingActive?: boolean;
+    readonly compactionActive?: boolean;
+    readonly allowlistCount?: number;
+    readonly attemptTimeoutMs?: number;
+    readonly finishReason?: string;
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+    readonly providerStatus?: number;
+    readonly providerErrorCategory?: 'RATE_LIMIT' | 'UPSTREAM_5XX' | 'TRANSPORT' | 'UNKNOWN';
+    readonly providerErrorCode?: string;
+    readonly sdkErrorName?: string;
+    readonly retryAfterMs?: number;
   }): void;
 }
 
@@ -51,15 +67,35 @@ export interface WorkspaceRuntimeConfiguration {
 }
 
 export const DEFAULT_WORKSPACE_RUNTIME_CONFIGURATION: WorkspaceRuntimeConfiguration = {
-  preparationTtlMs: 15 * 60 * 1_000,
+  // 60 minutes (P1-10): large real change plans need genuine review time without losing the
+  // AI-generated plan to elapsed time alone. Apply always re-runs its own fresh preflight regardless of
+  // how long a preparation was held, so a longer review window introduces no new filesystem-safety risk.
+  preparationTtlMs: 60 * 60 * 1_000,
   maximumPreparations: 50,
   providerTimeoutMs: 120_000,
 };
+
+export interface FeatureTaskPreparationBinding {
+  readonly featurePlanId: string;
+  readonly taskId: string;
+}
+
+export interface FeatureTaskPrepareInput {
+  readonly request: string;
+  readonly plan: FeaturePlan;
+  readonly task: FeatureTask;
+  readonly dependencyOverrides?: readonly string[];
+  readonly iterationFeedback?: IterationFeedback;
+  readonly iterationPathHints?: readonly string[];
+}
 
 export class WorkspaceRuntimeError extends Error {
   constructor(
     readonly code:
       | 'INVALID_REQUEST'
+      | 'INVALID_ITERATION_FEEDBACK'
+      | 'INVALID_FEATURE_PLAN'
+      | 'FEATURE_PLAN_NOT_FOUND'
       | 'PROJECT_CONTEXT_INVALID'
       | 'PREPARATION_NOT_FOUND'
       | 'PREPARATION_EXPIRED'

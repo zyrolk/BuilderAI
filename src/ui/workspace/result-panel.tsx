@@ -202,6 +202,7 @@ function VerificationReportView({
               <p>{stage.durationMs} ms</p>
             </div>
             <span className={statusClass(stage.status)}>{formatLabel(stage.status)}</span>
+            <StageMetadata metadata={stage.metadata} />
             <Findings title="Errors" findings={stage.errors} compact />
             <Findings title="Warnings" findings={stage.warnings} compact />
           </article>
@@ -257,6 +258,44 @@ function PathGroup({
       </ul>
     </section>
   );
+}
+
+/**
+ * Renders the safe, already-bounded scalar stage metadata (e.g. exit code, output byte count,
+ * truncation flag) that `VerificationStageResult` already carries. This never contains raw command
+ * output, command lines, system paths, environment values, or stack traces — the underlying contract
+ * (ADR-012, docs/security.md) restricts stage metadata to bounded `string | number | boolean` scalars
+ * only, so there is nothing further to redact or bound here (P1-8).
+ */
+function StageMetadata({
+  metadata,
+}: {
+  readonly metadata: Readonly<Record<string, string | number | boolean>>;
+}) {
+  const entries = Object.entries(metadata);
+  if (entries.length === 0) return null;
+  return (
+    <dl className={styles.stageMetadata}>
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <dt>{formatMetadataKey(key)}</dt>
+          <dd>{formatMetadataValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function formatMetadataKey(key: string): string {
+  return key
+    .split('-')
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
+}
+
+function formatMetadataValue(value: string | number | boolean): string {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
 }
 
 function Findings({

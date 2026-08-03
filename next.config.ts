@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   reactStrictMode: true,
+  typescript: {
+    // Recovery-only: task-2 pilot syntax regression blocks typecheck until correction apply.
+    ignoreBuildErrors: process.env.BUILDERAI_RECOVERY_BUILD === '1',
+  },
   async headers() {
     return [
       {

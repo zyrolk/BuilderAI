@@ -1,12 +1,27 @@
 import type { ProjectChangePlan } from '../../core/change-planner';
-import type { WorkspaceCompletion, WorkspaceRuntimeClock } from './workspace-runtime.types';
+import type {
+  FeatureTaskPreparationBinding,
+  WorkspaceCompletion,
+  WorkspaceRuntimeClock,
+} from './workspace-runtime.types';
 import { WorkspaceRuntimeError } from './workspace-runtime.types';
+
+/**
+ * Maximum number of total Apply attempts permitted for one preparationId (P1-6 / ADR-020): the
+ * original attempt plus at most one explicit, caller-driven retry. Reclaim is granted only when the
+ * previous attempt's `FileApplyResult` proves zero filesystem mutations occurred; every other outcome
+ * (`PARTIALLY_APPLIED`, `APPLIED`, or a zero-mutation failure that has already used both attempts)
+ * remains permanently terminal.
+ */
+export const MAXIMUM_APPLY_ATTEMPTS = 2;
 
 interface PreparationRecord {
   readonly id: string;
   readonly plan: ProjectChangePlan;
   readonly expiresAt: number;
-  state: 'READY' | 'APPLYING' | 'COMPLETED';
+  readonly featureTaskBinding?: FeatureTaskPreparationBinding;
+  state: 'READY' | 'APPLYING' | 'RECLAIMABLE' | 'COMPLETED';
+  attempts: number;
   completion?: WorkspaceCompletion;
 }
 
@@ -18,7 +33,12 @@ export class InMemoryPreparationStore {
     private readonly maximumRecords: number,
   ) {}
 
-  save(id: string, plan: ProjectChangePlan, expiresAt: Date): void {
+  save(
+    id: string,
+    plan: ProjectChangePlan,
+    expiresAt: Date,
+    featureTaskBinding?: FeatureTaskPreparationBinding,
+  ): void {
     this.removeExpired();
     while (this.records.size >= this.maximumRecords) {
       const oldest = [...this.records.values()].find(({ state }) => state !== 'APPLYING')?.id;
@@ -34,14 +54,24 @@ export class InMemoryPreparationStore {
       id,
       plan: structuredClone(plan),
       expiresAt: expiresAt.getTime(),
+      ...(featureTaskBinding === undefined ? {} : { featureTaskBinding }),
       state: 'READY',
+      attempts: 0,
     });
   }
 
-  claim(
-    id: string,
-  ):
-    | { readonly kind: 'CLAIMED'; readonly plan: ProjectChangePlan }
+  /**
+   * `READY` and `RECLAIMABLE` records are claimed identically; the original `expiresAt` set once by
+   * `save()` is never reset or extended by a reclaim, so the bounded retry window can never outlive the
+   * preparation's original TTL.
+   */
+  claim(id: string):
+    | {
+        readonly kind: 'CLAIMED';
+        readonly plan: ProjectChangePlan;
+        readonly attempt: number;
+        readonly featureTaskBinding?: FeatureTaskPreparationBinding;
+      }
     | { readonly kind: 'COMPLETED'; readonly completion: WorkspaceCompletion } {
     const record = this.records.get(id);
     if (record === undefined) {
@@ -58,9 +88,18 @@ export class InMemoryPreparationStore {
       return { kind: 'COMPLETED', completion: structuredClone(record.completion) };
     }
     record.state = 'APPLYING';
-    return { kind: 'CLAIMED', plan: structuredClone(record.plan) };
+    record.attempts += 1;
+    return {
+      kind: 'CLAIMED',
+      plan: structuredClone(record.plan),
+      attempt: record.attempts,
+      ...(record.featureTaskBinding === undefined
+        ? {}
+        : { featureTaskBinding: structuredClone(record.featureTaskBinding) }),
+    };
   }
 
+  /** Permanently terminal: the record becomes replay-only for the rest of its lifetime. */
   complete(id: string, completion: WorkspaceCompletion): void {
     const record = this.records.get(id);
     if (record === undefined || record.state !== 'APPLYING') {
@@ -68,6 +107,22 @@ export class InMemoryPreparationStore {
     }
     record.state = 'COMPLETED';
     record.completion = structuredClone(completion);
+  }
+
+  /**
+   * Releases a record that was claimed and whose Apply attempt provably produced zero filesystem
+   * mutations back to a reclaimable state, so a subsequent explicit `claim()` triggers a genuine new
+   * `FileApplyEngineService.apply()` call (fresh preflight included). Callers must only invoke this when
+   * `attempt < MAXIMUM_APPLY_ATTEMPTS`; the store does not itself decide retry eligibility from the
+   * `FileApplyResult`, it only enforces the state transition and the attempt bound already recorded by
+   * `claim()`.
+   */
+  releaseForRetry(id: string): void {
+    const record = this.records.get(id);
+    if (record === undefined || record.state !== 'APPLYING') {
+      throw new WorkspaceRuntimeError('WORKFLOW_FAILED', 'Preparation state is inconsistent.');
+    }
+    record.state = 'RECLAIMABLE';
   }
 
   fail(id: string): void {

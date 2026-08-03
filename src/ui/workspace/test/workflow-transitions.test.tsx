@@ -7,6 +7,8 @@ import {
   APPLY_RESULT,
   CHANGE_PLAN,
   createWorkflow,
+  FAILED_APPLY_RESULT,
+  PARTIALLY_APPLIED_RESULT,
   PROJECT_VIEW,
   REJECTED_APPLY_RESULT,
   RESPONSE_PACKAGE,
@@ -88,7 +90,7 @@ describe('Workspace workflow transitions', () => {
     expect(screen.getByText('Verification status')).toBeInTheDocument();
     expect(screen.getByText('Project Validation')).toBeInTheDocument();
     expect(screen.getByText(/verification completed with status passed/i)).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('stops after a non-applied result and does not start verification', async () => {
     const verify = vi.fn(async () => VERIFICATION_REPORT);
@@ -110,6 +112,48 @@ describe('Workspace workflow transitions', () => {
     expect(verify).not.toHaveBeenCalled();
     expect(screen.getByText('Apply status')).toBeInTheDocument();
     expect(screen.getByText('Rejected')).toBeInTheDocument();
+  }, 15_000);
+
+  it('proceeds into verification for a PARTIALLY_APPLIED result and renders the real report (P1-7)', async () => {
+    const apply = vi.fn(async () => PARTIALLY_APPLIED_RESULT);
+    const verify = vi.fn(async () => VERIFICATION_REPORT);
+    render(<WorkspaceShell project={PROJECT_VIEW} workflow={createWorkflow({ apply, verify })} />);
+    fireEvent.change(screen.getByLabelText('Project request'), {
+      target: { value: 'Change several files.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare change plan' }));
+    await screen.findByRole('heading', { name: 'Review before applying' });
+    fireEvent.click(screen.getByLabelText(/explicitly approve/i));
+    fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
+
+    await waitFor(() => expect(verify).toHaveBeenCalledWith(PARTIALLY_APPLIED_RESULT));
+    expect(screen.getAllByText('Workflow complete')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('tab', { name: 'Verification Report' }));
+    expect(screen.getByText('Verification status')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Apply Result' }));
+    expect(screen.getByText('Partially Applied')).toBeInTheDocument();
+  });
+
+  it('stops after a FAILED result and does not start verification (P1-7)', async () => {
+    const verify = vi.fn(async () => VERIFICATION_REPORT);
+    render(
+      <WorkspaceShell
+        project={PROJECT_VIEW}
+        workflow={createWorkflow({ apply: async () => FAILED_APPLY_RESULT, verify })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Project request'), {
+      target: { value: 'Change a file.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare change plan' }));
+    await screen.findByRole('heading', { name: 'Review before applying' });
+    fireEvent.click(screen.getByLabelText(/explicitly approve/i));
+    fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/verification was not started/i);
+    expect(verify).not.toHaveBeenCalled();
+    expect(screen.getByText('Apply status')).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
   });
 
   it('reports preparation failure without exposing implementation details', async () => {

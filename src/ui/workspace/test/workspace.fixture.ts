@@ -133,21 +133,65 @@ export const REJECTED_APPLY_RESULT: FileApplyResult = {
   metadata: { sprint: 12 },
 };
 
+export const FAILED_APPLY_RESULT: FileApplyResult = {
+  schemaVersion: 1,
+  status: 'FAILED',
+  createdFiles: [],
+  updatedFiles: [],
+  deletedFiles: [],
+  skippedFiles: [],
+  warnings: [],
+  errors: [
+    {
+      code: 'FILESYSTEM_OPERATION_FAILED',
+      message: 'The create operation failed.',
+      logicalPath: 'src/example.ts',
+      operationId: createOperationId('CREATE_FILE', 'src/example.ts'),
+    },
+  ],
+  durationMs: 2,
+  metadata: { sprint: 12 },
+};
+
+export const PARTIALLY_APPLIED_RESULT: FileApplyResult = {
+  schemaVersion: 1,
+  status: 'PARTIALLY_APPLIED',
+  createdFiles: ['src/example.ts'],
+  updatedFiles: [],
+  deletedFiles: [],
+  skippedFiles: ['src/obsolete.ts'],
+  warnings: [],
+  errors: [
+    {
+      code: 'FILESYSTEM_OPERATION_FAILED',
+      message: 'The delete operation failed midway through the plan.',
+      logicalPath: 'src/obsolete.ts',
+      operationId: createOperationId('DELETE_FILE', 'src/obsolete.ts'),
+    },
+  ],
+  durationMs: 3,
+  metadata: { sprint: 12 },
+};
+
 export const VERIFICATION_REPORT: VerificationReport = {
   schemaVersion: 1,
   status: 'PASSED',
-  stages: [
-    'PROJECT_VALIDATION',
-    'DEPENDENCY_VALIDATION',
-    'BUILD_VALIDATION',
-    'TEST_VALIDATION',
-  ].map((stage) => ({
-    stage: stage as VerificationReport['stages'][number]['stage'],
-    status: 'PASSED',
+  // BUILD_VALIDATION and TEST_VALIDATION carry representative safe scalar stage metadata (P1-8): a
+  // string, a number, and a boolean, matching the shape NodeBuildRunner/NodeTestRunner produce.
+  stages: (
+    [
+      ['PROJECT_VALIDATION', {}],
+      ['DEPENDENCY_VALIDATION', {}],
+      ['BUILD_VALIDATION', { 'exit-code': 0, 'package-manager': 'npm' }],
+      ['TEST_VALIDATION', { 'exit-code': 0, 'output-bytes': 482, 'output-truncated': false }],
+    ] as const
+  ).map(([stage, metadata]) => ({
+    stage,
+    status: 'PASSED' as const,
     warnings: [],
     errors: [],
     durationMs: 3,
-    metadata: {},
+    metadata,
   })),
   warnings: [],
   errors: [],

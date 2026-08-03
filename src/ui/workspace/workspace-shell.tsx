@@ -1,23 +1,36 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import type { FileApplyResult } from '../../core/file-apply';
+import { isVerificationEligibleFileApplyResult, type FileApplyResult } from '../../core/file-apply';
 import type { VerificationReport } from '../../core/verification';
+import { buildIterationFeedbackFromCompletion } from '../../application/workspace/iteration-feedback.service';
+import type { WorkspaceActivity } from '../../application/workspace/activity-history.types';
+import type { FeaturePlan, FeatureTask } from '../../application/workspace/feature-plan.types';
+import { ActivityHistoryPanel } from './activity-history-panel';
+import { FeatureWorkflowPanel } from './feature-workflow-panel';
+import { HttpFeatureWorkflow } from './http-feature-workflow';
 import { ResultPanel } from './result-panel';
 import { HttpWorkspaceWorkflow } from './http-workspace-workflow';
 import styles from './workspace.module.css';
-import { WorkspaceWorkflowError } from './workspace.types';
+import {
+  WorkspaceWorkflowError,
+  isCorrectionEligible,
+  type WorkspaceCompletionSnapshot,
+} from './workspace.types';
 import type {
   PreparedWorkspaceChange,
+  PrepareWorkspaceOptions,
   ResultPanelTab,
   WorkspaceConversationEntry,
   WorkspacePhase,
   WorkspaceProjectView,
   WorkspaceWorkflowPort,
 } from './workspace.types';
+
+const DEFAULT_CORRECTION_REQUEST = 'Fix the verification failures from the previous change.';
 
 const PROGRESS_STEPS = [
   'Request received',
@@ -63,14 +76,124 @@ export function WorkspaceShell({
   const [prepared, setPrepared] = useState<PreparedWorkspaceChange>();
   const [applyResult, setApplyResult] = useState<FileApplyResult>();
   const [verificationReport, setVerificationReport] = useState<VerificationReport>();
+  const [completionSnapshot, setCompletionSnapshot] = useState<WorkspaceCompletionSnapshot>();
+  const [lastPreparedRequest, setLastPreparedRequest] = useState<string>();
   const [approved, setApproved] = useState(false);
   const [error, setError] = useState<string>();
   const [conversation, setConversation] = useState<readonly WorkspaceConversationEntry[]>([]);
+  const [featurePlan, setFeaturePlan] = useState<FeaturePlan>();
+  const [activeFeatureTaskId, setActiveFeatureTaskId] = useState<string>();
+  const [activeFeatureDependencyOverrides, setActiveFeatureDependencyOverrides] = useState<
+    readonly string[]
+  >([]);
+  const [activityHistory, setActivityHistory] = useState<readonly WorkspaceActivity[]>([]);
+  const [historyRefreshing, setHistoryRefreshing] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState<string>();
+  const historyLoadedRef = useRef(false);
+  const featureApi = useMemo(
+    () => (runtimeAvailable ? new HttpFeatureWorkflow() : undefined),
+    [runtimeAvailable],
+  );
   const isBusy = ['PROCESSING_REQUEST', 'APPLYING_CHANGES', 'VERIFYING_PROJECT'].includes(phase);
+  const historySupported =
+    runtimeAvailable && workflow !== undefined && workflow.loadActivityHistory !== undefined;
+
+  const loadActivityHistoryFromWorkflow = useCallback(async (): Promise<void> => {
+    if (workflow?.loadActivityHistory === undefined) return;
+    const history = await workflow.loadActivityHistory();
+    setActivityHistory(history.activities);
+    setHistoryError(undefined);
+    historyLoadedRef.current = true;
+    setHistoryLoaded(true);
+  }, [workflow]);
+
+  const refreshActivityHistory = useCallback(async (): Promise<void> => {
+    if (!historySupported || workflow?.loadActivityHistory === undefined) return;
+    const isRefresh = historyLoadedRef.current;
+    if (isRefresh) setHistoryRefreshing(true);
+    try {
+      await loadActivityHistoryFromWorkflow();
+    } catch {
+      if (!historyLoadedRef.current) {
+        setHistoryError('Activity history could not be loaded.');
+      }
+    } finally {
+      if (isRefresh) setHistoryRefreshing(false);
+    }
+  }, [historySupported, loadActivityHistoryFromWorkflow, workflow]);
+
+  useEffect(() => {
+    if (!historySupported) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await loadActivityHistoryFromWorkflow();
+      } catch {
+        if (!cancelled && !historyLoadedRef.current) {
+          setHistoryError('Activity history could not be loaded.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [historySupported, loadActivityHistoryFromWorkflow]);
+
+  useEffect(() => {
+    if (featureApi === undefined) return;
+    void (async () => {
+      try {
+        const active = await featureApi.loadActivePlan();
+        if (active !== undefined) setFeaturePlan(active);
+      } catch {
+        // Active plan reload is best-effort on mount.
+      }
+    })();
+  }, [featureApi]);
+
+  const showHistoryInitialLoading =
+    historySupported && !historyLoaded && historyError === undefined;
+
+  async function handleFeatureTaskExecute(
+    task: FeatureTask,
+    _plan: FeaturePlan,
+    options: PrepareWorkspaceOptions,
+  ): Promise<void> {
+    const taskRequest = `${task.objective}\n\nScope: ${task.scope}`.trim();
+    setRequest(taskRequest);
+    await runPrepare(taskRequest, undefined, options);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const normalizedRequest = request.trim();
+    await runPrepare(request.trim());
+  }
+
+  async function handleCorrectionPrepare(): Promise<void> {
+    if (!workflow || !completionSnapshot || isBusy) return;
+    const correctionRequest =
+      request.trim().length > 0 ? request.trim() : DEFAULT_CORRECTION_REQUEST;
+    setRequest(correctionRequest);
+    const featureOptions: PrepareWorkspaceOptions =
+      completionSnapshot.featurePlanId !== undefined && completionSnapshot.taskId !== undefined
+        ? {
+            featurePlanId: completionSnapshot.featurePlanId,
+            taskId: completionSnapshot.taskId,
+            ...(completionSnapshot.dependencyOverrides === undefined ||
+            completionSnapshot.dependencyOverrides.length === 0
+              ? {}
+              : { dependencyOverrides: completionSnapshot.dependencyOverrides }),
+          }
+        : {};
+    await runPrepare(correctionRequest, completionSnapshot, featureOptions);
+  }
+
+  async function runPrepare(
+    normalizedRequest: string,
+    correctionSnapshot?: WorkspaceCompletionSnapshot,
+    featureOptions: PrepareWorkspaceOptions = {},
+  ): Promise<void> {
     if (!workflow || normalizedRequest.length === 0 || isBusy) return;
 
     setError(undefined);
@@ -87,8 +210,40 @@ export function WorkspaceShell({
     ]);
 
     try {
-      const nextPrepared = await workflow.prepare(normalizedRequest);
+      const iterationFeedback =
+        correctionSnapshot === undefined
+          ? undefined
+          : buildIterationFeedbackFromCompletion(
+              {
+                applyResult: correctionSnapshot.applyResult,
+                ...(correctionSnapshot.verificationReport === undefined
+                  ? {}
+                  : { verificationReport: correctionSnapshot.verificationReport }),
+              },
+              {
+                ...(correctionSnapshot.sourcePreparationId === undefined
+                  ? {}
+                  : { sourcePreparationId: correctionSnapshot.sourcePreparationId }),
+                ...(correctionSnapshot.priorRequestSummary === undefined
+                  ? {}
+                  : { priorRequestSummary: correctionSnapshot.priorRequestSummary }),
+              },
+            );
+      const nextPrepared =
+        iterationFeedback === undefined && featureOptions.featurePlanId === undefined
+          ? await workflow.prepare(normalizedRequest)
+          : await workflow.prepare(normalizedRequest, {
+              ...(iterationFeedback === undefined ? {} : { iterationFeedback }),
+              ...featureOptions,
+            });
       setPrepared(nextPrepared);
+      setLastPreparedRequest(normalizedRequest);
+      if (featureOptions.taskId !== undefined) {
+        setActiveFeatureTaskId(featureOptions.taskId);
+      }
+      if (nextPrepared.featurePlan !== undefined) {
+        setFeaturePlan(nextPrepared.featurePlan);
+      }
       setPhase('AWAITING_APPROVAL');
       setProgressIndex(3);
       setActiveTab('CHANGE_PLAN');
@@ -100,6 +255,7 @@ export function WorkspaceShell({
           message: `Prepared ${nextPrepared.changePlan.summary.totalOperations} operation${nextPrepared.changePlan.summary.totalOperations === 1 ? '' : 's'} for review. No files have been changed.`,
         },
       ]);
+      void refreshActivityHistory();
     } catch (workflowError: unknown) {
       stopWorkflow(
         workflowError instanceof WorkspaceWorkflowError
@@ -121,11 +277,20 @@ export function WorkspaceShell({
     try {
       const nextApplyResult = await workflow.apply(prepared.changePlan);
       setApplyResult(nextApplyResult);
-      if (nextApplyResult.status !== 'APPLIED') {
+      if (!isVerificationEligibleFileApplyResult(nextApplyResult)) {
+        setCompletionSnapshot(
+          createCompletionSnapshot(
+            nextApplyResult,
+            undefined,
+            lastPreparedRequest,
+            readFeatureBinding(featurePlan, activeFeatureTaskId, activeFeatureDependencyOverrides),
+          ),
+        );
         stopWorkflow(
           `Apply finished with status ${formatLabel(nextApplyResult.status)}. Verification was not started.`,
           4,
         );
+        void refreshActivityHistory();
         return;
       }
 
@@ -134,7 +299,7 @@ export function WorkspaceShell({
       completedSteps = 5;
       setActiveTab('VERIFICATION_REPORT');
       const nextVerificationReport = await workflow.verify(nextApplyResult);
-      completeWorkflow(nextVerificationReport);
+      completeWorkflow(nextVerificationReport, nextApplyResult);
     } catch {
       stopWorkflow(
         'The approved workflow could not complete. Review the available result evidence.',
@@ -143,8 +308,16 @@ export function WorkspaceShell({
     }
   }
 
-  function completeWorkflow(report: VerificationReport): void {
+  function completeWorkflow(report: VerificationReport, appliedResult: FileApplyResult): void {
     setVerificationReport(report);
+    setCompletionSnapshot(
+      createCompletionSnapshot(
+        appliedResult,
+        report,
+        lastPreparedRequest,
+        readFeatureBinding(featurePlan, activeFeatureTaskId, activeFeatureDependencyOverrides),
+      ),
+    );
     setPhase('COMPLETED');
     setProgressIndex(6);
     setConversation((entries) => [
@@ -155,6 +328,7 @@ export function WorkspaceShell({
         message: `Verification completed with status ${formatLabel(report.status)}. Review the final report before any further action.`,
       },
     ]);
+    void refreshActivityHistory();
   }
 
   function stopWorkflow(message: string, completedSteps: number): void {
@@ -165,6 +339,7 @@ export function WorkspaceShell({
       ...entries,
       { id: nextConversationId(entries), author: 'BUILDER_AI', message },
     ]);
+    void refreshActivityHistory();
   }
 
   return (
@@ -238,6 +413,20 @@ export function WorkspaceShell({
                 before this interface can prepare or apply a project change.
               </p>
             </div>
+          )}
+
+          {workflow && (
+            <FeatureWorkflowPanel
+              plan={featurePlan}
+              onPlanUpdated={setFeaturePlan}
+              onDependencyOverridesChange={setActiveFeatureDependencyOverrides}
+              featureApi={featureApi}
+              disabled={isBusy}
+              onExecuteTask={handleFeatureTaskExecute}
+              applyResult={applyResult}
+              verificationReport={verificationReport}
+              activeTaskId={activeFeatureTaskId}
+            />
           )}
 
           <form className={styles.requestForm} onSubmit={handleSubmit}>
@@ -317,6 +506,28 @@ export function WorkspaceShell({
             </section>
           )}
 
+          {isCorrectionEligible(completionSnapshot) &&
+            (phase === 'COMPLETED' || phase === 'FAILED') && (
+              <section className={styles.approvalCard} aria-labelledby="correction-title">
+                <div>
+                  <p className={styles.eyebrow}>Explicit correction</p>
+                  <h3 id="correction-title">Fix verification failures</h3>
+                  <p>
+                    Start a new correction prepare with bounded evidence from the immediately
+                    previous iteration. Approval is still required before any file changes apply.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.approveButton}
+                  disabled={!workflow || isBusy}
+                  onClick={handleCorrectionPrepare}
+                >
+                  Fix verification failures
+                </button>
+              </section>
+            )}
+
           {error && (
             <div className={styles.errorNotice} role="alert">
               <strong>Workflow stopped</strong>
@@ -350,17 +561,75 @@ export function WorkspaceShell({
           </section>
         </section>
 
-        <ResultPanel
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          responsePackage={prepared?.responsePackage}
-          changePlan={prepared?.changePlan}
-          applyResult={applyResult}
-          verificationReport={verificationReport}
-        />
+        <div className={styles.resultsColumn}>
+          <ResultPanel
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            responsePackage={prepared?.responsePackage}
+            changePlan={prepared?.changePlan}
+            applyResult={applyResult}
+            verificationReport={verificationReport}
+          />
+
+          {historySupported && (
+            <div className={styles.activityHistorySection}>
+              {showHistoryInitialLoading && (
+                <div className={styles.emptyResult} role="status">
+                  <span aria-hidden="true">◇</span>
+                  <p>Loading activity history…</p>
+                </div>
+              )}
+              {!showHistoryInitialLoading && historyError !== undefined && !historyLoaded && (
+                <div className={styles.errorNotice} role="alert">
+                  <strong>Activity history unavailable</strong>
+                  <p>{historyError}</p>
+                </div>
+              )}
+              {historyRefreshing && historyLoaded && (
+                <p className={styles.historyRefreshing} role="status" aria-live="polite">
+                  Refreshing activity history…
+                </p>
+              )}
+              {!showHistoryInitialLoading && historyLoaded && (
+                <ActivityHistoryPanel activities={activityHistory} />
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
+}
+
+function createCompletionSnapshot(
+  applyResult: FileApplyResult,
+  verificationReport?: VerificationReport,
+  priorRequestSummary?: string,
+  featureBinding?: {
+    readonly featurePlanId: string;
+    readonly taskId: string;
+    readonly dependencyOverrides?: readonly string[];
+  },
+): WorkspaceCompletionSnapshot {
+  return {
+    applyResult,
+    ...(verificationReport === undefined ? {} : { verificationReport }),
+    ...(priorRequestSummary === undefined ? {} : { priorRequestSummary }),
+    ...(featureBinding === undefined ? {} : featureBinding),
+  };
+}
+
+function readFeatureBinding(
+  plan: FeaturePlan | undefined,
+  taskId: string | undefined,
+  dependencyOverrides: readonly string[],
+): { featurePlanId: string; taskId: string; dependencyOverrides?: readonly string[] } | undefined {
+  if (plan === undefined || taskId === undefined) return undefined;
+  return {
+    featurePlanId: plan.featurePlanId,
+    taskId,
+    ...(dependencyOverrides.length === 0 ? {} : { dependencyOverrides }),
+  };
 }
 
 function nextConversationId(entries: readonly WorkspaceConversationEntry[]): number {
