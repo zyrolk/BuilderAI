@@ -700,6 +700,18 @@
         "summary": "Verified a credentialed gemini-3.5-flash Workspace preparation from Project Brain through a completed one-operation Change Plan without approving or applying project changes.",
         "taskIds": ["add-gemini-local-provider"],
         "completedAt": "2026-07-31T15:30:00.000Z"
+      },
+      {
+        "id": "post-mvp-workspace-provider-improvements",
+        "summary": "Implemented post-MVP ADR-backed workspace, provider, and context improvements after the Gemini local integration milestone, including change-planner workspace visibility, artifact contract tightening, context and prompt budget invariants, bounded execution and apply retries, verification eligibility updates, expanded repository indexing, task-aware context retrieval, iteration feedback, feature decomposition workflow, Gemini finish-reason boundaries, mandatory verification stages, OpenRouter adapter support, and adaptive output truncation retry compaction.",
+        "taskIds": [],
+        "completedAt": "2026-08-03T14:15:00.000Z"
+      },
+      {
+        "id": "workspace-activity-history-feature-plan",
+        "summary": "Completed Workspace Activity History FeaturePlan 16a0c3ac-232b-41a2-98fe-4ad6fafd27f5 (Tasks 1–5): bounded sanitized local history persistence, prepare/apply/verification recording, same-origin GET /api/workspace/activity-history, and live Workspace ActivityHistoryPanel integration within the documented single-operator trusted-loopback local workspace model—not production hosted durable audit storage. Verification: npm run ci PASS (758 passed, 0 failed, 1 skipped; build PASS; production dependency audit 0 vulnerabilities).",
+        "taskIds": [],
+        "completedAt": "2026-08-03T14:15:00.000Z"
       }
     ],
     "pendingWork": [
@@ -838,7 +850,7 @@
         "rationale": "The v1.0 composition must not turn a local integration milestone into an unauthenticated hosted execution service or let browser data become effect authority."
       }
     ],
-    "updatedAt": "2026-07-31T15:30:00.000Z"
+    "updatedAt": "2026-08-03T14:15:00.000Z"
   },
   "decisionLog": [
     {
@@ -1294,7 +1306,7 @@
     }
   ],
   "progressLog": {
-    "currentMilestone": "Gemini local provider integration verified - awaiting architecture review",
+    "currentMilestone": "Post-MVP workspace feature workflow and Activity History integration verified; repository CI green; ready for next approved post-MVP planning checkpoint.",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -1518,7 +1530,7 @@
       "verify-mvp-release",
       "add-gemini-local-provider"
     ],
-    "updatedAt": "2026-07-31T15:30:00.000Z"
+    "updatedAt": "2026-08-03T14:15:00.000Z"
   },
   "tasks": [
     {
