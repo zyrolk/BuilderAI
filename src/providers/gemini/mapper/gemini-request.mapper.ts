@@ -11,6 +11,11 @@ import type {
   PromptOutputContractSection,
   PromptOutputFieldType,
 } from '../../../core/prompt-orchestrator';
+import { parseOutputBoundingAllowlistFromMetadata } from '../../../core/prompt-orchestrator/internal/truncation-retry-metadata';
+import {
+  TRUNCATION_RETRY_MAX_DIAGNOSTICS,
+  TRUNCATION_RETRY_MAX_SUMMARY_CHARACTERS,
+} from '../../../core/prompt-orchestrator/services/truncation-retry-compaction.service';
 import { toCoreProviderConfiguration } from '../config';
 import type {
   GeminiGenerateContentRequest,
@@ -60,7 +65,10 @@ export class GeminiRequestMapper {
         candidateCount: 1,
         maxOutputTokens: this.configuration.maximumOutputTokens,
         responseMimeType: 'application/json',
-        responseJsonSchema: toJsonSchema(findOutputContract(request)),
+        responseJsonSchema: toJsonSchema(
+          findOutputContract(request),
+          parseOutputBoundingAllowlistFromMetadata(request.metadata),
+        ),
         temperature: 0,
       },
     };
@@ -79,40 +87,73 @@ function findOutputContract(request: AIProviderRequest): PromptOutputContract {
   return section.expectedOutput;
 }
 
-function toJsonSchema(contract: PromptOutputContract): GeminiJsonSchema {
+function toJsonSchema(
+  contract: PromptOutputContract,
+  compactionAllowlist?: readonly string[],
+): GeminiJsonSchema {
   return {
     type: 'object',
     properties: Object.fromEntries(
-      contract.fields.map((field) => [field.name, toFieldSchema(field)]),
+      contract.fields.map((field) => [field.name, toFieldSchema(field, compactionAllowlist)]),
     ),
     required: contract.fields.filter(({ required }) => required).map(({ name }) => name),
     additionalProperties: contract.allowAdditionalFields,
   };
 }
 
-function toFieldSchema(field: PromptOutputContract['fields'][number]): GeminiJsonSchema {
+function toFieldSchema(
+  field: PromptOutputContract['fields'][number],
+  compactionAllowlist?: readonly string[],
+): GeminiJsonSchema {
   if (field.name === 'artifacts' && field.type === 'ARRAY')
-    return generatedArtifactsSchema(field.description);
+    return generatedArtifactsSchema(field.description, compactionAllowlist);
   if (field.name === 'diagnostics' && field.type === 'ARRAY')
-    return diagnosticsSchema(field.description);
+    return diagnosticsSchema(field.description, compactionAllowlist);
+  if (
+    field.name === 'summary' &&
+    field.type === 'STRING' &&
+    compactionAllowlist !== undefined &&
+    compactionAllowlist.length > 0
+  ) {
+    return {
+      type: 'string',
+      description: field.description,
+      maxLength: TRUNCATION_RETRY_MAX_SUMMARY_CHARACTERS,
+    };
+  }
   return { type: mapFieldType(field.type), description: field.description };
 }
 
-function generatedArtifactsSchema(description: string): GeminiJsonSchema {
+function generatedArtifactsSchema(
+  description: string,
+  compactionAllowlist?: readonly string[],
+): GeminiJsonSchema {
+  const logicalPathSchema =
+    compactionAllowlist !== undefined && compactionAllowlist.length > 0
+      ? {
+          type: 'string',
+          description:
+            'Normalized repository-relative POSIX path for the complete target file (truncation retry allowlist).',
+          enum: [...compactionAllowlist],
+        }
+      : {
+          type: 'string',
+          description: 'Normalized repository-relative POSIX path for the complete target file.',
+        };
   return {
     type: 'array',
     description,
+    ...(compactionAllowlist !== undefined && compactionAllowlist.length > 0
+      ? { maxItems: compactionAllowlist.length }
+      : {}),
     items: {
       type: 'object',
       properties: {
-        logicalPath: {
-          type: 'string',
-          description: 'Normalized repository-relative POSIX path for the complete target file.',
-        },
+        logicalPath: logicalPathSchema,
         type: {
           type: 'string',
           description: 'Closed BuilderAI artifact type.',
-          enum: ['SOURCE_FILE', 'DOCUMENTATION', 'CONFIGURATION', 'TEST', 'PATCH'],
+          enum: ['SOURCE_FILE', 'DOCUMENTATION', 'CONFIGURATION', 'TEST'],
         },
         content: {
           type: 'string',
@@ -139,10 +180,16 @@ function generatedArtifactsSchema(description: string): GeminiJsonSchema {
   };
 }
 
-function diagnosticsSchema(description: string): GeminiJsonSchema {
+function diagnosticsSchema(
+  description: string,
+  compactionAllowlist?: readonly string[],
+): GeminiJsonSchema {
   return {
     type: 'array',
     description,
+    ...(compactionAllowlist !== undefined && compactionAllowlist.length > 0
+      ? { maxItems: TRUNCATION_RETRY_MAX_DIAGNOSTICS }
+      : {}),
     items: {
       type: 'object',
       properties: {

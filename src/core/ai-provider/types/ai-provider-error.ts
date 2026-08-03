@@ -1,9 +1,14 @@
 import type { ProviderCapabilityName, ProviderValidationIssue } from './ai-provider';
+import type {
+  ProviderOutputTruncatedDiagnostics,
+  ProviderUnavailableDiagnostics,
+} from './provider-error-diagnostics';
 
 export type AIProviderErrorCode =
   | 'CANCELLED'
   | 'CONTRACT_VIOLATION'
   | 'INVALID_CONFIGURATION'
+  | 'OUTPUT_TRUNCATED'
   | 'PROVIDER_UNAVAILABLE'
   | 'TIMEOUT'
   | 'UNSUPPORTED_CAPABILITY';
@@ -60,9 +65,14 @@ export class InvalidProviderConfigurationError extends AIProviderError {
 
 export class ProviderUnavailableError extends AIProviderError {
   readonly code = 'PROVIDER_UNAVAILABLE' as const;
+  readonly diagnostics?: ProviderUnavailableDiagnostics;
 
-  constructor(readonly providerId: string) {
+  constructor(
+    readonly providerId: string,
+    diagnostics?: ProviderUnavailableDiagnostics,
+  ) {
     super(`Provider '${providerId}' is unavailable.`);
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -74,6 +84,19 @@ export class ProviderContractViolationError extends AIProviderError {
     readonly issues: readonly ProviderValidationIssue[],
   ) {
     super(`${contract} contract is invalid: ${issues.map(formatIssue).join('; ')}.`);
+  }
+}
+
+export class ProviderOutputTruncatedError extends AIProviderError {
+  readonly code = 'OUTPUT_TRUNCATED' as const;
+  readonly diagnostics?: ProviderOutputTruncatedDiagnostics;
+
+  constructor(
+    readonly providerId: string,
+    diagnostics?: ProviderOutputTruncatedDiagnostics,
+  ) {
+    super(`Provider '${providerId}' output was truncated before completion.`);
+    this.diagnostics = diagnostics;
   }
 }
 

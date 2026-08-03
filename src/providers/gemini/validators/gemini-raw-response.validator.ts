@@ -3,6 +3,7 @@ import {
   type ProviderValidationIssue,
 } from '../../../core/ai-provider';
 import type { GeminiRawResponse } from '../types';
+import { assertSuccessfulFinishReason } from './gemini-finish-reason';
 import {
   addIssue,
   isNonEmptyString,
@@ -35,6 +36,11 @@ export class GeminiRawResponseValidator {
     }
     const candidate = value.candidates[0];
     const usage = value.usageMetadata;
+    assertSuccessfulFinishReason(candidate.finishReason, {
+      finishReason: candidate.finishReason,
+      inputTokens: usage.promptTokenCount,
+      outputTokens: usage.candidatesTokenCount,
+    });
     return {
       ...(value.responseId === undefined ? {} : { responseId: value.responseId }),
       ...(value.modelVersion === undefined ? {} : { modelVersion: value.modelVersion }),
@@ -64,8 +70,8 @@ export class GeminiRawResponseValidator {
       addIssue(issues, '$.candidates', 'must contain exactly one candidate');
       return;
     }
-    if (value[0].finishReason !== 'STOP') {
-      addIssue(issues, '$.candidates[0].finishReason', 'must equal STOP');
+    if (!isNonEmptyString(value[0].finishReason)) {
+      addIssue(issues, '$.candidates[0].finishReason', 'must be a non-empty string');
     }
   }
 
@@ -115,7 +121,7 @@ function isRawResponse(value: unknown): value is RawResponseShape {
   const usage = value.usageMetadata;
   return (
     isRecord(candidate) &&
-    candidate.finishReason === 'STOP' &&
+    isNonEmptyString(candidate.finishReason) &&
     isRecord(usage) &&
     isNonNegativeSafeInteger(usage.promptTokenCount) &&
     isNonNegativeSafeInteger(usage.candidatesTokenCount) &&

@@ -45,8 +45,10 @@ export class GeminiProvider implements AIProvider {
     const mappedRequest = this.requestMapper.map(request);
     const controller = new AbortController();
     let cancellationReason = request.cancellation.reason;
+    let callerInitiatedAbort = false;
     const unsubscribe = request.cancellation.subscribe((reason) => {
       cancellationReason = reason;
+      callerInitiatedAbort = true;
       controller.abort();
     });
     const startedAt = this.clock();
@@ -59,7 +61,10 @@ export class GeminiProvider implements AIProvider {
       this.contract.validateExchange(request, response);
       return response;
     } catch (error: unknown) {
-      throw this.errorMapper.map(error, request.requestId, request.timeoutMs, cancellationReason);
+      throw this.errorMapper.map(error, request.requestId, request.timeoutMs, {
+        cancellationReason,
+        callerInitiatedAbort,
+      });
     } finally {
       unsubscribe();
     }

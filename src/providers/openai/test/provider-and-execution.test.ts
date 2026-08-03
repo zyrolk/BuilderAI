@@ -4,6 +4,7 @@ import {
   ProviderUnavailableError,
 } from '../../../core/ai-provider';
 import { createExecutionRequest } from '../../../core/execution-engine/test/execution-engine.fixture';
+import { TruncationRetryCompactionService } from '../../../core/prompt-orchestrator';
 import { OpenAIProvider } from '../adapter';
 import { OpenAIExecutionRequestMapper } from '../mapper';
 import { OpenAIExecutionService } from '../services';
@@ -102,10 +103,16 @@ describe('Execution Engine integration', () => {
   it('maps the Execution Request without changing its Prompt Package', async () => {
     const execution = await createExecutionRequest();
     const before = structuredClone(execution.prompt);
+    const attemptResolution = new TruncationRetryCompactionService().resolveAttempt({
+      prompt: execution.prompt,
+      attempt: 2,
+    });
     const mapped = new OpenAIExecutionRequestMapper().map(
       execution,
       createOpenAIConfiguration(),
       2,
+      undefined,
+      attemptResolution,
     );
     expect(execution.prompt).toEqual(before);
     expect(mapped.requestId).toBe(execution.executionId);

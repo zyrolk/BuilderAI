@@ -6,6 +6,7 @@ import {
 } from '../../../core/ai-provider';
 import { createExecutionRequest } from '../../../core/execution-engine/test/execution-engine.fixture';
 import { GeminiProvider } from '../adapter';
+import { TruncationRetryCompactionService } from '../../../core/prompt-orchestrator';
 import { GeminiExecutionRequestMapper, GeminiRequestMapper, GeminiResponseMapper } from '../mapper';
 import { GeminiExecutionService } from '../services';
 import { GeminiRawResponseValidator } from '../validators';
@@ -46,7 +47,7 @@ describe('Gemini request and response mapping', () => {
         additionalProperties: false,
         properties: {
           type: {
-            enum: ['SOURCE_FILE', 'DOCUMENTATION', 'CONFIGURATION', 'TEST', 'PATCH'],
+            enum: ['SOURCE_FILE', 'DOCUMENTATION', 'CONFIGURATION', 'TEST'],
           },
           metadata: {
             required: ['description', 'change-operation'],
@@ -168,7 +169,17 @@ describe('Gemini provider and Execution Engine integration', () => {
   it('coordinates the existing state machine and returns validated structured output', async () => {
     const configuration = createGeminiConfiguration();
     const execution = await createExecutionRequest();
-    const mapped = new GeminiExecutionRequestMapper().map(execution, configuration, 2);
+    const attemptResolution = new TruncationRetryCompactionService().resolveAttempt({
+      prompt: execution.prompt,
+      attempt: 2,
+    });
+    const mapped = new GeminiExecutionRequestMapper().map(
+      execution,
+      configuration,
+      2,
+      undefined,
+      attemptResolution,
+    );
     expect(mapped.prompt).toBe(execution.prompt);
     expect(mapped.metadata).toMatchObject({ attempt: 2, 'correlation-id': 'sprint-six' });
     const provider = new GeminiProvider(

@@ -85,16 +85,42 @@ describe('Gemini configuration, transport, and error mapping', () => {
 
   it('maps provider failures into the existing error taxonomy without leaking payloads', () => {
     const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
-    expect(mapper.map(abort, 'request-one', 100, 'stop')).toBeInstanceOf(ProviderCancelledError);
+    expect(
+      mapper.map(abort, 'request-one', 100, {
+        callerInitiatedAbort: true,
+        cancellationReason: 'stop',
+      }),
+    ).toBeInstanceOf(ProviderCancelledError);
+    expect(mapper.map(abort, 'request-one', 100, { callerInitiatedAbort: false })).toBeInstanceOf(
+      ProviderTimeoutError,
+    );
     expect(
       mapper.map(Object.assign(new Error('slow'), { name: 'TimeoutError' }), 'request-one', 100),
     ).toBeInstanceOf(ProviderTimeoutError);
     expect(mapper.map({ status: 429, secret: 'hidden' }, 'request-one', 100)).toBeInstanceOf(
       ProviderUnavailableError,
     );
-    expect(mapper.map({ status: 503 }, 'request-one', 100)).toBeInstanceOf(
-      ProviderUnavailableError,
+    const unavailable429 = mapper.map(
+      { name: 'ApiError', status: 429, headers: { 'retry-after': '30' }, secret: 'hidden' },
+      'request-one',
+      100,
     );
+    expect(unavailable429).toBeInstanceOf(ProviderUnavailableError);
+    if (unavailable429 instanceof ProviderUnavailableError) {
+      expect(unavailable429.diagnostics).toMatchObject({
+        providerStatus: 429,
+        providerErrorCategory: 'RATE_LIMIT',
+      });
+      expect(unavailable429.message).not.toContain('hidden');
+    }
+    const unavailable503 = mapper.map({ status: 503 }, 'request-one', 100);
+    expect(unavailable503).toBeInstanceOf(ProviderUnavailableError);
+    if (unavailable503 instanceof ProviderUnavailableError) {
+      expect(unavailable503.diagnostics).toMatchObject({
+        providerStatus: 503,
+        providerErrorCategory: 'UPSTREAM_5XX',
+      });
+    }
     expect(mapper.map({ status: 403 }, 'request-one', 100)).toBeInstanceOf(
       InvalidProviderConfigurationError,
     );

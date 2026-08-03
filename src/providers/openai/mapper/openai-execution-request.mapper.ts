@@ -1,20 +1,32 @@
 import { AI_PROVIDER_CONTRACT_VERSION, type AIProviderRequest } from '../../../core/ai-provider';
 import { ExecutionRequestValidator, type ExecutionRequest } from '../../../core/execution-engine';
+import {
+  TruncationRetryCompactionService,
+  type TruncationRetryAttemptResolution,
+} from '../../../core/prompt-orchestrator';
 import type { OpenAIProviderConfiguration } from '../types';
 
 export class OpenAIExecutionRequestMapper {
   private readonly validator: ExecutionRequestValidator = new ExecutionRequestValidator();
+  private readonly compaction = new TruncationRetryCompactionService();
 
   map(
     request: ExecutionRequest,
     configuration: OpenAIProviderConfiguration,
     attempt = 1,
+    attemptTimeoutMs = Math.min(request.policy.timeout.durationMs, configuration.maximumTimeoutMs),
+    attemptResolution: TruncationRetryAttemptResolution,
   ): AIProviderRequest {
     this.validator.validate(request);
+    const baseMetadata = {
+      ...request.metadata.values,
+      'correlation-id': request.metadata.correlationId,
+      attempt,
+    };
     return {
       contractVersion: AI_PROVIDER_CONTRACT_VERSION,
       requestId: request.executionId,
-      prompt: request.prompt,
+      prompt: attemptResolution.prompt,
       executionMode: 'SINGLE_RESPONSE',
       constraints: {
         maximumOutputCharacters: configuration.maximumOutputCharacters,
@@ -22,13 +34,9 @@ export class OpenAIExecutionRequestMapper {
         requiredCapabilities: ['CONTEXT_INGESTION', 'STRUCTURED_RESPONSES'],
         requireStructuredResponse: true,
       },
-      timeoutMs: Math.min(request.policy.timeout.durationMs, configuration.maximumTimeoutMs),
+      timeoutMs: attemptTimeoutMs,
       cancellation: request.cancellation,
-      metadata: {
-        ...request.metadata.values,
-        'correlation-id': request.metadata.correlationId,
-        attempt,
-      },
+      metadata: this.compaction.appendAttemptMetadata(baseMetadata, attemptResolution),
     };
   }
 }
