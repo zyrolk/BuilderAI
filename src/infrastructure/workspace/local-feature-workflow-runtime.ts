@@ -132,6 +132,7 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
   });
   const projectValidator = new NodeProjectValidator(blueprintReader);
   const activityHistory = new ActivityHistoryService({ projectRoot: configuration.projectRoot });
+  const workspaceBaseline = new NodeWorkspaceBaseline(configuration.projectRoot);
   const runtime = new WorkspaceRuntimeService({
     loadProjectBrain: () => loadProjectBrain(configuration.projectRoot),
     blueprintReader,
@@ -140,12 +141,13 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     }),
     contextBuilder: new ContextBuilderService(),
     promptOrchestrator: new PromptOrchestratorService(),
+    workspaceBaseline,
     providerExecution,
     responseProcessor: new ResponseProcessorService(),
     changePlanner: new ChangePlannerService(
       undefined,
       new NodeWorkspaceVisibility(configuration.projectRoot),
-      new NodeWorkspaceBaseline(configuration.projectRoot),
+      workspaceBaseline,
     ),
     fileApply: new FileApplyEngineService(new NodeProjectFileSystem(configuration.projectRoot)),
     verification: new VerificationEngineService({

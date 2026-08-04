@@ -1,5 +1,6 @@
 import type { FileApplyStatus } from '../../core/file-apply';
 import type { ResponseMetadata } from '../../core/response-processor';
+import type { SurgicalityBasis, SurgicalityClassification } from '../../core/change-planner';
 import type {
   VerificationStage,
   VerificationStageStatus,
@@ -11,6 +12,15 @@ export const ITERATION_FEEDBACK_KIND = 'CORRECTION' as const;
 
 export const ITERATION_FEEDBACK_LIMITS = {
   MAX_SERIALIZED_CHARACTERS: 4_000,
+  MAX_SERIALIZED_CHARACTERS_WITH_PRESERVATION: 4_800,
+  MAX_PRESERVATION_REJECTION_RENDERED_CHARACTERS: 800,
+  MAX_PRESERVATION_OPERATIONS: 8,
+  MAX_PRESERVATION_FINDING_CODES: 4,
+  MAX_PRESERVATION_REMOVED_IDS: 8,
+  MAX_PRESERVATION_REMOVED_ARIA: 8,
+  MAX_PRESERVATION_CROSS_FILE_RISKS: 2,
+  MAX_PRESERVATION_UNREQUESTED_PATHS: 8,
+  MAX_OPERATOR_REASON: 240,
   MAX_PRIOR_REQUEST_SUMMARY: 500,
   MAX_FINDING_MESSAGE: 240,
   MAX_CODE_LENGTH: 80,
@@ -24,6 +34,28 @@ export const ITERATION_FEEDBACK_LIMITS = {
   MAX_STAGE_METADATA_ENTRIES: 8,
   MAX_STAGE_METADATA_STRING: 240,
 } as const;
+
+export interface IterationPreservationRejectionOperation {
+  readonly logicalPath: string;
+  readonly churnRatio?: number;
+  readonly similarityRatio?: number;
+  readonly findingCodes: readonly string[];
+  readonly removedHtmlIds?: readonly string[];
+  readonly removedAccessibilityAttributes?: readonly string[];
+  readonly crossFileReferenceRisks?: readonly string[];
+  readonly surgicalityClassification?: SurgicalityClassification;
+  readonly surgicalityBasis?: SurgicalityBasis;
+  readonly structuredAttributeChanges?: number;
+  readonly structuredTextChanges?: number;
+  readonly structuredStructuralChanges?: number;
+}
+
+export interface IterationPreservationRejection {
+  readonly rejectedPreparationId?: string;
+  readonly operatorReason?: string;
+  readonly operations: readonly IterationPreservationRejectionOperation[];
+  readonly unrequestedPaths?: readonly string[];
+}
 
 export interface IterationFeedbackFinding {
   readonly code: string;
@@ -63,4 +95,5 @@ export interface IterationFeedback {
   readonly priorRequestSummary?: string;
   readonly apply: IterationFeedbackApply;
   readonly verification?: IterationFeedbackVerification;
+  readonly preservationRejection?: IterationPreservationRejection;
 }

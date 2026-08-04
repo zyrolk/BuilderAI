@@ -1,4 +1,5 @@
 import type { ContextPackage } from '../../context-builder';
+import type { PreservationContractContent } from '../../update-scope';
 import type { FileApplyStatus } from '../../file-apply';
 import type { ResponseMetadata } from '../../response-processor';
 import type { ProjectConstraint, ProjectGoal, ProjectTask } from '../../project-brain';
@@ -16,6 +17,7 @@ export const PROMPT_SECTION_ORDER = [
   'SYSTEM',
   'ARCHITECTURE',
   'TASK',
+  'PRESERVATION_CONTRACT',
   'ITERATION',
   'RULES',
   'CONTEXT',
@@ -26,6 +28,7 @@ export const PROMPT_SECTION_ORDER = [
 export const PROMPT_ITERATION_FEEDBACK_SCHEMA_VERSION = 1 as const;
 export const PROMPT_ITERATION_FEEDBACK_KIND = 'CORRECTION' as const;
 export const PROMPT_ITERATION_FEEDBACK_MAX_CHARACTERS = 4_000 as const;
+export const PROMPT_ITERATION_FEEDBACK_MAX_CHARACTERS_WITH_PRESERVATION = 4_800 as const;
 
 export interface PromptIterationFinding {
   readonly code: string;
@@ -58,6 +61,23 @@ export interface PromptIterationVerificationEvidence {
   readonly topErrors: readonly PromptIterationFinding[];
 }
 
+export interface PromptIterationPreservationRejectionOperation {
+  readonly logicalPath: string;
+  readonly churnRatio?: number;
+  readonly similarityRatio?: number;
+  readonly findingCodes: readonly string[];
+  readonly removedHtmlIds?: readonly string[];
+  readonly removedAccessibilityAttributes?: readonly string[];
+  readonly crossFileReferenceRisks?: readonly string[];
+}
+
+export interface PromptIterationPreservationRejection {
+  readonly rejectedPreparationId?: string;
+  readonly operatorReason?: string;
+  readonly operations: readonly PromptIterationPreservationRejectionOperation[];
+  readonly unrequestedPaths?: readonly string[];
+}
+
 export interface PromptIterationContent {
   readonly schemaVersion: typeof PROMPT_ITERATION_FEEDBACK_SCHEMA_VERSION;
   readonly kind: typeof PROMPT_ITERATION_FEEDBACK_KIND;
@@ -65,6 +85,7 @@ export interface PromptIterationContent {
   readonly priorRequestSummary?: string;
   readonly apply: PromptIterationApplyEvidence;
   readonly verification?: PromptIterationVerificationEvidence;
+  readonly preservationRejection?: PromptIterationPreservationRejection;
 }
 
 export type PromptSectionKind = (typeof PROMPT_SECTION_ORDER)[number];
@@ -133,6 +154,12 @@ export interface PromptTaskSection extends PromptSectionBase {
   readonly constraints: readonly ProjectConstraint[];
 }
 
+export interface PromptPreservationContractSection extends PromptSectionBase {
+  readonly kind: 'PRESERVATION_CONTRACT';
+  readonly instructions: readonly PromptInstruction[];
+  readonly contract: PreservationContractContent;
+}
+
 export interface PromptIterationSection extends PromptSectionBase {
   readonly kind: 'ITERATION';
   readonly instructions: readonly PromptInstruction[];
@@ -195,6 +222,7 @@ export type PromptSection =
   | PromptSystemSection
   | PromptArchitectureSection
   | PromptTaskSection
+  | PromptPreservationContractSection
   | PromptIterationSection
   | PromptRulesSection
   | PromptContextSection
@@ -238,6 +266,7 @@ export interface PromptBuildInput {
   readonly expectedOutput?: PromptOutputContract;
   readonly metadata?: PromptMetadata;
   readonly iterationFeedback?: PromptIterationContent;
+  readonly preservationContract?: PreservationContractContent;
 }
 
 export type PromptValidationCode =

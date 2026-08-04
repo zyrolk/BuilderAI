@@ -66,6 +66,7 @@ export class ChangePlannerConfigurationValidator {
         'highChurnThreshold',
         'maximumCrossFileChecks',
         'maximumListedHtmlIds',
+        'structuredHtml',
       ],
       path,
       issues,
@@ -112,6 +113,57 @@ export class ChangePlannerConfigurationValidator {
         issues,
         'INVALID_CONFIGURATION',
         `${path}.maximumListedHtmlIds`,
+        'must be a positive safe integer',
+      );
+    }
+    this.validateStructuredHtml(value.structuredHtml, `${path}.structuredHtml`, issues);
+  }
+
+  private validateStructuredHtml(
+    value: unknown,
+    path: string,
+    issues: ChangePlanValidationIssue[],
+  ): void {
+    if (!isRecord(value)) {
+      addIssue(issues, 'INVALID_CONFIGURATION', path, 'must be an object');
+      return;
+    }
+    validateExactKeys(
+      value,
+      ['maximumBaselineBytes', 'parseTimeLimitMs', 'maximumDomNodes', 'maximumTreeDepth'],
+      path,
+      issues,
+      'INVALID_CONFIGURATION',
+    );
+    if (!isPositiveSafeInteger(value.maximumBaselineBytes)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.maximumBaselineBytes`,
+        'must be a positive safe integer',
+      );
+    }
+    if (!isPositiveSafeInteger(value.parseTimeLimitMs)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.parseTimeLimitMs`,
+        'must be a positive safe integer',
+      );
+    }
+    if (!isPositiveSafeInteger(value.maximumDomNodes)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.maximumDomNodes`,
+        'must be a positive safe integer',
+      );
+    }
+    if (!isPositiveSafeInteger(value.maximumTreeDepth)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.maximumTreeDepth`,
         'must be a positive safe integer',
       );
     }

@@ -1,5 +1,8 @@
 import type { ArtifactChecksum } from '../../response-processor';
 
+import type { HtmlStructuredAnalysis } from './html-structured-analysis';
+import type { SurgicalityAssessment } from './surgicality-assessment';
+
 export interface CrossFileReferenceRisk {
   readonly removedId: string;
   readonly referencingLogicalPath: string;
@@ -37,5 +40,7 @@ export interface UpdatePreservationAssessment {
   readonly addedHtmlIds?: readonly string[];
   readonly removedAccessibilityAttributes?: readonly string[];
   readonly crossFileReferenceRisks?: readonly CrossFileReferenceRisk[];
+  readonly structuredAnalysis?: HtmlStructuredAnalysis;
+  readonly surgicality?: SurgicalityAssessment;
   readonly findings: readonly UpdatePreservationFinding[];
 }

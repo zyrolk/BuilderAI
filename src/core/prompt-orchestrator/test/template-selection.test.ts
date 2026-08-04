@@ -72,7 +72,7 @@ describe('prompt template selection', () => {
 
     const template = createTemplate();
     const system = requiredValue(template.sections[0]);
-    const context = requiredValue(template.sections[5]);
+    const context = requiredValue(template.sections[6]);
     expect(() =>
       validator.validate({
         ...template,
@@ -83,9 +83,9 @@ describe('prompt template selection', () => {
         sections: [
           { ...system, instructions: [null, { id: '', text: '' }] },
           null,
-          ...template.sections.slice(2, 5),
+          ...template.sections.slice(2, 6),
           { ...context, required: true, instructions: null },
-          ...template.sections.slice(6),
+          ...template.sections.slice(7),
         ],
       }),
     ).toThrow(PromptOrchestratorValidationError);

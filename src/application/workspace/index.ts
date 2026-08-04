@@ -11,6 +11,7 @@ export * from './feature-plan.types';
 export * from './feature-workflow.service';
 export * from './iteration-feedback.service';
 export * from './iteration-feedback.types';
+export * from './preservation-rejection-builder.service';
 export * from './workspace-runtime.service';
 export * from './workspace-http-errors';
 export * from './workspace-runtime.types';

@@ -372,10 +372,8 @@ describe('ChangePlannerService preservation integration (ADR-030 Slice 2)', () =
   it('enforces maximumCrossFileChecks when discovering sibling JS files', () => {
     const limitedConfiguration = createConfiguration({
       preservation: {
-        elevatedChurnThreshold: 0.4,
-        highChurnThreshold: 0.7,
+        ...createConfiguration().preservation,
         maximumCrossFileChecks: 1,
-        maximumListedHtmlIds: 8,
       },
     });
     const baselinePort = createInMemoryBaseline({

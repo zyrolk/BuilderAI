@@ -135,6 +135,25 @@ describe('NodeProjectFileSource expanded indexing (Phase 1)', () => {
     );
   });
 
+  it('discovers root-level source files and assets/ for static HTML workspaces', async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'builderai-static-'));
+    await mkdir(path.join(root, 'assets'), { recursive: true });
+    await writeFile(path.join(root, 'index.html'), '<html></html>\n');
+    await writeFile(path.join(root, 'assets', 'app.js'), 'console.log(true);\n');
+    await writeFile(path.join(root, 'assets', 'styles.css'), 'body {}\n');
+    await writeFile(path.join(root, 'assets', 'quotes.json'), '[]\n');
+    await writeFile(path.join(root, 'package.json'), '{"name":"static-site"}\n');
+
+    const paths = await new NodeProjectFileSource(root).listSourcePaths();
+    expect(paths).toEqual([
+      'assets/app.js',
+      'assets/quotes.json',
+      'assets/styles.css',
+      'index.html',
+      'package.json',
+    ]);
+  });
+
   it('discovers additional configured scan roots', async () => {
     await createFixture();
     await mkdir(path.join(root, 'custom-root', 'nested'), { recursive: true });

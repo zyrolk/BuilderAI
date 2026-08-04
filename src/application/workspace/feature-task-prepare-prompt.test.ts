@@ -24,6 +24,7 @@ import {
 import { FEATURE_SHADOW_TASK_ID_PREFIX, FEATURE_TASK_ID_PREFIX } from './bounded-project-task-id';
 import { normalizeFeaturePlan } from './feature-plan.service';
 import { buildIterationFeedbackFromCompletion } from './iteration-feedback.service';
+import { NullWorkspaceBaselinePort } from '../../core/update-scope/test/workspace-baseline.fixture';
 import { WorkspaceRuntimeService } from './workspace-runtime.service';
 
 const NOW = '2026-07-31T13:00:00.000Z';
@@ -153,6 +154,7 @@ function createRuntime(options: {
     sourceFiles: new NodeProjectFileSource(process.cwd()),
     contextBuilder: options.contextBuilder,
     promptOrchestrator: options.promptOrchestrator,
+    workspaceBaseline: new NullWorkspaceBaselinePort(),
     providerExecution,
     responseProcessor: new ResponseProcessorService(),
     changePlanner: new ChangePlannerService(),

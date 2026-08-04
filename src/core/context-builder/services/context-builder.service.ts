@@ -43,6 +43,13 @@ export class ContextBuilderService {
     }
     const validated = this.inputValidator.validate(input, limits, sourcePaths);
     const selection = await this.selectionService.select(validated, limits);
+    const pinnedPaths = new Set(
+      (input.pinnedBaselineFiles ?? []).map(({ path }) => path.replaceAll('\\', '/')),
+    );
+    const rankedWithoutPinnedDuplicates = selection.files.filter(
+      ({ path }) => !pinnedPaths.has(path.replaceAll('\\', '/')),
+    );
+    const pinnedBaselineFiles = [...(input.pinnedBaselineFiles ?? [])];
     const draftWithoutFiles: ContextPackageDraft = {
       schemaVersion: 1,
       priorityOrder: CONTEXT_PRIORITIES,
@@ -78,14 +85,15 @@ export class ContextBuilderService {
         selection.sourceReads,
       );
     const { admitted, omissions: fileOmissions } = admitSourceFilesByMeasuredBudget(
-      selection.files,
-      limits.maxFiles,
+      rankedWithoutPinnedDuplicates,
+      Math.max(0, limits.maxFiles - pinnedBaselineFiles.length),
       targetMaxCharacters,
-      measureFiles,
+      (files, omissions) => measureFiles([...pinnedBaselineFiles, ...files], omissions),
     );
+    const mergedFiles = [...pinnedBaselineFiles, ...admitted];
     const draft: ContextPackageDraft = {
       ...draftWithoutFiles,
-      relevantFiles: admitted,
+      relevantFiles: mergedFiles,
     };
     const packageValue = this.sizeService.enforce(
       draft,

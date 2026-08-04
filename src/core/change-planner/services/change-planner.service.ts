@@ -1,3 +1,4 @@
+import type { UpdateScopePlan } from '../../update-scope';
 import {
   ResponsePackageValidator,
   ResponseProcessorValidationError,
@@ -23,6 +24,7 @@ import { ChangeConflictDetectorService } from './change-conflict-detector.servic
 import { ChangePlanSummaryService } from './change-plan-summary.service';
 import { ChangePreservationService } from './change-preservation.service';
 import { ChangeRiskService } from './change-risk.service';
+import { mergePlanMetadata, UpdateScopeWarningService } from './update-scope-warning.service';
 import { createOperationId, OperationOrderingService } from './operation-ordering.service';
 
 export class ChangePlannerService {
@@ -34,6 +36,7 @@ export class ChangePlannerService {
   private readonly summary = new ChangePlanSummaryService();
   private readonly risk: ChangeRiskService;
   private readonly preservation: ChangePreservationService;
+  private readonly scopeWarnings: UpdateScopeWarningService;
   private readonly planValidator: ProjectChangePlanValidator;
   private readonly referenceValidator: ChangePlanReferenceValidator;
 
@@ -45,6 +48,7 @@ export class ChangePlannerService {
     this.configurationValidator.validate(configuration);
     this.risk = new ChangeRiskService(configuration);
     this.preservation = new ChangePreservationService(configuration);
+    this.scopeWarnings = new UpdateScopeWarningService();
     this.planValidator = new ProjectChangePlanValidator(configuration);
     this.referenceValidator = new ChangePlanReferenceValidator(this.planValidator);
   }
@@ -53,6 +57,7 @@ export class ChangePlannerService {
     responsePackage: unknown,
     workspaceVisibility?: WorkspaceVisibilityPort,
     workspaceBaseline?: WorkspaceBaselinePort,
+    updateScopePlan?: UpdateScopePlan,
   ): ProjectChangePlan {
     this.validateResponsePackage(responsePackage);
     const resolvedVisibility = workspaceVisibility ?? this.workspaceVisibility;
@@ -64,11 +69,12 @@ export class ChangePlannerService {
         : this.preservation.enrichOperations(operations, resolvedBaseline);
     this.conflictDetector.validate(preservationResult.operations);
     const orderedOperations = this.ordering.order(preservationResult.operations);
+    const scopeAnalysis = this.scopeWarnings.analyze(orderedOperations, updateScopePlan);
     const warnings = this.risk.createWarnings(
       orderedOperations,
       responsePackage.warnings,
       resolvedVisibility !== undefined,
-      preservationResult.warnings,
+      [...preservationResult.warnings, ...scopeAnalysis.warnings],
     );
     const plan: ProjectChangePlan = {
       schemaVersion: PROJECT_CHANGE_PLAN_SCHEMA_VERSION,
@@ -82,7 +88,7 @@ export class ChangePlannerService {
         (left, right) => (left.code < right.code ? -1 : left.code > right.code ? 1 : 0),
       ),
       warnings,
-      metadata: structuredClone(responsePackage.metadata),
+      metadata: mergePlanMetadata(responsePackage.metadata, scopeAnalysis.metadata),
     };
     this.planValidator.validate(plan);
     this.referenceValidator.validate(plan, responsePackage);

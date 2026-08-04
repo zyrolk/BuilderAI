@@ -22,7 +22,7 @@ export class NodeProjectFileSource implements ProjectFileSource {
 
   async listSourcePaths(): Promise<readonly string[]> {
     const paths = new Set<string>();
-    await this.collectRootConfigFiles(paths);
+    await this.collectRootLevelFiles(paths);
     for (const scanRoot of this.scanRoots) {
       await this.collect(path.join(this.root, ...scanRoot.split('/')), paths);
     }
@@ -35,7 +35,7 @@ export class NodeProjectFileSource implements ProjectFileSource {
     return readFile(absolutePath, 'utf8');
   }
 
-  private async collectRootConfigFiles(paths: Set<string>): Promise<void> {
+  private async collectRootLevelFiles(paths: Set<string>): Promise<void> {
     let entries;
     try {
       entries = await readdir(this.root, { withFileTypes: true });
@@ -45,7 +45,11 @@ export class NodeProjectFileSource implements ProjectFileSource {
     }
     for (const entry of entries.sort((left, right) => compareText(left.name, right.name))) {
       if (entry.isSymbolicLink() || !entry.isFile()) continue;
-      if (!isRootConfigFile(entry.name)) continue;
+      if (isRootConfigFile(entry.name)) {
+        paths.add(entry.name);
+        continue;
+      }
+      if (isExcludedFileName(entry.name) || !hasSourceExtension(entry.name)) continue;
       paths.add(entry.name);
     }
   }

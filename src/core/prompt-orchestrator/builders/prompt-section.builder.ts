@@ -1,4 +1,7 @@
 import type { ContextDocument, ContextPackage } from '../../context-builder';
+import type { PreservationContractContent } from '../../update-scope';
+import { renderPreservationContractText } from '../internal/preservation-contract-renderer';
+import { renderPreservationRejectionText } from '../internal/preservation-rejection-renderer';
 import type {
   PromptInstruction,
   PromptIterationContent,
@@ -24,9 +27,16 @@ export class PromptSectionBuilder {
     context: ContextPackage,
     expectedOutput: PromptOutputContract,
     iterationFeedback?: PromptIterationContent,
+    preservationContract?: PreservationContractContent,
   ): readonly PromptSection[] {
     const sections = template.sections.flatMap((section) => {
-      const built = this.buildSection(section, context, expectedOutput, iterationFeedback);
+      const built = this.buildSection(
+        section,
+        context,
+        expectedOutput,
+        iterationFeedback,
+        preservationContract,
+      );
       return built === undefined ? [] : [built];
     });
     return deduplicateInstructions(sections);
@@ -37,6 +47,7 @@ export class PromptSectionBuilder {
     context: ContextPackage,
     expectedOutput: PromptOutputContract,
     iterationFeedback?: PromptIterationContent,
+    preservationContract?: PreservationContractContent,
   ): PromptSection | undefined {
     const base = {
       id: templateSection.id,
@@ -73,12 +84,38 @@ export class PromptSectionBuilder {
           goals: context.goals,
           constraints: context.constraints,
         };
+      case 'PRESERVATION_CONTRACT':
+        if (preservationContract === undefined) return undefined;
+        return {
+          ...base,
+          kind: 'PRESERVATION_CONTRACT',
+          instructions: [
+            ...templateInstructions(templateSection.instructions),
+            {
+              id: 'preservation-contract-body',
+              text: renderPreservationContractText(preservationContract),
+              source: 'TEMPLATE',
+            },
+          ],
+          contract: preservationContract,
+        };
       case 'ITERATION':
         if (iterationFeedback === undefined) return undefined;
         return {
           ...base,
           kind: 'ITERATION',
-          instructions: templateInstructions(templateSection.instructions),
+          instructions: [
+            ...templateInstructions(templateSection.instructions),
+            ...(iterationFeedback.preservationRejection === undefined
+              ? []
+              : [
+                  {
+                    id: 'preservation-rejection-feedback',
+                    text: renderPreservationRejectionText(iterationFeedback.preservationRejection),
+                    source: 'TEMPLATE' as const,
+                  },
+                ]),
+          ],
           feedback: iterationFeedback,
         };
       case 'RULES':

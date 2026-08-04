@@ -18,6 +18,7 @@ import type { ActivityHistoryService } from './activity-history.service';
 import { parseWorkspaceActivity } from './activity-history.schemas';
 import type { WorkspaceActivity } from './activity-history.types';
 import { normalizeFeaturePlan } from './feature-plan.service';
+import { NullWorkspaceBaselinePort } from '../../core/update-scope/test/workspace-baseline.fixture';
 import { WorkspaceRuntimeService } from './workspace-runtime.service';
 import {
   OpenAIExecutionService,
@@ -163,6 +164,7 @@ function createRuntime(options: {
     sourceFiles: emptySource,
     contextBuilder: new ContextBuilderService(),
     promptOrchestrator: new PromptOrchestratorService(),
+    workspaceBaseline: new NullWorkspaceBaselinePort(),
     providerExecution,
     responseProcessor: new ResponseProcessorService(),
     changePlanner: new ChangePlannerService(),
@@ -307,6 +309,7 @@ describe('Workspace activity history orchestration integration', () => {
       sourceFiles: emptySource,
       contextBuilder: new ContextBuilderService(),
       promptOrchestrator: new PromptOrchestratorService(),
+      workspaceBaseline: new NullWorkspaceBaselinePort(),
       providerExecution: new OpenAIExecutionService(provider, configuration, providerClock),
       responseProcessor: new ResponseProcessorService(),
       changePlanner: new ChangePlannerService(),
@@ -354,6 +357,7 @@ describe('Workspace activity history orchestration integration', () => {
       sourceFiles: emptySource,
       contextBuilder: new ContextBuilderService(),
       promptOrchestrator: new PromptOrchestratorService(),
+      workspaceBaseline: new NullWorkspaceBaselinePort(),
       providerExecution,
       responseProcessor: new ResponseProcessorService(),
       changePlanner: new ChangePlannerService(),

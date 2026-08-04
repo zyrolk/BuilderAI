@@ -1,13 +1,19 @@
 import type { ArtifactChecksumPort } from '../../response-processor/ports';
 import { Sha256ChecksumService } from '../../response-processor/services/sha256-checksum.service';
 import type { ArtifactChecksum } from '../../response-processor';
+import {
+  DEFAULT_PRESERVATION_CONFIGURATION,
+  DEFAULT_STRUCTURED_HTML_ANALYSIS_CONFIGURATION,
+} from '../config/change-planner-configuration';
 import type {
   CrossFileReferenceRisk,
   LargeDeletionSignal,
   UpdatePreservationAnalysisInput,
   UpdatePreservationAnalysisResult,
 } from '../types/update-preservation-analysis';
+import type { HtmlStructuredAnalysis } from '../types/html-structured-analysis';
 import { compareText, utf8Size } from '../validators/validation-helpers';
+import { HtmlStructuredDeltaService, isHtmlLogicalPath } from './html-structured-delta.service';
 
 const HTML_ID_PATTERN = /\bid\s*=\s*["']([^"']+)["']/gi;
 const ARIA_ATTRIBUTE_PATTERN = /\baria-[a-zA-Z0-9-]+\b/g;
@@ -154,8 +160,31 @@ function detectCrossFileReferenceRisks(
   );
 }
 
+function computeStructuredAnalysis(
+  input: UpdatePreservationAnalysisInput,
+  baselineContent: string,
+  proposedContent: string,
+  churnRatio: number,
+  structuredDeltaService: HtmlStructuredDeltaService,
+): HtmlStructuredAnalysis | undefined {
+  if (!isHtmlLogicalPath(input.logicalPath)) return undefined;
+
+  return structuredDeltaService.analyze({
+    baselineContent,
+    proposedContent,
+    churnRatio,
+    elevatedChurnThreshold:
+      input.elevatedChurnThreshold ?? DEFAULT_PRESERVATION_CONFIGURATION.elevatedChurnThreshold,
+    configuration:
+      input.structuredHtmlConfiguration ?? DEFAULT_STRUCTURED_HTML_ANALYSIS_CONFIGURATION,
+  });
+}
+
 export class UpdatePreservationAnalysisService {
-  constructor(private readonly checksumPort: ArtifactChecksumPort = new Sha256ChecksumService()) {}
+  constructor(
+    private readonly checksumPort: ArtifactChecksumPort = new Sha256ChecksumService(),
+    private readonly structuredDeltaService: HtmlStructuredDeltaService = new HtmlStructuredDeltaService(),
+  ) {}
 
   analyzeSynchronously(
     input: UpdatePreservationAnalysisInput & { readonly baselineContentChecksum: ArtifactChecksum },
@@ -182,6 +211,14 @@ export class UpdatePreservationAnalysisService {
         ? detectCrossFileReferenceRisks(removedHtmlIds, input.siblingJsContents)
         : [];
 
+    const structuredAnalysis = computeStructuredAnalysis(
+      input,
+      baselineContent,
+      proposedContent,
+      lineMetrics.churnRatio,
+      this.structuredDeltaService,
+    );
+
     return {
       logicalPath: input.logicalPath,
       baselineContentChecksum: input.baselineContentChecksum,
@@ -203,6 +240,7 @@ export class UpdatePreservationAnalysisService {
         lineMetrics.linesAdded,
         lineMetrics.linesDeleted,
       ),
+      ...(structuredAnalysis !== undefined ? { structuredAnalysis } : {}),
     };
   }
 
@@ -229,6 +267,14 @@ export class UpdatePreservationAnalysisService {
         ? detectCrossFileReferenceRisks(removedHtmlIds, input.siblingJsContents)
         : [];
 
+    const structuredAnalysis = computeStructuredAnalysis(
+      input,
+      baselineContent,
+      proposedContent,
+      lineMetrics.churnRatio,
+      this.structuredDeltaService,
+    );
+
     return {
       logicalPath: input.logicalPath,
       baselineContentChecksum: {
@@ -253,6 +299,7 @@ export class UpdatePreservationAnalysisService {
         lineMetrics.linesAdded,
         lineMetrics.linesDeleted,
       ),
+      ...(structuredAnalysis !== undefined ? { structuredAnalysis } : {}),
     };
   }
 }

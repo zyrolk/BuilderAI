@@ -1,5 +1,6 @@
 import type { BlueprintReaderService } from '../../core/blueprint-reader';
 import type { ChangePlannerService } from '../../core/change-planner';
+import type { WorkspaceBaselinePort } from '../../core/change-planner/ports/workspace-baseline.port';
 import type { ContextBuilderService, ProjectFileSource } from '../../core/context-builder';
 import type { ExecutionCancellationToken } from '../../core/execution-engine';
 import type { ExecutionRequest } from '../../core/execution-engine';
@@ -13,8 +14,11 @@ import { parseProjectBrain, type ProjectBrain, type ProjectTask } from '../../co
 import type {
   PromptIterationContent,
   PromptOrchestratorService,
+  PromptPackage,
 } from '../../core/prompt-orchestrator';
 import type { ResponseProcessorService } from '../../core/response-processor';
+import { PrepareScopeService, type UpdateScopePlan } from '../../core/update-scope';
+import type { ContextPackage } from '../../core/context-builder';
 import type { VerificationEngineService, VerificationReport } from '../../core/verification';
 import type { ActivityHistoryService } from './activity-history.service';
 import type { WorkspaceActivity } from './activity-history.types';
@@ -55,6 +59,7 @@ interface WorkspaceRuntimeDependencies {
   readonly sourceFiles: ProjectFileSource;
   readonly contextBuilder: ContextBuilderService;
   readonly promptOrchestrator: PromptOrchestratorService;
+  readonly workspaceBaseline: WorkspaceBaselinePort;
   readonly providerExecution: ProviderExecutionPort;
   readonly responseProcessor: ResponseProcessorService;
   readonly changePlanner: ChangePlannerService;
@@ -65,11 +70,13 @@ interface WorkspaceRuntimeDependencies {
   readonly logger: WorkspaceRuntimeLogger;
   readonly activityHistory?: ActivityHistoryService;
   readonly configuration?: WorkspaceRuntimeConfiguration;
+  readonly prepareScope?: PrepareScopeService;
 }
 
 export class WorkspaceRuntimeService {
   private readonly configuration: WorkspaceRuntimeConfiguration;
   private readonly store: InMemoryPreparationStore;
+  private readonly prepareScope: PrepareScopeService;
 
   constructor(private readonly dependencies: WorkspaceRuntimeDependencies) {
     this.configuration = dependencies.configuration ?? DEFAULT_WORKSPACE_RUNTIME_CONFIGURATION;
@@ -78,6 +85,7 @@ export class WorkspaceRuntimeService {
       dependencies.clock,
       this.configuration.maximumPreparations,
     );
+    this.prepareScope = dependencies.prepareScope ?? new PrepareScopeService();
   }
 
   async prepare(request: string, iterationFeedbackInput?: unknown): Promise<WorkspacePreparation> {
@@ -109,19 +117,15 @@ export class WorkspaceRuntimeService {
       const requestedAt = startedAt.toISOString();
       const transientTask = createTransientTask(correlationId, normalizedRequest, requestedAt);
       const executionBrain = createExecutionBrain(canonicalBrain, [transientTask]);
-      const context = await this.dependencies.contextBuilder.build({
-        projectBrain: executionBrain,
-        blueprintReaderOutput: readerOutput,
+      const { prompt, scopePlan } = await this.buildScopedPrepareArtifacts({
+        taskText: normalizedRequest,
+        executionBrain,
+        readerOutput,
         currentTaskId: transientTask.id,
-        sourceFileSource: this.dependencies.sourceFiles,
-        ...(iterationPathHints.length === 0 ? {} : { iterationPathHints }),
-      });
-      const prompt = await this.dependencies.promptOrchestrator.build({
-        context,
+        iterationPathHints,
+        correlationId,
         metadata: { 'correlation-id': correlationId, source: 'workspace' },
-        ...(normalizedFeedback === undefined
-          ? {}
-          : { iterationFeedback: normalizedFeedback as PromptIterationContent }),
+        iterationFeedback: normalizedFeedback as PromptIterationContent | undefined,
       });
       const executionRequest = createExecutionRequest(
         correlationId,
@@ -135,7 +139,12 @@ export class WorkspaceRuntimeService {
         executionResult: providerOutput.executionResult,
         metadata: { 'correlation-id': correlationId },
       });
-      const changePlan = this.dependencies.changePlanner.plan(responsePackage);
+      const changePlan = this.dependencies.changePlanner.plan(
+        responsePackage,
+        undefined,
+        undefined,
+        scopePlan,
+      );
       const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
       this.store.save(correlationId, changePlan, expiresAt);
       this.log(correlationId, 'PREPARE', 'SUCCEEDED', startedAt);
@@ -200,24 +209,20 @@ export class WorkspaceRuntimeService {
         shadowTasks,
       );
       const executionBrain = createExecutionBrain(canonicalBrain, [...shadowTasks, transientTask]);
-      const context = await this.dependencies.contextBuilder.build({
-        projectBrain: executionBrain,
-        blueprintReaderOutput: readerOutput,
+      const { prompt, scopePlan } = await this.buildScopedPrepareArtifacts({
+        taskText: normalizedRequest,
+        executionBrain,
+        readerOutput,
         currentTaskId: transientTask.id,
-        sourceFileSource: this.dependencies.sourceFiles,
-        ...(iterationPathHints.length === 0 ? {} : { iterationPathHints }),
-      });
-      const prompt = await this.dependencies.promptOrchestrator.build({
-        context,
+        iterationPathHints,
+        correlationId,
         metadata: {
           'correlation-id': correlationId,
           source: 'workspace-feature-task',
           'feature-plan-id': input.plan.featurePlanId,
           'task-id': input.task.taskId,
         },
-        ...(normalizedFeedback === undefined
-          ? {}
-          : { iterationFeedback: normalizedFeedback as PromptIterationContent }),
+        iterationFeedback: normalizedFeedback as PromptIterationContent | undefined,
       });
       const executionRequest = createExecutionRequest(
         correlationId,
@@ -231,7 +236,12 @@ export class WorkspaceRuntimeService {
         executionResult: providerOutput.executionResult,
         metadata: { 'correlation-id': correlationId },
       });
-      const changePlan = this.dependencies.changePlanner.plan(responsePackage);
+      const changePlan = this.dependencies.changePlanner.plan(
+        responsePackage,
+        undefined,
+        undefined,
+        scopePlan,
+      );
       const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
       this.store.save(correlationId, changePlan, expiresAt, featureBinding);
       const durationMs = Math.max(0, this.dependencies.clock.now().getTime() - startedAt.getTime());
@@ -438,6 +448,54 @@ export class WorkspaceRuntimeService {
         code: safeCode(error),
       });
     }
+  }
+
+  private async buildScopedPrepareArtifacts(input: {
+    readonly taskText: string;
+    readonly executionBrain: ProjectBrain;
+    readonly readerOutput: Awaited<ReturnType<BlueprintReaderService['read']>>;
+    readonly currentTaskId: string;
+    readonly iterationPathHints: readonly string[];
+    readonly correlationId: string;
+    readonly metadata: Record<string, string>;
+    readonly iterationFeedback?: PromptIterationContent;
+  }): Promise<{
+    readonly context: ContextPackage;
+    readonly prompt: PromptPackage;
+    readonly scopePlan: UpdateScopePlan;
+  }> {
+    const sourcePaths = await this.dependencies.sourceFiles.listSourcePaths();
+    const scopeResolution = this.prepareScope.resolve({
+      taskText: input.taskText,
+      sourcePaths,
+      ...(input.iterationPathHints.length === 0
+        ? {}
+        : { iterationPathHints: input.iterationPathHints }),
+      baselinePort: this.dependencies.workspaceBaseline,
+    });
+    const context = await this.dependencies.contextBuilder.build({
+      projectBrain: input.executionBrain,
+      blueprintReaderOutput: input.readerOutput,
+      currentTaskId: input.currentTaskId,
+      sourceFileSource: this.dependencies.sourceFiles,
+      ...(input.iterationPathHints.length === 0
+        ? {}
+        : { iterationPathHints: input.iterationPathHints }),
+      ...(scopeResolution.pinnedBaselineFiles.length === 0
+        ? {}
+        : { pinnedBaselineFiles: scopeResolution.pinnedBaselineFiles }),
+    });
+    const prompt = await this.dependencies.promptOrchestrator.build({
+      context,
+      metadata: input.metadata,
+      ...(input.iterationFeedback === undefined
+        ? {}
+        : { iterationFeedback: input.iterationFeedback }),
+      ...(scopeResolution.preservationContract === undefined
+        ? {}
+        : { preservationContract: scopeResolution.preservationContract }),
+    });
+    return { context, prompt, scopePlan: scopeResolution.scopePlan };
   }
 
   private log(

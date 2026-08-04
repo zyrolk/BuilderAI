@@ -1,6 +1,8 @@
 import type { ArtifactChecksum } from '../../core/response-processor';
 import type {
   PreservationFindingSeverity,
+  SurgicalityBasis,
+  SurgicalityClassification,
   UpdatePreservationAssessment,
   UpdatePreservationFinding,
 } from '../../core/change-planner';
@@ -30,6 +32,41 @@ export function preservationSeverityLabel(severity: PreservationFindingSeverity)
   return severity;
 }
 
+export function surgicalityClassificationLabel(classification: SurgicalityClassification): string {
+  return classification;
+}
+
+export function surgicalityBasisLabel(basis: SurgicalityBasis): string {
+  switch (basis) {
+    case 'STRUCTURED_HTML':
+      return 'Structured HTML';
+    case 'GENERIC_LINE_LCS':
+      return 'Generic line LCS';
+    case 'UNAVAILABLE':
+      return 'Unavailable';
+  }
+}
+
+export function listSurgicalityMetricItems(
+  preservation: UpdatePreservationAssessment,
+): readonly (readonly [string, string])[] {
+  const items: (readonly [string, string])[] = [];
+  const surgicality = preservation.surgicality;
+  if (surgicality !== undefined) {
+    items.push(['Surgicality', surgicalityClassificationLabel(surgicality.classification)]);
+    items.push(['Basis', surgicalityBasisLabel(surgicality.basis)]);
+  }
+
+  const structured = preservation.structuredAnalysis;
+  if (structured !== undefined && structured.parseStatus === 'SUCCESS') {
+    items.push(['Attributes changed', String(structured.attributeChanges)]);
+    items.push(['Text changes', String(structured.textChanges)]);
+    items.push(['Structural changes', String(structured.structuralChanges)]);
+  }
+
+  return items;
+}
+
 export function hasBaselineUnavailableWarning(
   warnings: readonly ProjectChangeWarning[],
   operationId: string,
@@ -52,8 +89,8 @@ export function listPreservationMetricItems(
     baselineContentChecksum ?? preservation.baselineContentChecksum,
   );
   const proposedChecksum = abbreviateChecksum(proposedContentChecksum);
-  const items: (readonly [string, string])[] = [];
-  if (churn !== undefined) items.push(['Churn', churn]);
+  const items: (readonly [string, string])[] = [...listSurgicalityMetricItems(preservation)];
+  if (churn !== undefined) items.push(['Line churn', churn]);
   if (similarity !== undefined) items.push(['Similarity', similarity]);
   if (preservation.linesAdded !== undefined) {
     items.push(['Lines added', String(preservation.linesAdded)]);

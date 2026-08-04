@@ -1,6 +1,7 @@
 import {
   ResponsePackageValidator,
   ResponseProcessorValidationError,
+  type ResponseMetadata,
 } from '../../response-processor';
 import { ChangePlanValidationError, type ChangePlanValidationIssue } from '../types';
 import { ProjectChangePlanValidator } from './project-change-plan.validator';
@@ -83,7 +84,7 @@ export class ChangePlanReferenceValidator {
         });
       }
     });
-    if (JSON.stringify(plan.metadata) !== JSON.stringify(responsePackage.metadata)) {
+    if (!metadataMatchesPlanExtension(plan.metadata, responsePackage.metadata)) {
       issues.push({
         code: 'INVALID_REFERENCE',
         path: '$.metadata',
@@ -92,4 +93,14 @@ export class ChangePlanReferenceValidator {
     }
     if (issues.length > 0) throw new ChangePlanValidationError(issues);
   }
+}
+
+function metadataMatchesPlanExtension(
+  planMetadata: ResponseMetadata,
+  responseMetadata: ResponseMetadata,
+): boolean {
+  for (const [key, value] of Object.entries(responseMetadata)) {
+    if (planMetadata[key] !== value) return false;
+  }
+  return true;
 }

@@ -27,6 +27,7 @@ export const CONTEXT_PRIORITIES = [
   'PROGRESS',
   'CODING_STANDARDS',
   'AI_RULES',
+  'PINNED_BASELINE',
   'RELATED_SOURCE_FILES',
 ] as const;
 
@@ -73,6 +74,7 @@ export interface ContextBuildInput {
   readonly currentTaskId: string;
   readonly sourceFileSource: ProjectFileSource;
   readonly iterationPathHints?: readonly string[];
+  readonly pinnedBaselineFiles?: readonly ContextSourceFile[];
 }
 
 export interface ProjectIdentityContext {
@@ -88,8 +90,10 @@ export interface ContextDocument {
   readonly content: string;
 }
 
+export type ContextSourceFilePriority = 'PINNED_BASELINE' | 'RELATED_SOURCE_FILES';
+
 export interface ContextSourceFile extends ProjectSourceFile {
-  readonly priority: 'RELATED_SOURCE_FILES';
+  readonly priority: ContextSourceFilePriority;
   readonly modulePath?: string;
 }
 
@@ -112,7 +116,13 @@ export interface ContextBlocker {
   readonly reason: string;
 }
 
-export type ContextOmissionReason = 'DUPLICATE' | 'DOCUMENT_LIMIT' | 'FILE_LIMIT' | 'SIZE_LIMIT';
+export type ContextOmissionReason =
+  | 'DUPLICATE'
+  | 'DOCUMENT_LIMIT'
+  | 'FILE_LIMIT'
+  | 'SIZE_LIMIT'
+  | 'BASELINE_UNAVAILABLE'
+  | 'BASELINE_BUDGET_EXCEEDED';
 
 export interface ContextOmission {
   readonly kind: 'DECISION' | 'DOCUMENT' | 'FILE' | 'MODULE';

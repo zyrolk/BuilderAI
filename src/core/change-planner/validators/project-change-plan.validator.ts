@@ -263,6 +263,8 @@ export class ProjectChangePlanValidator {
         'addedHtmlIds',
         'removedAccessibilityAttributes',
         'crossFileReferenceRisks',
+        'structuredAnalysis',
+        'surgicality',
         'findings',
       ],
       path,
@@ -359,6 +361,16 @@ export class ProjectChangePlanValidator {
         });
       }
     }
+    if (value.structuredAnalysis !== undefined) {
+      this.validateStructuredAnalysis(
+        value.structuredAnalysis,
+        `${path}.structuredAnalysis`,
+        issues,
+      );
+    }
+    if (value.surgicality !== undefined) {
+      this.validateSurgicality(value.surgicality, `${path}.surgicality`, issues);
+    }
     if (!Array.isArray(value.findings)) {
       addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.findings`, 'must be an array');
       return;
@@ -388,6 +400,134 @@ export class ProjectChangePlanValidator {
     );
     if (!isSorted(findingKeys)) {
       addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.findings`, 'must use canonical order');
+    }
+  }
+
+  private validateStructuredAnalysis(
+    value: unknown,
+    path: string,
+    issues: ChangePlanValidationIssue[],
+  ): void {
+    if (!isRecord(value)) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', path, 'must be an object');
+      return;
+    }
+    validateExactKeys(
+      value,
+      [
+        'kind',
+        'parseStatus',
+        'attributeChanges',
+        'textChanges',
+        'structuralChanges',
+        'formattingOnlyEvidence',
+        'preservedStableIdCount',
+        'removedStableIdCount',
+        'elementCountBaseline',
+        'elementCountProposed',
+        'fallbackReason',
+      ],
+      path,
+      issues,
+    );
+    if (value.kind !== 'HTML') {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.kind`, 'must be HTML');
+    }
+    if (value.parseStatus !== 'SUCCESS' && value.parseStatus !== 'FALLBACK') {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.parseStatus`, 'is unsupported');
+    }
+    for (const key of [
+      'attributeChanges',
+      'textChanges',
+      'structuralChanges',
+      'preservedStableIdCount',
+      'removedStableIdCount',
+      'elementCountBaseline',
+      'elementCountProposed',
+    ] as const) {
+      if (!isNonNegativeSafeInteger(value[key])) {
+        addIssue(
+          issues,
+          'INVALID_CHANGE_PLAN',
+          `${path}.${key}`,
+          'must be a non-negative safe integer',
+        );
+      }
+    }
+    if (typeof value.formattingOnlyEvidence !== 'boolean') {
+      addIssue(
+        issues,
+        'INVALID_CHANGE_PLAN',
+        `${path}.formattingOnlyEvidence`,
+        'must be a boolean',
+      );
+    }
+    const fallbackReasons = [
+      'BASELINE_TOO_LARGE',
+      'PROPOSED_TOO_LARGE',
+      'PARSE_ERROR',
+      'TIME_LIMIT',
+      'NODE_LIMIT',
+      'DEPTH_LIMIT',
+    ] as const;
+    if (
+      value.fallbackReason !== undefined &&
+      (typeof value.fallbackReason !== 'string' ||
+        !fallbackReasons.includes(value.fallbackReason as (typeof fallbackReasons)[number]))
+    ) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.fallbackReason`, 'is unsupported');
+    }
+    if (value.parseStatus === 'FALLBACK' && value.fallbackReason === undefined) {
+      addIssue(
+        issues,
+        'INVALID_CHANGE_PLAN',
+        `${path}.fallbackReason`,
+        'is required when parseStatus is FALLBACK',
+      );
+    }
+    if (value.parseStatus === 'SUCCESS' && value.fallbackReason !== undefined) {
+      addIssue(
+        issues,
+        'INVALID_CHANGE_PLAN',
+        `${path}.fallbackReason`,
+        'must be absent when parseStatus is SUCCESS',
+      );
+    }
+  }
+
+  private validateSurgicality(
+    value: unknown,
+    path: string,
+    issues: ChangePlanValidationIssue[],
+  ): void {
+    if (!isRecord(value)) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', path, 'must be an object');
+      return;
+    }
+    validateExactKeys(value, ['classification', 'basis', 'reasons'], path, issues);
+    const classifications = ['EXCELLENT', 'GOOD', 'MARGINAL', 'POOR', 'UNAVAILABLE'] as const;
+    const bases = ['STRUCTURED_HTML', 'GENERIC_LINE_LCS', 'UNAVAILABLE'] as const;
+    if (
+      typeof value.classification !== 'string' ||
+      !classifications.includes(value.classification as (typeof classifications)[number])
+    ) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.classification`, 'is unsupported');
+    }
+    if (typeof value.basis !== 'string' || !bases.includes(value.basis as (typeof bases)[number])) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.basis`, 'is unsupported');
+    }
+    if (
+      !Array.isArray(value.reasons) ||
+      !value.reasons.every((reason) => typeof reason === 'string' && reason.length > 0)
+    ) {
+      addIssue(
+        issues,
+        'INVALID_CHANGE_PLAN',
+        `${path}.reasons`,
+        'must be a non-empty string array',
+      );
+    } else if (!isSorted(value.reasons as readonly string[])) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.reasons`, 'must use canonical order');
     }
   }
 

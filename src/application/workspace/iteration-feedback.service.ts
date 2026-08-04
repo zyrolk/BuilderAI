@@ -1,4 +1,6 @@
-import { FILE_APPLY_STATUSES, type FileApplyResult } from '../../core/file-apply';
+import { FILE_APPLY_STATUSES } from '../../core/file-apply';
+import type { ProjectChangePlan } from '../../core/change-planner';
+import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponseMetadata } from '../../core/response-processor';
 import {
   VERIFICATION_STAGES,
@@ -7,7 +9,10 @@ import {
   type VerificationReport,
   type VerificationStage,
 } from '../../core/verification';
-import type { WorkspaceCompletion } from './workspace-runtime.types';
+import {
+  buildPreservationRejectionFromChangePlan,
+  type PreservationRejectionBuildOptions,
+} from './preservation-rejection-builder.service';
 import { WorkspaceRuntimeError } from './workspace-runtime.types';
 import {
   ITERATION_FEEDBACK_KIND,
@@ -18,7 +23,11 @@ import {
   type IterationFeedbackFinding,
   type IterationFeedbackVerification,
   type IterationFeedbackVerificationStage,
+  type IterationPreservationRejection,
+  type IterationPreservationRejectionOperation,
 } from './iteration-feedback.types';
+import type { SurgicalityBasis, SurgicalityClassification } from '../../core/change-planner';
+import type { WorkspaceCompletion } from './workspace-runtime.types';
 
 const CODE_PATTERN = /^[A-Z0-9_]{1,80}$/u;
 const PREPARATION_ID_PATTERN = /^[A-Za-z0-9-]{8,128}$/u;
@@ -32,15 +41,62 @@ const FORBIDDEN_MESSAGE_PATTERNS = [
   /stdout|stderr/u,
 ] as const;
 
-export interface IterationFeedbackBuildOptions {
+export interface IterationFeedbackBuildOptions extends PreservationRejectionBuildOptions {
   readonly sourcePreparationId?: string;
   readonly priorRequestSummary?: string;
+  readonly rejectedChangePlan?: ProjectChangePlan;
+}
+
+export function buildIterationFeedbackFromGate2Rejection(
+  changePlan: ProjectChangePlan,
+  options: IterationFeedbackBuildOptions = {},
+): IterationFeedback {
+  const updatedPaths = changePlan.changeSet.operations
+    .filter((operation) => operation.kind === 'UPDATE_FILE')
+    .map(({ logicalPath }) => logicalPath)
+    .sort((left, right) => left.localeCompare(right));
+
+  return normalizeIterationFeedback(
+    {
+      schemaVersion: ITERATION_FEEDBACK_SCHEMA_VERSION,
+      kind: ITERATION_FEEDBACK_KIND,
+      ...(options.sourcePreparationId === undefined && options.rejectedPreparationId === undefined
+        ? {}
+        : {
+            sourcePreparationId: options.sourcePreparationId ?? options.rejectedPreparationId,
+          }),
+      ...(options.priorRequestSummary === undefined
+        ? {}
+        : { priorRequestSummary: options.priorRequestSummary }),
+      apply: {
+        status: 'REJECTED',
+        createdPaths: [],
+        updatedPaths,
+        deletedPaths: [],
+        skippedPaths: [],
+        errors: [
+          {
+            code: 'INVALID_CHANGE_PLAN',
+            message: 'Operator rejected the change plan at Gate 2 review.',
+          },
+        ],
+        warnings: [],
+      },
+      preservationRejection: buildPreservationRejectionFromChangePlan(changePlan, options),
+    },
+    options,
+  );
 }
 
 export function buildIterationFeedbackFromCompletion(
   completion: WorkspaceCompletion,
   options: IterationFeedbackBuildOptions = {},
 ): IterationFeedback {
+  const preservationRejection =
+    options.rejectedChangePlan === undefined
+      ? undefined
+      : buildPreservationRejectionFromChangePlan(options.rejectedChangePlan, options);
+
   return normalizeIterationFeedback(
     {
       schemaVersion: ITERATION_FEEDBACK_SCHEMA_VERSION,
@@ -55,6 +111,7 @@ export function buildIterationFeedbackFromCompletion(
       ...(completion.verificationReport === undefined
         ? {}
         : { verification: completion.verificationReport }),
+      ...(preservationRejection === undefined ? {} : { preservationRejection }),
     },
     options,
   );
@@ -82,6 +139,9 @@ export function normalizeIterationFeedback(
   );
   const apply = normalizeApply(Reflect.get(value, 'apply') ?? Reflect.get(value, 'applyResult'));
   const verification = normalizeVerification(Reflect.get(value, 'verification'));
+  const preservationRejection = normalizePreservationRejection(
+    Reflect.get(value, 'preservationRejection'),
+  );
 
   let feedback: IterationFeedback = {
     schemaVersion: ITERATION_FEEDBACK_SCHEMA_VERSION,
@@ -90,11 +150,13 @@ export function normalizeIterationFeedback(
     ...(priorRequestSummary === undefined ? {} : { priorRequestSummary }),
     apply,
     ...(verification === undefined ? {} : { verification }),
+    ...(preservationRejection === undefined ? {} : { preservationRejection }),
   };
   feedback = shrinkToCharacterLimit(feedback);
-  if (serializedLength(feedback) > ITERATION_FEEDBACK_LIMITS.MAX_SERIALIZED_CHARACTERS) {
+  const maxCharacters = feedbackCharacterLimit(feedback);
+  if (serializedLength(feedback) > maxCharacters) {
     throw invalidFeedback(
-      'iteration feedback exceeds the 4,000 character limit after normalization',
+      `iteration feedback exceeds the ${maxCharacters} character limit after normalization`,
     );
   }
   return feedback;
@@ -362,10 +424,179 @@ function normalizeOptionalSummary(value: unknown): string | undefined {
   return truncateText(sanitized, ITERATION_FEEDBACK_LIMITS.MAX_PRIOR_REQUEST_SUMMARY);
 }
 
+function normalizePreservationRejection(
+  value: unknown,
+): IterationPreservationRejection | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) throw invalidFeedback('preservationRejection must be an object');
+
+  const rejectedPreparationId = normalizeOptionalPreparationId(
+    Reflect.get(value, 'rejectedPreparationId'),
+  );
+  const operatorReason = normalizeOperatorReason(Reflect.get(value, 'operatorReason'));
+  const operations = normalizePreservationOperations(Reflect.get(value, 'operations'));
+  const unrequestedPaths = normalizePathList(Reflect.get(value, 'unrequestedPaths')).slice(
+    0,
+    ITERATION_FEEDBACK_LIMITS.MAX_PRESERVATION_UNREQUESTED_PATHS,
+  );
+
+  if (operations.length === 0 && unrequestedPaths.length === 0 && operatorReason === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(rejectedPreparationId === undefined ? {} : { rejectedPreparationId }),
+    ...(operatorReason === undefined ? {} : { operatorReason }),
+    operations,
+    ...(unrequestedPaths.length === 0 ? {} : { unrequestedPaths }),
+  };
+}
+
+function normalizePreservationOperations(
+  value: unknown,
+): readonly IterationPreservationRejectionOperation[] {
+  if (!Array.isArray(value)) return [];
+  const operations: IterationPreservationRejectionOperation[] = [];
+  const seenPaths = new Set<string>();
+
+  const records = value.filter(isRecord).sort((left, right) => {
+    const leftPath = normalizeOptionalPath(Reflect.get(left, 'logicalPath')) ?? '';
+    const rightPath = normalizeOptionalPath(Reflect.get(right, 'logicalPath')) ?? '';
+    return leftPath.localeCompare(rightPath);
+  });
+
+  for (const item of records) {
+    const logicalPath = normalizeOptionalPath(Reflect.get(item, 'logicalPath'));
+    if (logicalPath === undefined || seenPaths.has(logicalPath)) continue;
+    seenPaths.add(logicalPath);
+
+    const churnRatio = normalizeRatio(Reflect.get(item, 'churnRatio'));
+    const similarityRatio = normalizeRatio(Reflect.get(item, 'similarityRatio'));
+    const findingCodes = normalizeFindingCodes(Reflect.get(item, 'findingCodes'));
+    const removedHtmlIds = normalizeStringList(
+      Reflect.get(item, 'removedHtmlIds'),
+      ITERATION_FEEDBACK_LIMITS.MAX_PRESERVATION_REMOVED_IDS,
+    );
+    const removedAccessibilityAttributes = normalizeStringList(
+      Reflect.get(item, 'removedAccessibilityAttributes'),
+      ITERATION_FEEDBACK_LIMITS.MAX_PRESERVATION_REMOVED_ARIA,
+    );
+    const crossFileReferenceRisks = normalizeStringList(
+      Reflect.get(item, 'crossFileReferenceRisks'),
+      ITERATION_FEEDBACK_LIMITS.MAX_PRESERVATION_CROSS_FILE_RISKS,
+    );
+    const surgicalityClassification = normalizeSurgicalityClassification(
+      Reflect.get(item, 'surgicalityClassification'),
+    );
+    const surgicalityBasis = normalizeSurgicalityBasis(Reflect.get(item, 'surgicalityBasis'));
+    const structuredAttributeChanges = normalizeNonNegativeInteger(
+      Reflect.get(item, 'structuredAttributeChanges'),
+    );
+    const structuredTextChanges = normalizeNonNegativeInteger(
+      Reflect.get(item, 'structuredTextChanges'),
+    );
+    const structuredStructuralChanges = normalizeNonNegativeInteger(
+      Reflect.get(item, 'structuredStructuralChanges'),
+    );
+
+    operations.push({
+      logicalPath,
+      ...(churnRatio === undefined ? {} : { churnRatio }),
+      ...(similarityRatio === undefined ? {} : { similarityRatio }),
+      findingCodes,
+      ...(removedHtmlIds.length === 0 ? {} : { removedHtmlIds }),
+      ...(removedAccessibilityAttributes.length === 0 ? {} : { removedAccessibilityAttributes }),
+      ...(crossFileReferenceRisks.length === 0 ? {} : { crossFileReferenceRisks }),
+      ...(surgicalityClassification === undefined ? {} : { surgicalityClassification }),
+      ...(surgicalityBasis === undefined ? {} : { surgicalityBasis }),
+      ...(structuredAttributeChanges === undefined ? {} : { structuredAttributeChanges }),
+      ...(structuredTextChanges === undefined ? {} : { structuredTextChanges }),
+      ...(structuredStructuralChanges === undefined ? {} : { structuredStructuralChanges }),
+    });
+    if (operations.length >= ITERATION_FEEDBACK_LIMITS.MAX_PRESERVATION_OPERATIONS) break;
+  }
+
+  return operations;
+}
+
+function normalizeFindingCodes(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  const codes = new Set<string>();
+  for (const item of value) {
+    const code = normalizeCode(item);
+    if (code === undefined) continue;
+    codes.add(code);
+  }
+  return [...codes]
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, ITERATION_FEEDBACK_LIMITS.MAX_PRESERVATION_FINDING_CODES);
+}
+
+function normalizeStringList(value: unknown, limit: number): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  const items = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const normalized = item.trim();
+    if (normalized.length === 0) continue;
+    items.add(normalized);
+  }
+  return [...items].sort((left, right) => left.localeCompare(right)).slice(0, limit);
+}
+
+function normalizeRatio(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (value < 0 || value > 1) return undefined;
+  return value;
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return undefined;
+  return value;
+}
+
+function normalizeSurgicalityClassification(value: unknown): SurgicalityClassification | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (
+    value === 'EXCELLENT' ||
+    value === 'GOOD' ||
+    value === 'MARGINAL' ||
+    value === 'POOR' ||
+    value === 'UNAVAILABLE'
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeSurgicalityBasis(value: unknown): SurgicalityBasis | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (value === 'STRUCTURED_HTML' || value === 'GENERIC_LINE_LCS' || value === 'UNAVAILABLE') {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeOperatorReason(value: unknown): string | undefined {
+  return normalizeMessage(value);
+}
+
+function feedbackCharacterLimit(feedback: IterationFeedback): number {
+  return feedback.preservationRejection === undefined
+    ? ITERATION_FEEDBACK_LIMITS.MAX_SERIALIZED_CHARACTERS
+    : ITERATION_FEEDBACK_LIMITS.MAX_SERIALIZED_CHARACTERS_WITH_PRESERVATION;
+}
+
 function shrinkToCharacterLimit(feedback: IterationFeedback): IterationFeedback {
   let current = feedback;
-  if (serializedLength(current) <= ITERATION_FEEDBACK_LIMITS.MAX_SERIALIZED_CHARACTERS) {
+  const maxCharacters = feedbackCharacterLimit(current);
+  if (serializedLength(current) <= maxCharacters) {
     return current;
+  }
+
+  if (current.preservationRejection !== undefined) {
+    current = shrinkPreservationRejection(current);
+    if (serializedLength(current) <= maxCharacters) return current;
   }
 
   const shrinkPaths = (apply: IterationFeedbackApply): IterationFeedbackApply => ({
@@ -377,7 +608,7 @@ function shrinkToCharacterLimit(feedback: IterationFeedback): IterationFeedback 
   });
 
   current = { ...current, apply: shrinkPaths(current.apply) };
-  if (serializedLength(current) <= ITERATION_FEEDBACK_LIMITS.MAX_SERIALIZED_CHARACTERS) {
+  if (serializedLength(current) <= maxCharacters) {
     return current;
   }
 
@@ -396,6 +627,90 @@ function shrinkToCharacterLimit(feedback: IterationFeedback): IterationFeedback 
     };
   }
   return current;
+}
+
+function shrinkPreservationRejection(feedback: IterationFeedback): IterationFeedback {
+  const rejection = feedback.preservationRejection;
+  if (rejection === undefined) return feedback;
+
+  let operations = rejection.operations;
+  let currentRejection: IterationPreservationRejection = { ...rejection, operations };
+  let currentFeedback: IterationFeedback = { ...feedback, preservationRejection: currentRejection };
+  const limit = feedbackCharacterLimit(feedback);
+
+  while (operations.length > 1 && serializedLength(currentFeedback) > limit) {
+    operations = operations.slice(0, operations.length - 1);
+    currentRejection = { ...rejection, operations };
+    currentFeedback = { ...feedback, preservationRejection: currentRejection };
+  }
+
+  while (serializedLength(currentFeedback) > limit) {
+    const nextOperations = currentRejection.operations.map((operation, index) => {
+      if (index > 0) return operation;
+      return {
+        ...operation,
+        findingCodes: operation.findingCodes.slice(
+          0,
+          Math.max(1, operation.findingCodes.length - 1),
+        ),
+        ...(operation.removedHtmlIds === undefined
+          ? {}
+          : {
+              removedHtmlIds: operation.removedHtmlIds.slice(
+                0,
+                Math.max(0, operation.removedHtmlIds.length - 1),
+              ),
+            }),
+        ...(operation.removedAccessibilityAttributes === undefined
+          ? {}
+          : {
+              removedAccessibilityAttributes: operation.removedAccessibilityAttributes.slice(
+                0,
+                Math.max(0, operation.removedAccessibilityAttributes.length - 1),
+              ),
+            }),
+        ...(operation.crossFileReferenceRisks === undefined
+          ? {}
+          : {
+              crossFileReferenceRisks: operation.crossFileReferenceRisks.slice(
+                0,
+                Math.max(0, operation.crossFileReferenceRisks.length - 1),
+              ),
+            }),
+      };
+    });
+
+    const allEmpty = nextOperations.every(
+      (operation) =>
+        operation.findingCodes.length <= 1 &&
+        (operation.removedHtmlIds?.length ?? 0) === 0 &&
+        (operation.removedAccessibilityAttributes?.length ?? 0) === 0 &&
+        (operation.crossFileReferenceRisks?.length ?? 0) === 0,
+    );
+
+    if (
+      allEmpty &&
+      currentRejection.operatorReason !== undefined &&
+      currentRejection.operatorReason.length > 32
+    ) {
+      currentRejection = {
+        ...currentRejection,
+        operatorReason: currentRejection.operatorReason.slice(
+          0,
+          currentRejection.operatorReason.length - 32,
+        ),
+      };
+    } else if (allEmpty) {
+      break;
+    } else {
+      currentRejection = { ...currentRejection, operations: nextOperations };
+    }
+
+    currentFeedback = { ...feedback, preservationRejection: currentRejection };
+    if (allEmpty && (currentRejection.operatorReason?.length ?? 0) <= 32) break;
+  }
+
+  return currentFeedback;
 }
 
 function serializedLength(feedback: IterationFeedback): number {

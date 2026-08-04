@@ -9,6 +9,7 @@ import type {
   UpdatePreservationFinding,
 } from '../types';
 import { compareText } from '../validators/validation-helpers';
+import { SurgicalityClassifierService } from './surgicality-classifier.service';
 import { UpdatePreservationAnalysisService } from './update-preservation-analysis.service';
 
 const HTML_SCRIPT_SRC_PATTERN = /<script[^>]+src=["'](assets\/[^"']+\.js)["']/gi;
@@ -23,6 +24,7 @@ export class ChangePreservationService {
   constructor(
     private readonly configuration: ChangePlannerConfiguration,
     private readonly analysisService: UpdatePreservationAnalysisService = new UpdatePreservationAnalysisService(),
+    private readonly surgicalityClassifier: SurgicalityClassifierService = new SurgicalityClassifierService(),
   ) {}
 
   enrichOperations(
@@ -74,8 +76,20 @@ export class ChangePreservationService {
       proposedContent: operation.content,
       siblingJsContents,
       baselineContentChecksum: baseline.checksum,
+      structuredHtmlConfiguration: this.configuration.preservation.structuredHtml,
+      elevatedChurnThreshold: this.configuration.preservation.elevatedChurnThreshold,
     });
     const findings = this.buildFindings(analysis);
+    const surgicality = this.surgicalityClassifier.classify({
+      logicalPath: operation.logicalPath,
+      churnRatio: analysis.churnRatio,
+      structuredAnalysis: analysis.structuredAnalysis,
+      removedHtmlIds: analysis.removedHtmlIds,
+      removedAccessibilityAttributes: analysis.removedAccessibilityAttributes,
+      crossFileReferenceRisks: analysis.crossFileReferenceRisks,
+      largeDeletionSuspicious: analysis.largeDeletionSignal.isSuspicious,
+      preservationConfiguration: this.configuration.preservation,
+    });
     const preservation: UpdatePreservationAssessment = {
       baselineContentChecksum: analysis.baselineContentChecksum,
       baselineBytes: analysis.baselineBytes,
@@ -91,6 +105,10 @@ export class ChangePreservationService {
       addedHtmlIds: analysis.addedHtmlIds,
       removedAccessibilityAttributes: analysis.removedAccessibilityAttributes,
       crossFileReferenceRisks: analysis.crossFileReferenceRisks,
+      ...(analysis.structuredAnalysis !== undefined
+        ? { structuredAnalysis: analysis.structuredAnalysis }
+        : {}),
+      surgicality,
       findings,
     };
 

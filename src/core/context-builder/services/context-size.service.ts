@@ -60,11 +60,11 @@ function buildPackage(
 }
 
 function removeLowestPriority(context: MutableOptionalContext): ContextOmission | undefined {
-  if (context.relevantFiles.length > 0) {
-    const file = context.relevantFiles.pop();
-    return file === undefined
-      ? undefined
-      : { kind: 'FILE', identifier: file.path, reason: 'SIZE_LIMIT' };
+  for (let index = context.relevantFiles.length - 1; index >= 0; index -= 1) {
+    const file = context.relevantFiles[index];
+    if (file?.priority === 'PINNED_BASELINE') continue;
+    context.relevantFiles.splice(index, 1);
+    return { kind: 'FILE', identifier: file!.path, reason: 'SIZE_LIMIT' };
   }
 
   const documentIndex = context.relevantDocumentation.findLastIndex(

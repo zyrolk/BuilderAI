@@ -4,6 +4,7 @@
  */
 
 export const DEFAULT_SCAN_ROOTS: readonly string[] = [
+  'assets',
   'src',
   'app',
   'pages',
@@ -36,6 +37,8 @@ export const BLOCKED_EXTRA_SCAN_ROOTS: ReadonlySet<string> = new Set([
 export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
   '.cjs',
   '.css',
+  '.htm',
+  '.html',
   '.js',
   '.json',
   '.jsx',

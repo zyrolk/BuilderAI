@@ -22,6 +22,7 @@ import {
   OpenAIProvider,
   type OpenAIProviderConfiguration,
 } from '../../providers/openai';
+import { NullWorkspaceBaselinePort } from '../../core/update-scope/test/workspace-baseline.fixture';
 import { WorkspaceRuntimeError } from './workspace-runtime.types';
 import { WorkspaceRuntimeService } from './workspace-runtime.service';
 import { buildIterationFeedbackFromCompletion } from './iteration-feedback.service';
@@ -220,6 +221,7 @@ describe('WorkspaceRuntimeService', () => {
       sourceFiles: emptySource,
       contextBuilder: new ContextBuilderService(),
       promptOrchestrator: new PromptOrchestratorService(),
+      workspaceBaseline: new NullWorkspaceBaselinePort(),
       providerExecution: new OpenAIExecutionService(provider, configuration, providerClock),
       responseProcessor: new ResponseProcessorService(),
       changePlanner: new ChangePlannerService(),
@@ -376,6 +378,7 @@ describe('WorkspaceRuntimeService', () => {
       sourceFiles: emptySource,
       contextBuilder: new ContextBuilderService(),
       promptOrchestrator: new PromptOrchestratorService(),
+      workspaceBaseline: new NullWorkspaceBaselinePort(),
       providerExecution: new OpenAIExecutionService(provider, configuration, providerClock),
       responseProcessor: new ResponseProcessorService(),
       changePlanner: new ChangePlannerService(),
@@ -586,6 +589,7 @@ function createService(
     sourceFiles,
     contextBuilder,
     promptOrchestrator: new PromptOrchestratorService(),
+    workspaceBaseline: new NullWorkspaceBaselinePort(),
     providerExecution: new OpenAIExecutionService(provider, configuration, providerClock),
     responseProcessor: new ResponseProcessorService(),
     changePlanner: new ChangePlannerService(),

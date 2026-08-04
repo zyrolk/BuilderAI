@@ -11,7 +11,8 @@ export const CONTEXT_PRIORITY_RANK: Readonly<Record<ContextPriority, number>> = 
   PROGRESS: 7,
   CODING_STANDARDS: 8,
   AI_RULES: 9,
-  RELATED_SOURCE_FILES: 10,
+  PINNED_BASELINE: 10,
+  RELATED_SOURCE_FILES: 11,
 };
 
 export const DOCUMENT_PRIORITY: Readonly<

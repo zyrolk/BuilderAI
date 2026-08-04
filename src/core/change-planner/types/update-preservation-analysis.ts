@@ -1,5 +1,9 @@
 import type { ArtifactChecksum } from '../../response-processor';
 
+import type {
+  HtmlStructuredAnalysis,
+  StructuredHtmlAnalysisConfiguration,
+} from './html-structured-analysis';
 import type { CrossFileReferenceRisk } from './update-preservation';
 
 export type { CrossFileReferenceRisk };
@@ -22,6 +26,8 @@ export interface UpdatePreservationAnalysisInput {
     readonly logicalPath: string;
     readonly content: string;
   }[];
+  readonly structuredHtmlConfiguration?: StructuredHtmlAnalysisConfiguration;
+  readonly elevatedChurnThreshold?: number;
 }
 
 export interface UpdatePreservationAnalysisResult {
@@ -41,4 +47,5 @@ export interface UpdatePreservationAnalysisResult {
   readonly removedAccessibilityAttributes: readonly string[];
   readonly crossFileReferenceRisks: readonly CrossFileReferenceRisk[];
   readonly largeDeletionSignal: LargeDeletionSignal;
+  readonly structuredAnalysis?: HtmlStructuredAnalysis;
 }

@@ -3,5 +3,7 @@ export * from './change-plan-summary.service';
 export * from './change-planner.service';
 export * from './change-preservation.service';
 export * from './change-risk.service';
+export * from './html-structured-delta.service';
 export * from './operation-ordering.service';
-export * from './update-preservation-analysis.service';
+export * from './surgicality-classifier.service';
+export * from './update-scope-warning.service';

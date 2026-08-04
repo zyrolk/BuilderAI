@@ -20,6 +20,41 @@ export const DEFAULT_PROMPT_TEMPLATE: PromptTemplate = {
     { id: 'architecture', kind: 'ARCHITECTURE', required: true, instructions: [] },
     { id: 'task', kind: 'TASK', required: true, instructions: [] },
     {
+      id: 'preservation-contract',
+      kind: 'PRESERVATION_CONTRACT',
+      required: false,
+      instructions: [
+        {
+          id: 'minimal-delta-source-of-truth',
+          text: 'UPDATE_FILE means: return the complete resulting file required by ADR-017, derived by applying the smallest necessary modification to CURRENT BASELINE. The baseline is the source of truth; do not regenerate from scratch.',
+        },
+        {
+          id: 'baseline-copying-discipline',
+          text: 'Start from CURRENT BASELINE verbatim. Make only required edits. Unchanged baseline regions must remain unchanged; do not reconstruct them from memory or the task description.',
+        },
+        {
+          id: 'immutable-by-default',
+          text: 'Everything in CURRENT BASELINE is immutable by default unless the user request requires changing it. Preserve existing DOM IDs, tag names, DOM hierarchy, classes, attributes, aria attributes, aria-label values, text content, headings, header/main/footer structure, script/stylesheet references, localStorage keys, literal DOM references, event-hook IDs, and existing behavior unless directly required.',
+        },
+        {
+          id: 'attribute-only-changes',
+          text: 'If the task can be completed by adding or modifying attributes on existing elements, modify those elements in place. Do not replace elements, change tags, move them, rename ids/classes, rewrite containers, or add decorative wrappers.',
+        },
+        {
+          id: 'aria-labelledby-reuse',
+          text: 'For aria-labelledby: add an id to an existing compatible heading and aria-labelledby to the existing section. Do not create replacement heading or container markup when an existing element can be reused.',
+        },
+        {
+          id: 'button-type-reuse',
+          text: 'For existing buttons: add type="button" to the existing button. Preserve the existing button id, class, aria-label, text, and placement.',
+        },
+        {
+          id: 'no-cosmetic-refactor',
+          text: 'Do not rename or reorganize elements for cleaner, more semantic, modern, or stylistic reasons. Touch the minimum necessary files.',
+        },
+      ],
+    },
+    {
       id: 'iteration',
       kind: 'ITERATION',
       required: false,

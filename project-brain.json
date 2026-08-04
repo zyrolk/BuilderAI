@@ -712,6 +712,24 @@
         "summary": "Completed Workspace Activity History FeaturePlan 16a0c3ac-232b-41a2-98fe-4ad6fafd27f5 (Tasks 1–5): bounded sanitized local history persistence, prepare/apply/verification recording, same-origin GET /api/workspace/activity-history, and live Workspace ActivityHistoryPanel integration within the documented single-operator trusted-loopback local workspace model—not production hosted durable audit storage. Verification: npm run ci PASS (758 passed, 0 failed, 1 skipped; build PASS; production dependency audit 0 vulnerabilities).",
         "taskIds": [],
         "completedAt": "2026-08-03T14:15:00.000Z"
+      },
+      {
+        "id": "adr-031-surgical-update-contract",
+        "summary": "Implemented and live-validated ADR-031 baseline-guided surgical UPDATE contract: deterministic HARD/SOFT/NONE update scope planning, PINNED_BASELINE admission, PRESERVATION_CONTRACT prompt section, correction preservation feedback, scope-deviation evidence, ADR-029 bounding compatibility, and runtime scope metadata verified as HARD/index.html/max-operations-1 on smoke-atelier accessibility prepare. Live smoke: one UPDATE_FILE on index.html only, all stable IDs preserved, no cross-file reference risks, requested accessibility attributes present, effect-free (no apply). Evidence: .builderai/adr031-slice3b-live-smoke-result.json, .builderai/adr031-slice4-live-smoke-result.json, .builderai/adr032-slice3-live-smoke-result.json.",
+        "taskIds": [],
+        "completedAt": "2026-08-04T13:36:10.080Z"
+      },
+      {
+        "id": "adr-032-structured-surgicality",
+        "summary": "Implemented and live-validated ADR-032 hybrid structured surgicality for UPDATE_FILE: ADR-030 line-LCS unchanged; Layer 1 preservation authoritative; parse5 HTML structuredAnalysis additive; SurgicalityClassifierService; Gate 2 structured metrics alongside line diagnostics; STRUCTURED_HTML-authoritative correction feedback (line churn diagnostic only). Golden smoke-atelier minimal attribute-only patch: churnRatio=0.4444, attributeChanges=8, textChanges=0, structuralChanges=0, classification=EXCELLENT, basis=STRUCTURED_HTML, GATE_2_ACCEPT_RECOMMENDED; PRESERVATION_ELEVATED_CHURN retained. Correction preservation feedback semantics validated; live correction prepare non-materialized due to provider upstream 503/timeout (non-blocking infrastructure gap). Verification: 964 tests pass; focused ADR-032 tests pass.",
+        "taskIds": [],
+        "completedAt": "2026-08-04T13:36:10.080Z"
+      },
+      {
+        "id": "cleanup-builderai-harness-lint",
+        "summary": "Removed unused diagnostic harness code blocking ESLint: deleted unused pathChurn helper from .builderai/adr031-slice3-live-smoke.mts and dead requiredPatterns loop from .builderai/slice4b-capture-proposal.mts. Verification: npm run lint PASS; npm run ci PASS (964 passed, 1 skipped; coverage 87.07% statements; production audit 0 high vulnerabilities; build PASS).",
+        "taskIds": [],
+        "completedAt": "2026-08-04T14:40:00.000Z"
       }
     ],
     "pendingWork": [
@@ -742,13 +760,28 @@
       },
       {
         "id": "evaluate-context-relevance-quality",
-        "summary": "Define a representative relevance corpus and false-positive, false-negative, and package-size thresholds before approving an external context consumer.",
+        "summary": "Define a representative relevance corpus and false-positive, false-negative, and package-size thresholds before approving an external context consumer. ADR-031 PINNED_BASELINE admission partially mitigates target-file omission for scoped UPDATE tasks; full relevance corpus evaluation remains open.",
         "priority": "HIGH"
       },
       {
         "id": "evaluate-prompt-quality-and-safety",
-        "summary": "Before approving prompt execution, define representative prompt-quality evaluation, injection resistance, sensitive-data handling, schema-compliance, omission, and regression thresholds.",
+        "summary": "Define remaining prompt-quality gates before broad prompt execution approval: representative evaluation corpus, injection resistance, sensitive-data handling beyond surgical UPDATE contracts, schema-compliance regression thresholds, and omission detection. Surgical UPDATE preservation contract quality (ADR-031/032) is implemented and live-validated separately.",
         "priority": "HIGH"
+      },
+      {
+        "id": "implement-context-file-secret-scanning",
+        "summary": "Add dedicated secret and credential scanning for context files before prompt assembly; identified separately from ADR-031 surgical UPDATE prompt-quality work and not closed by ADR-031/032 validation.",
+        "priority": "HIGH"
+      },
+      {
+        "id": "revalidate-correction-prepare-provider-stability",
+        "summary": "Optional non-blocking live re-validation of correction prepare after Gemini upstream 503/timeout during ADR-032 Slice 3; architecture and correction feedback semantics already accepted.",
+        "priority": "LOW"
+      },
+      {
+        "id": "gate2-diagnostic-churn-label-polish",
+        "summary": "Optional Gate 2 UI polish: add explicit diagnostic labeling for PRESERVATION_ELEVATED_CHURN when STRUCTURED_HTML surgicality is authoritative; not required for ADR-032 acceptance.",
+        "priority": "LOW"
       },
       {
         "id": "implement-execution-runtime-controls",
@@ -791,7 +824,9 @@
       "decision-017",
       "decision-018",
       "decision-019",
-      "decision-020"
+      "decision-020",
+      "decision-021",
+      "decision-022"
     ],
     "architecturalRules": [
       {
@@ -850,7 +885,7 @@
         "rationale": "The v1.0 composition must not turn a local integration milestone into an unauthenticated hosted execution service or let browser data become effect authority."
       }
     ],
-    "updatedAt": "2026-08-03T14:15:00.000Z"
+    "updatedAt": "2026-08-04T14:40:00.000Z"
   },
   "decisionLog": [
     {
@@ -1303,10 +1338,68 @@
       },
       "important": true,
       "recordedAt": "2026-07-31T15:00:00.000Z"
+    },
+    {
+      "id": "decision-021",
+      "title": "Implement baseline-guided surgical UPDATE contract (ADR-031)",
+      "context": "Live smoke after ADR-030 showed providers frequently emit schema-valid full-file UPDATE_FILE rewrites for small modification requests. ADR-030 detects and surfaces preservation violations at plan time but does not inject baseline content or surgical intent into provider prompts.",
+      "decision": "Add deterministic pre-generation surgical UPDATE behavior: HARD/SOFT/NONE update scope planning, PINNED_BASELINE admission for likely UPDATE targets, PRESERVATION_CONTRACT prompt section, correction preservation feedback derived from ADR-030 outputs, scope-deviation evidence on Change Plans, and compatibility with ADR-029 correction output bounding—without reversing ADR-017 full-file UPDATE semantics or ADR-030 post-generation preservation analysis.",
+      "rationale": "Surgical modification of existing projects requires generation-quality improvement before provider execution while preserving Gate 2 human approval, provider-neutral orchestration, and unchanged ADR-030 safety signals.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Prompt-only strengthening without guaranteed baseline in prompt",
+        "PATCH/diff artifacts violating ADR-017",
+        "Second-model scope planning",
+        "Auto-reject on elevated churn without operator review"
+      ],
+      "consequences": {
+        "positive": [
+          "Provider receives authoritative CURRENT BASELINE for pinned UPDATE targets",
+          "Deterministic scope metadata (HARD/index.html/max-operations-1) verified on live smoke-atelier prepare",
+          "Correction loop consumes ADR-030 preservation evidence with bounded feedback",
+          "Scope discipline improved from multi-file rewrites to single-file surgical updates on representative task"
+        ],
+        "negative": [
+          "Prompt size increases for pinned baselines; lower-ranked context may be omitted",
+          "HARD scope heuristics may false-positive on narrow path patterns—mitigated by tests and fail-open NONE mode",
+          "Broader prompt-quality evaluation (injection resistance, secret scanning, regression corpus) remains separate pendingWork"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-08-04T14:00:00.000Z"
+    },
+    {
+      "id": "decision-022",
+      "title": "Implement hybrid structured surgicality metrics for UPDATE_FILE (ADR-032)",
+      "context": "ADR-031 Slice 4 live validation produced the mathematically minimal golden HTML accessibility patch at churnRatio=0.4444—unreachable under ADR-030 line-LCS GOOD (<0.40) despite zero structural or text changes and eight attribute-only edits. Gate 2 and correction feedback mis-classified exemplary patches as MARGINAL.",
+      "decision": "Adopt Option C hybrid structured surgicality: keep ADR-030 line-LCS and Layer 1 preservation findings unchanged and authoritative; add deterministic parse5 HTML structuredAnalysis and SurgicalityClassifierService; when parseStatus=SUCCESS use STRUCTURED_HTML surgicality for Gate 2 and correction feedback with line churn diagnostic only; retain GENERIC_LINE_LCS fallback for JS/CSS/non-HTML and parser fallback.",
+      "rationale": "Metric semantics must align with surgical intent without weakening ADR-030 preservation safety or changing churn formulas/thresholds.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Character-ratio surgicality alone",
+        "Threshold-only adjustment raising GOOD above 0.4444",
+        "Minimum-delta normalization requiring task semantics",
+        "Suppressing PRESERVATION_ELEVATED_CHURN for structured EXCELLENT"
+      ],
+      "consequences": {
+        "positive": [
+          "Golden smoke-atelier patch classified EXCELLENT/STRUCTURED_HTML with 8/0/0 structured delta",
+          "Gate 2 displays structured surgicality and line metrics together with GATE_2_ACCEPT_RECOMMENDED",
+          "Correction feedback prioritizes stable IDs, text, structure, and attribute delta—not churn targets—for HTML",
+          "964 tests pass; ADR-030 regression preserved"
+        ],
+        "negative": [
+          "Operators may see EXCELLENT surgicality alongside PRESERVATION_ELEVATED_CHURN until optional UI polish",
+          "Live correction prepare end-to-end re-validation deferred due to provider timeout—non-blocking",
+          "parse5 dependency added for HTML analysis only"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-08-04T14:00:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "Post-MVP workspace feature workflow and Activity History integration verified; repository CI green; ready for next approved post-MVP planning checkpoint.",
+    "currentMilestone": "ADR-031 baseline-guided surgical UPDATE contract and ADR-032 hybrid structured surgicality implemented and live-validated on smoke-atelier (initial prepare GATE_2_ACCEPT_RECOMMENDED, effect-free); project-brain closure recorded; ready for next approved roadmap checkpoint.",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -1530,7 +1623,7 @@
       "verify-mvp-release",
       "add-gemini-local-provider"
     ],
-    "updatedAt": "2026-08-03T14:15:00.000Z"
+    "updatedAt": "2026-08-04T14:00:00.000Z"
   },
   "tasks": [
     {

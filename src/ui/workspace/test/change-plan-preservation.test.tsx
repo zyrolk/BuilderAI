@@ -13,6 +13,7 @@ import {
   MIXED_OPERATIONS_CHANGE_PLAN,
   SURGICAL_PRESERVATION_CHANGE_PLAN,
 } from './change-plan-preservation.fixture';
+import { SMOKE_031_MARGINAL_CHURN_CHANGE_PLAN } from '../../../application/workspace/test/smoke-031-marginal-churn.fixture';
 import type { ProjectChangePlan } from '../../../core/change-planner';
 import { createWorkflow, PROJECT_VIEW, RESPONSE_PACKAGE } from './workspace.fixture';
 
@@ -178,6 +179,16 @@ describe('Gate 2 preservation review UI (ADR-030 Slice 3)', () => {
     expect(within(panel).getByText('94.74%')).toBeInTheDocument();
     expect(within(panel).queryByText('Preservation High Churn Rewrite')).not.toBeInTheDocument();
     expect(within(panel).queryByText('HIGH')).not.toBeInTheDocument();
+  });
+
+  it('shows EXCELLENT structured surgicality alongside elevated line churn diagnostic', () => {
+    const panel = renderChangePlanTab(SMOKE_031_MARGINAL_CHURN_CHANGE_PLAN);
+    const summary = getPreservationSummary(panel);
+    expect(within(summary).getByText('EXCELLENT')).toBeInTheDocument();
+    expect(within(summary).getByText('Structured HTML')).toBeInTheDocument();
+    expect(within(summary).getByText('Attributes changed')).toBeInTheDocument();
+    expect(within(summary).getByText('44.44%')).toBeInTheDocument();
+    expect(within(summary).getByText('Preservation Elevated Churn')).toBeInTheDocument();
   });
 
   it('keeps Gate 2 approval controls unchanged when preservation metadata is present', async () => {

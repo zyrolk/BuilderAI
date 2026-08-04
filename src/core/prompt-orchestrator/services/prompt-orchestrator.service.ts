@@ -57,6 +57,7 @@ export class PromptOrchestratorService {
       input.context,
       expectedOutput,
       input.iterationFeedback,
+      input.preservationContract,
     );
     const draft: PromptPackageDraft = {
       schemaVersion: 1,

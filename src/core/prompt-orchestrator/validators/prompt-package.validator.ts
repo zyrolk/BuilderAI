@@ -197,7 +197,12 @@ export class PromptPackageValidator {
       if (!isNonEmptyString(section.id)) {
         addIssue(issues, 'INVALID_PROMPT_STRUCTURE', '$.sections.id', 'is required');
       }
-      if (section.kind !== 'CONTEXT' && section.kind !== 'ITERATION' && !section.required) {
+      if (
+        section.kind !== 'CONTEXT' &&
+        section.kind !== 'ITERATION' &&
+        section.kind !== 'PRESERVATION_CONTRACT' &&
+        !section.required
+      ) {
         addIssue(
           issues,
           'MISSING_REQUIRED_SECTION',
@@ -214,6 +219,14 @@ export class PromptPackageValidator {
         );
       }
       if (section.kind === 'ITERATION' && section.required) {
+        addIssue(
+          issues,
+          'INVALID_PROMPT_STRUCTURE',
+          `$.sections.${section.id}.required`,
+          'must be false',
+        );
+      }
+      if (section.kind === 'PRESERVATION_CONTRACT' && section.required) {
         addIssue(
           issues,
           'INVALID_PROMPT_STRUCTURE',
@@ -478,6 +491,13 @@ function hasPromptSectionStructure(value: unknown): value is PromptSection {
         Array.isArray(value.task.dependencyIds) &&
         hasRecordArray(value.goals) &&
         hasRecordArray(value.constraints)
+      );
+    case 'PRESERVATION_CONTRACT':
+      return (
+        hasInstructionArray(value.instructions) &&
+        isRecord(value.contract) &&
+        Array.isArray(value.contract.baselines) &&
+        Array.isArray(value.contract.invariants)
       );
     case 'RULES':
     case 'SAFETY':

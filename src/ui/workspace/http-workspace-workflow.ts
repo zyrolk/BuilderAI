@@ -1,6 +1,9 @@
 'use client';
 
-import { buildIterationFeedbackFromCompletion } from '../../application/workspace/iteration-feedback.service';
+import {
+  buildIterationFeedbackFromCompletion,
+  buildIterationFeedbackFromGate2Rejection,
+} from '../../application/workspace/iteration-feedback.service';
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
 import { parseWorkspaceActivity } from '../../application/workspace/activity-history.schemas';
@@ -88,6 +91,21 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
         ? {}
         : { featurePlan: structuredClone(response.featurePlan) }),
     };
+  }
+
+  async prepareGate2PreservationCorrection(
+    request: string,
+    changePlan: ProjectChangePlan,
+    preparationId: string,
+    operatorReason?: string,
+  ): Promise<PreparedWorkspaceChange> {
+    const iterationFeedback = buildIterationFeedbackFromGate2Rejection(changePlan, {
+      rejectedPreparationId: preparationId,
+      sourcePreparationId: preparationId,
+      ...(operatorReason === undefined ? {} : { operatorReason }),
+      ...(this.lastRequest === undefined ? {} : { priorRequestSummary: this.lastRequest }),
+    });
+    return this.prepare(request, { iterationFeedback });
   }
 
   async prepareCorrection(
