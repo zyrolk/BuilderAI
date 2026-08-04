@@ -631,6 +631,100 @@
   font-size: 0.67rem;
   line-height: 1.45;
 }
+.preservationSummary,
+.preservationUnavailable {
+  margin-top: 0.75rem;
+  padding: 0.7rem;
+  border: 1px solid #343b49;
+  border-radius: 0.55rem;
+  background: #0d121b;
+}
+.preservationUnavailable {
+  border-color: #4b412a;
+  background: #17140f;
+}
+.preservationSummary h4,
+.preservationUnavailable h4,
+.preservationFindings h5 {
+  margin: 0 0 0.55rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.preservationMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+}
+.preservationMetrics div {
+  padding: 0.55rem;
+  border: 1px solid #252b36;
+  border-radius: 0.45rem;
+  background: #10151e;
+}
+.preservationMetrics dt {
+  margin: 0;
+  color: #757e90;
+  font-size: 0.58rem;
+}
+.preservationMetrics dd {
+  margin: 0.2rem 0 0;
+  color: #dce0ea;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  word-break: break-all;
+}
+.preservationFindings ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.preservationFinding,
+.preservationFindingHigh {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #2d3441;
+  border-radius: 0.45rem;
+  background: #121722;
+}
+.preservationFindingHigh {
+  border-color: #6a3a45;
+  background: #22141a;
+}
+.preservationFinding strong,
+.preservationFindingHigh strong {
+  display: inline-block;
+  margin-right: 0.45rem;
+  color: #c4c9d4;
+  font-size: 0.58rem;
+}
+.preservationFinding span,
+.preservationFindingHigh span {
+  color: #928aff;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+.preservationFinding p,
+.preservationFindingHigh p,
+.preservationUnavailable p,
+.preservationDetail {
+  margin: 0.35rem 0 0;
+  color: #a9b0bd;
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+.preservationDetail ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+}
+.preservationDetail li {
+  color: #a9b0bd;
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
 .findings {
   margin-top: 1rem;
   padding: 0.7rem;

@@ -24,6 +24,7 @@ import { createOpenAIProvider, OpenAIExecutionService } from '../../providers/op
 import { createOpenRouterProvider, OpenRouterExecutionService } from '../../providers/openrouter';
 import { NodeFileSystemDocumentSource } from '../blueprint-reader';
 import { NodeProjectFileSystem } from '../file-system';
+import { NodeWorkspaceBaseline } from './node-workspace-baseline';
 import { NodeWorkspaceVisibility } from './node-workspace-visibility';
 import { NodeProjectFileSource } from '../project';
 import {
@@ -144,6 +145,7 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     changePlanner: new ChangePlannerService(
       undefined,
       new NodeWorkspaceVisibility(configuration.projectRoot),
+      new NodeWorkspaceBaseline(configuration.projectRoot),
     ),
     fileApply: new FileApplyEngineService(new NodeProjectFileSystem(configuration.projectRoot)),
     verification: new VerificationEngineService({

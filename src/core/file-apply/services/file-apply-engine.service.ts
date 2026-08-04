@@ -9,6 +9,7 @@ import { DEFAULT_FILE_APPLY_CONFIGURATION } from '../config';
 import type { FileApplyClockPort, FileSystemPort } from '../ports';
 import {
   FILE_APPLY_RESULT_SCHEMA_VERSION,
+  BaselineContentDriftError,
   FileSystemPortError,
   type FileApplyError,
   type FileApplyResult,
@@ -16,6 +17,7 @@ import {
 } from '../types';
 import { FileApplyConfigurationValidator, FileApplyResultValidator } from '../validators';
 import { compareText } from '../validators/validation-helpers';
+import { artifactChecksumsEqual } from './artifact-checksum-equality';
 import { FileApplyPreflightService } from './file-apply-preflight.service';
 import { ProtectedPathPolicyService } from './protected-path-policy.service';
 import { SystemFileApplyClockService } from './system-file-apply-clock.service';
@@ -122,13 +124,22 @@ export class FileApplyEngineService {
         else if (operation.kind === 'UPDATE_FILE') updatedFiles.push(operation.logicalPath);
         else deletedFiles.push(operation.logicalPath);
       } catch (error: unknown) {
-        errors.push({
-          code: 'FILESYSTEM_OPERATION_FAILED',
-          message: 'Filesystem mutation failed',
-          logicalPath:
-            error instanceof FileSystemPortError ? error.logicalPath : operation.logicalPath,
-          operationId: operation.operationId,
-        });
+        if (error instanceof BaselineContentDriftError) {
+          errors.push({
+            code: 'BASELINE_CONTENT_DRIFT',
+            message: 'File content changed after prepare; update was not applied',
+            logicalPath: error.logicalPath,
+            operationId: operation.operationId,
+          });
+        } else {
+          errors.push({
+            code: 'FILESYSTEM_OPERATION_FAILED',
+            message: 'Filesystem mutation failed',
+            logicalPath:
+              error instanceof FileSystemPortError ? error.logicalPath : operation.logicalPath,
+            operationId: operation.operationId,
+          });
+        }
         skippedFiles.push(...operations.slice(index).map(({ logicalPath }) => logicalPath));
         break;
       }
@@ -154,11 +165,24 @@ export class FileApplyEngineService {
   private async executeOperation(operation: ProjectChangeOperation): Promise<void> {
     if (operation.kind === 'CREATE_FILE') {
       await this.fileSystem.createFileIfAbsent(operation.logicalPath, operation.content);
-    } else if (operation.kind === 'UPDATE_FILE') {
-      await this.fileSystem.updateFileIfRegularFile(operation.logicalPath, operation.content);
-    } else {
-      await this.fileSystem.deleteFileIfRegularFile(operation.logicalPath);
+      return;
     }
+    if (operation.kind === 'UPDATE_FILE') {
+      if (operation.baselineContentChecksum !== undefined) {
+        const currentChecksum = await this.fileSystem.readRegularFileBaselineChecksum(
+          operation.logicalPath,
+        );
+        if (
+          currentChecksum !== null &&
+          !artifactChecksumsEqual(currentChecksum, operation.baselineContentChecksum)
+        ) {
+          throw new BaselineContentDriftError(operation.logicalPath);
+        }
+      }
+      await this.fileSystem.updateFileIfRegularFile(operation.logicalPath, operation.content);
+      return;
+    }
+    await this.fileSystem.deleteFileIfRegularFile(operation.logicalPath);
   }
 
   private createWarnings(plan: ProjectChangePlan): readonly FileApplyWarning[] {

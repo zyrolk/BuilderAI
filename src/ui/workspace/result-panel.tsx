@@ -1,10 +1,22 @@
 'use client';
 
-import type { ProjectChangePlan } from '../../core/change-planner';
+import type {
+  ProjectChangePlan,
+  ProjectChangeWarning,
+  UpdateFileOperation,
+} from '../../core/change-planner';
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
 import type { VerificationReport } from '../../core/verification';
 import type { KeyboardEvent } from 'react';
+import {
+  formatPreservationFindingCode,
+  hasBaselineUnavailableWarning,
+  isHighVisibilityFinding,
+  joinBoundedList,
+  listPreservationMetricItems,
+  preservationSeverityLabel,
+} from './change-plan-preservation-display';
 import styles from './workspace.module.css';
 import { RESULT_PANEL_TABS, type ResultPanelTab } from './workspace.types';
 
@@ -79,6 +91,100 @@ export function ResultPanel({
   );
 }
 
+function UpdatePreservationSection({
+  operation,
+  warnings,
+}: {
+  readonly operation: UpdateFileOperation;
+  readonly warnings: readonly ProjectChangeWarning[];
+}) {
+  const unavailableWarning = hasBaselineUnavailableWarning(warnings, operation.operationId);
+  if (operation.preservation === undefined) {
+    if (unavailableWarning === undefined) return null;
+    return (
+      <section
+        className={styles.preservationUnavailable}
+        aria-labelledby={`preservation-unavailable-${operation.operationId}`}
+      >
+        <h4 id={`preservation-unavailable-${operation.operationId}`}>Preservation analysis</h4>
+        <p>
+          <strong>Baseline unavailable:</strong> {unavailableWarning.message}
+        </p>
+      </section>
+    );
+  }
+
+  const preservation = operation.preservation;
+  const metricItems = listPreservationMetricItems(
+    preservation,
+    operation.baselineContentChecksum,
+    operation.sourceChecksum,
+  );
+  const summaryId = `preservation-summary-${operation.operationId}`;
+
+  return (
+    <section className={styles.preservationSummary} aria-labelledby={summaryId}>
+      <h4 id={summaryId}>Preservation summary</h4>
+      <dl className={styles.preservationMetrics}>
+        {metricItems.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {preservation.findings.length > 0 && (
+        <div className={styles.preservationFindings}>
+          <h5>Preservation findings</h5>
+          <ul>
+            {preservation.findings.map((finding) => (
+              <li
+                key={`${finding.code}-${finding.message}`}
+                className={
+                  isHighVisibilityFinding(finding)
+                    ? styles.preservationFindingHigh
+                    : styles.preservationFinding
+                }
+              >
+                <strong>{preservationSeverityLabel(finding.severity)}</strong>
+                <span>{formatPreservationFindingCode(finding.code)}</span>
+                <p>{finding.message}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {joinBoundedList(preservation.removedHtmlIds) !== undefined && (
+        <p className={styles.preservationDetail}>
+          <strong>Removed HTML ids:</strong> {joinBoundedList(preservation.removedHtmlIds)}
+        </p>
+      )}
+      {joinBoundedList(preservation.removedAccessibilityAttributes) !== undefined && (
+        <p className={styles.preservationDetail}>
+          <strong>Removed aria attributes:</strong>{' '}
+          {joinBoundedList(preservation.removedAccessibilityAttributes)}
+        </p>
+      )}
+      {preservation.crossFileReferenceRisks !== undefined &&
+        preservation.crossFileReferenceRisks.length > 0 && (
+          <div className={styles.preservationDetail}>
+            <strong>Cross-file reference risks:</strong>
+            <ul>
+              {preservation.crossFileReferenceRisks.map((risk) => (
+                <li key={`${risk.removedId}-${risk.referencingLogicalPath}`}>
+                  Removed id <code>{risk.removedId}</code> referenced in{' '}
+                  <code>{risk.referencingLogicalPath}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+    </section>
+  );
+}
+
 function ResponsePackageView({ responsePackage }: { readonly responsePackage?: ResponsePackage }) {
   if (!responsePackage) {
     return <EmptyResult message="Response evidence will appear after the request is processed." />;
@@ -143,6 +249,9 @@ function ChangePlanView({ changePlan }: { readonly changePlan?: ProjectChangePla
             <span className={styles.operationKind}>{formatLabel(operation.kind)}</span>
             <code>{operation.logicalPath}</code>
             <p>{operation.description}</p>
+            {operation.kind === 'UPDATE_FILE' && (
+              <UpdatePreservationSection operation={operation} warnings={changePlan.warnings} />
+            )}
           </li>
         ))}
       </ol>

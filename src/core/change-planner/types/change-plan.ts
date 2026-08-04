@@ -3,6 +3,7 @@ import type {
   ResponseArtifactType,
   ResponseMetadata,
 } from '../../response-processor';
+import type { UpdatePreservationAssessment } from './update-preservation';
 
 export const PROJECT_CHANGE_PLAN_SCHEMA_VERSION = 1 as const;
 export const CHANGE_OPERATION_KINDS = ['CREATE_FILE', 'UPDATE_FILE', 'DELETE_FILE'] as const;
@@ -29,6 +30,8 @@ export interface CreateFileOperation extends ChangeOperationBase {
 export interface UpdateFileOperation extends ChangeOperationBase {
   readonly kind: 'UPDATE_FILE';
   readonly content: string;
+  readonly baselineContentChecksum?: ArtifactChecksum;
+  readonly preservation?: UpdatePreservationAssessment;
 }
 
 export interface DeleteFileOperation extends ChangeOperationBase {

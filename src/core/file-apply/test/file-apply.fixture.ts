@@ -6,24 +6,42 @@ import {
   type ProjectChangeOperation,
   type ProjectChangePlan,
 } from '../../change-planner';
+import type { ArtifactChecksum } from '../../response-processor';
 import type { FileApplyConfiguration } from '../config';
 import type { FileApplyClockPort, FileSystemEntry, FileSystemPort } from '../ports';
 import { FileSystemPortError } from '../types';
+import { readTextBaselineFromRawContent } from '../../../infrastructure/workspace/text-baseline-content';
 
 export function createOperation(
   kind: ProjectChangeOperation['kind'],
   logicalPath: string,
   content = '',
+  options: {
+    readonly baselineContentChecksum?: ArtifactChecksum;
+    readonly sourceChecksum?: ArtifactChecksum;
+  } = {},
 ): ProjectChangeOperation {
   const base = {
     operationId: createOperationId(kind, logicalPath),
     logicalPath,
     artifactType: 'SOURCE_FILE' as const,
     description: `${kind} ${logicalPath}`,
-    sourceChecksum: { algorithm: 'sha256', value: 'a'.repeat(64) },
+    sourceChecksum: options.sourceChecksum ?? { algorithm: 'sha256', value: 'a'.repeat(64) },
     sourceSizeBytes: new TextEncoder().encode(content).byteLength,
   };
-  return kind === 'DELETE_FILE' ? { ...base, kind } : { ...base, kind, content };
+  if (kind === 'DELETE_FILE') return { ...base, kind };
+  if (kind === 'UPDATE_FILE') {
+    return options.baselineContentChecksum === undefined
+      ? { ...base, kind, content }
+      : { ...base, kind, content, baselineContentChecksum: options.baselineContentChecksum };
+  }
+  return { ...base, kind: 'CREATE_FILE', content };
+}
+
+export function baselineChecksumForContent(content: string): ArtifactChecksum {
+  const snapshot = readTextBaselineFromRawContent(content);
+  if (snapshot === null) throw new Error('Fixture content is not a valid text baseline');
+  return snapshot.checksum;
 }
 
 export function createPlan(
@@ -109,6 +127,12 @@ export class InMemoryFileSystemPort implements FileSystemPort {
     if (this.directories.has(parent)) return { kind: 'DIRECTORY' };
     if (this.files.has(parent)) return { kind: 'FILE' };
     return null;
+  }
+
+  async readRegularFileBaselineChecksum(logicalPath: string): Promise<ArtifactChecksum | null> {
+    const content = this.files.get(logicalPath);
+    if (content === undefined) return null;
+    return readTextBaselineFromRawContent(content)?.checksum ?? null;
   }
 
   async createFileIfAbsent(logicalPath: string, content: string): Promise<void> {

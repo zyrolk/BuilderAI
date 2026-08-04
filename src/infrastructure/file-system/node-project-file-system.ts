@@ -7,6 +7,11 @@ import {
   type FileSystemEntry,
   type FileSystemPort,
 } from '../../core/file-apply';
+import type { ArtifactChecksum } from '../../core/response-processor';
+import {
+  DEFAULT_MAXIMUM_BASELINE_BYTES,
+  readTextBaselineFromAbsolutePath,
+} from '../workspace/text-baseline-content';
 
 export class NodeProjectFileSystem implements FileSystemPort {
   private readonly root: string;
@@ -32,6 +37,21 @@ export class NodeProjectFileSystem implements FileSystemPort {
       const parent = path.dirname(absolutePath);
       await this.rejectSymlinkAncestors(parent, true);
       return await inspectEntry(parent);
+    } catch (error: unknown) {
+      if (errorCode(error) === 'ENOENT') return null;
+      throw this.portError('INSPECTION_FAILED', logicalPath, error);
+    }
+  }
+
+  async readRegularFileBaselineChecksum(logicalPath: string): Promise<ArtifactChecksum | null> {
+    try {
+      const absolutePath = this.resolveContained(logicalPath);
+      await this.rejectSymlinkAncestors(absolutePath, true);
+      const snapshot = await readTextBaselineFromAbsolutePath(
+        absolutePath,
+        DEFAULT_MAXIMUM_BASELINE_BYTES,
+      );
+      return snapshot?.checksum ?? null;
     } catch (error: unknown) {
       if (errorCode(error) === 'ENOENT') return null;
       throw this.portError('INSPECTION_FAILED', logicalPath, error);

@@ -13,7 +13,7 @@ import {
   type ProjectChangeOperation,
   type ProjectChangePlan,
 } from '../types';
-import type { WorkspaceVisibilityPort } from '../ports';
+import type { WorkspaceBaselinePort, WorkspaceVisibilityPort } from '../ports';
 import {
   ChangePlanReferenceValidator,
   ChangePlannerConfigurationValidator,
@@ -21,6 +21,7 @@ import {
 } from '../validators';
 import { ChangeConflictDetectorService } from './change-conflict-detector.service';
 import { ChangePlanSummaryService } from './change-plan-summary.service';
+import { ChangePreservationService } from './change-preservation.service';
 import { ChangeRiskService } from './change-risk.service';
 import { createOperationId, OperationOrderingService } from './operation-ordering.service';
 
@@ -32,29 +33,42 @@ export class ChangePlannerService {
   private readonly ordering = new OperationOrderingService();
   private readonly summary = new ChangePlanSummaryService();
   private readonly risk: ChangeRiskService;
+  private readonly preservation: ChangePreservationService;
   private readonly planValidator: ProjectChangePlanValidator;
   private readonly referenceValidator: ChangePlanReferenceValidator;
 
   constructor(
     private readonly configuration: ChangePlannerConfiguration = DEFAULT_CHANGE_PLANNER_CONFIGURATION,
     private readonly workspaceVisibility?: WorkspaceVisibilityPort,
+    private readonly workspaceBaseline?: WorkspaceBaselinePort,
   ) {
     this.configurationValidator.validate(configuration);
     this.risk = new ChangeRiskService(configuration);
+    this.preservation = new ChangePreservationService(configuration);
     this.planValidator = new ProjectChangePlanValidator(configuration);
     this.referenceValidator = new ChangePlanReferenceValidator(this.planValidator);
   }
 
-  plan(responsePackage: unknown, workspaceVisibility?: WorkspaceVisibilityPort): ProjectChangePlan {
+  plan(
+    responsePackage: unknown,
+    workspaceVisibility?: WorkspaceVisibilityPort,
+    workspaceBaseline?: WorkspaceBaselinePort,
+  ): ProjectChangePlan {
     this.validateResponsePackage(responsePackage);
     const resolvedVisibility = workspaceVisibility ?? this.workspaceVisibility;
+    const resolvedBaseline = workspaceBaseline ?? this.workspaceBaseline;
     const operations = this.createOperations(responsePackage, resolvedVisibility);
-    this.conflictDetector.validate(operations);
-    const orderedOperations = this.ordering.order(operations);
+    const preservationResult =
+      resolvedBaseline === undefined
+        ? { operations, warnings: [], risks: [] }
+        : this.preservation.enrichOperations(operations, resolvedBaseline);
+    this.conflictDetector.validate(preservationResult.operations);
+    const orderedOperations = this.ordering.order(preservationResult.operations);
     const warnings = this.risk.createWarnings(
       orderedOperations,
       responsePackage.warnings,
       resolvedVisibility !== undefined,
+      preservationResult.warnings,
     );
     const plan: ProjectChangePlan = {
       schemaVersion: PROJECT_CHANGE_PLAN_SCHEMA_VERSION,
@@ -64,7 +78,9 @@ export class ChangePlannerService {
       },
       changeSet: { operations: orderedOperations },
       summary: this.summary.generate(orderedOperations, warnings),
-      risks: this.risk.evaluate(orderedOperations),
+      risks: [...this.risk.evaluate(orderedOperations), ...preservationResult.risks].sort(
+        (left, right) => (left.code < right.code ? -1 : left.code > right.code ? 1 : 0),
+      ),
       warnings,
       metadata: structuredClone(responsePackage.metadata),
     };

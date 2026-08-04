@@ -23,3 +23,10 @@ export class FileSystemPortError extends Error {
     this.name = 'FileSystemPortError';
   }
 }
+
+export class BaselineContentDriftError extends Error {
+  constructor(readonly logicalPath: string) {
+    super('Baseline content drift detected');
+    this.name = 'BaselineContentDriftError';
+  }
+}

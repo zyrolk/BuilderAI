@@ -2,6 +2,10 @@ import type { ChangePlannerConfiguration } from '../config';
 import { ChangePlanValidationError, type ChangePlanValidationIssue } from '../types';
 import { addIssue, isPositiveSafeInteger, isRecord, validateExactKeys } from './validation-helpers';
 
+function isUnitRatio(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
 export class ChangePlannerConfigurationValidator {
   validate(value: unknown): asserts value is ChangePlannerConfiguration {
     const issues: ChangePlanValidationIssue[] = [];
@@ -17,6 +21,7 @@ export class ChangePlannerConfigurationValidator {
         'maximumMetadataEntries',
         'maximumMetadataStringCharacters',
         'broadChangeOperationThreshold',
+        'preservation',
       ],
       '$',
       issues,
@@ -44,6 +49,71 @@ export class ChangePlannerConfigurationValidator {
         'must not exceed maximumOperations',
       );
     }
+    this.validatePreservation(value.preservation, issues);
     if (issues.length > 0) throw new ChangePlanValidationError(issues);
+  }
+
+  private validatePreservation(value: unknown, issues: ChangePlanValidationIssue[]): void {
+    const path = '$.preservation';
+    if (!isRecord(value)) {
+      addIssue(issues, 'INVALID_CONFIGURATION', path, 'must be an object');
+      return;
+    }
+    validateExactKeys(
+      value,
+      [
+        'elevatedChurnThreshold',
+        'highChurnThreshold',
+        'maximumCrossFileChecks',
+        'maximumListedHtmlIds',
+      ],
+      path,
+      issues,
+      'INVALID_CONFIGURATION',
+    );
+    if (!isUnitRatio(value.elevatedChurnThreshold)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.elevatedChurnThreshold`,
+        'must be a finite number between 0 and 1 inclusive',
+      );
+    }
+    if (!isUnitRatio(value.highChurnThreshold)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.highChurnThreshold`,
+        'must be a finite number between 0 and 1 inclusive',
+      );
+    }
+    if (
+      isUnitRatio(value.elevatedChurnThreshold) &&
+      isUnitRatio(value.highChurnThreshold) &&
+      value.elevatedChurnThreshold >= value.highChurnThreshold
+    ) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.highChurnThreshold`,
+        'must be greater than elevatedChurnThreshold',
+      );
+    }
+    if (!isPositiveSafeInteger(value.maximumCrossFileChecks)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.maximumCrossFileChecks`,
+        'must be a positive safe integer',
+      );
+    }
+    if (!isPositiveSafeInteger(value.maximumListedHtmlIds)) {
+      addIssue(
+        issues,
+        'INVALID_CONFIGURATION',
+        `${path}.maximumListedHtmlIds`,
+        'must be a positive safe integer',
+      );
+    }
   }
 }

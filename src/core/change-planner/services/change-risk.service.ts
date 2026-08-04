@@ -40,6 +40,7 @@ export class ChangeRiskService {
     operations: readonly ProjectChangeOperation[],
     responseWarnings: readonly { readonly code: string; readonly message: string }[],
     workspaceStateVerified: boolean,
+    preservationWarnings: readonly ProjectChangeWarning[] = [],
   ): readonly ProjectChangeWarning[] {
     const operationIds = operations.map(({ operationId }) => operationId).sort(compareText);
     const warnings: ProjectChangeWarning[] = [
@@ -61,6 +62,7 @@ export class ChangeRiskService {
         message,
         operationIds: [] as readonly string[],
       })),
+      ...preservationWarnings,
     ];
     return warnings.sort(
       (left, right) =>

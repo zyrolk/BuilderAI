@@ -1,5 +1,6 @@
 import type { ResponsePackage, GeneratedArtifact } from '../../response-processor';
 import type { ChangePlannerConfiguration } from '../config';
+import { DEFAULT_PRESERVATION_CONFIGURATION } from '../config';
 import type { ProjectChangeOperation, ProjectChangePlan } from '../types';
 
 export function createArtifact(overrides: Partial<GeneratedArtifact> = {}): GeneratedArtifact {
@@ -66,6 +67,7 @@ export function createConfiguration(
     maximumMetadataEntries: 10,
     maximumMetadataStringCharacters: 500,
     broadChangeOperationThreshold: 3,
+    preservation: DEFAULT_PRESERVATION_CONFIGURATION,
     ...overrides,
   };
 }

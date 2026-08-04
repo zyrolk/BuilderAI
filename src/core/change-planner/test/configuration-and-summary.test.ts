@@ -21,6 +21,14 @@ describe('change planner configuration, summary, and risk policy', () => {
     { ...createConfiguration(), maximumOperations: 0 },
     { ...createConfiguration(), maximumMetadataEntries: Number.NaN },
     { ...createConfiguration(), broadChangeOperationThreshold: 11 },
+    {
+      ...createConfiguration(),
+      preservation: {
+        ...createConfiguration().preservation,
+        highChurnThreshold: 0.2,
+        elevatedChurnThreshold: 0.5,
+      },
+    },
     { ...createConfiguration(), unknown: true },
   ])('rejects invalid configuration %#', (configuration: unknown) => {
     expect(() => validator.validate(configuration)).toThrow(ChangePlanValidationError);

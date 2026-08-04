@@ -140,21 +140,18 @@ export class ProjectChangePlanValidator {
       return;
     }
     const hasContent = value.kind === 'CREATE_FILE' || value.kind === 'UPDATE_FILE';
-    validateExactKeys(
-      value,
-      [
-        'operationId',
-        'kind',
-        'logicalPath',
-        'artifactType',
-        'description',
-        'sourceChecksum',
-        'sourceSizeBytes',
-        ...(hasContent ? ['content'] : []),
-      ],
-      path,
-      issues,
-    );
+    const allowedKeys = [
+      'operationId',
+      'kind',
+      'logicalPath',
+      'artifactType',
+      'description',
+      'sourceChecksum',
+      'sourceSizeBytes',
+      ...(hasContent ? ['content'] : []),
+      ...(value.kind === 'UPDATE_FILE' ? ['baselineContentChecksum', 'preservation'] : []),
+    ];
+    validateExactKeys(value, allowedKeys, path, issues);
     if (!isChangeOperationKind(value.kind)) {
       addIssue(issues, 'UNSUPPORTED_CHANGE', `${path}.kind`, 'is unsupported');
     }
@@ -198,6 +195,16 @@ export class ProjectChangePlanValidator {
     } else if (value.kind === 'DELETE_FILE' && value.content !== undefined) {
       addIssue(issues, 'UNSUPPORTED_CHANGE', `${path}.content`, 'is not allowed for deletion');
     }
+    if (value.kind === 'UPDATE_FILE' && value.baselineContentChecksum !== undefined) {
+      this.validateChecksum(
+        value.baselineContentChecksum,
+        `${path}.baselineContentChecksum`,
+        issues,
+      );
+    }
+    if (value.kind === 'UPDATE_FILE' && value.preservation !== undefined) {
+      this.validatePreservation(value.preservation, `${path}.preservation`, issues);
+    }
     if (
       isChangeOperationKind(value.kind) &&
       isSafeLogicalPath(value.logicalPath) &&
@@ -227,6 +234,160 @@ export class ProjectChangePlanValidator {
     }
     if (typeof value.value !== 'string' || !CHECKSUM_VALUE_PATTERN.test(value.value)) {
       addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.value`, 'must be lowercase hexadecimal');
+    }
+  }
+
+  private validatePreservation(
+    value: unknown,
+    path: string,
+    issues: ChangePlanValidationIssue[],
+  ): void {
+    if (!isRecord(value)) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', path, 'must be an object');
+      return;
+    }
+    validateExactKeys(
+      value,
+      [
+        'baselineContentChecksum',
+        'baselineBytes',
+        'proposedBytes',
+        'baselineLines',
+        'proposedLines',
+        'linesAdded',
+        'linesDeleted',
+        'linesUnchanged',
+        'churnRatio',
+        'similarityRatio',
+        'removedHtmlIds',
+        'addedHtmlIds',
+        'removedAccessibilityAttributes',
+        'crossFileReferenceRisks',
+        'findings',
+      ],
+      path,
+      issues,
+    );
+    if (value.baselineContentChecksum !== undefined) {
+      this.validateChecksum(
+        value.baselineContentChecksum,
+        `${path}.baselineContentChecksum`,
+        issues,
+      );
+    }
+    for (const key of [
+      'baselineBytes',
+      'proposedBytes',
+      'baselineLines',
+      'proposedLines',
+      'linesAdded',
+      'linesDeleted',
+      'linesUnchanged',
+    ] as const) {
+      if (value[key] !== undefined && !isNonNegativeSafeInteger(value[key])) {
+        addIssue(
+          issues,
+          'INVALID_CHANGE_PLAN',
+          `${path}.${key}`,
+          'must be a non-negative safe integer',
+        );
+      }
+    }
+    for (const key of ['churnRatio', 'similarityRatio'] as const) {
+      if (
+        value[key] !== undefined &&
+        (typeof value[key] !== 'number' ||
+          !Number.isFinite(value[key]) ||
+          value[key] < 0 ||
+          value[key] > 1)
+      ) {
+        addIssue(
+          issues,
+          'INVALID_CHANGE_PLAN',
+          `${path}.${key}`,
+          'must be a finite number between 0 and 1 inclusive',
+        );
+      }
+    }
+    for (const key of [
+      'removedHtmlIds',
+      'addedHtmlIds',
+      'removedAccessibilityAttributes',
+    ] as const) {
+      if (
+        value[key] !== undefined &&
+        (!Array.isArray(value[key]) ||
+          !value[key].every((item) => typeof item === 'string' && item.length > 0))
+      ) {
+        addIssue(
+          issues,
+          'INVALID_CHANGE_PLAN',
+          `${path}.${key}`,
+          'must be a non-empty string array',
+        );
+      } else if (value[key] !== undefined && !isSorted(value[key] as readonly string[])) {
+        addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.${key}`, 'must use canonical order');
+      }
+    }
+    if (value.crossFileReferenceRisks !== undefined) {
+      if (!Array.isArray(value.crossFileReferenceRisks)) {
+        addIssue(
+          issues,
+          'INVALID_CHANGE_PLAN',
+          `${path}.crossFileReferenceRisks`,
+          'must be an array',
+        );
+      } else {
+        value.crossFileReferenceRisks.forEach((risk, index) => {
+          const riskPath = `${path}.crossFileReferenceRisks[${index}]`;
+          if (!isRecord(risk)) {
+            addIssue(issues, 'INVALID_CHANGE_PLAN', riskPath, 'must be an object');
+            return;
+          }
+          validateExactKeys(risk, ['removedId', 'referencingLogicalPath'], riskPath, issues);
+          if (typeof risk.removedId !== 'string' || risk.removedId.length === 0) {
+            addIssue(issues, 'INVALID_CHANGE_PLAN', `${riskPath}.removedId`, 'must be non-empty');
+          }
+          if (!isSafeLogicalPath(risk.referencingLogicalPath)) {
+            addIssue(
+              issues,
+              'INVALID_CHANGE_PLAN',
+              `${riskPath}.referencingLogicalPath`,
+              'must be a normalized repository-relative POSIX path',
+            );
+          }
+        });
+      }
+    }
+    if (!Array.isArray(value.findings)) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.findings`, 'must be an array');
+      return;
+    }
+    value.findings.forEach((finding, index) => {
+      const findingPath = `${path}.findings[${index}]`;
+      if (!isRecord(finding)) {
+        addIssue(issues, 'INVALID_CHANGE_PLAN', findingPath, 'must be an object');
+        return;
+      }
+      validateExactKeys(finding, ['code', 'severity', 'message'], findingPath, issues);
+      if (typeof finding.code !== 'string' || finding.code.length === 0) {
+        addIssue(issues, 'INVALID_CHANGE_PLAN', `${findingPath}.code`, 'must be non-empty');
+      }
+      if (
+        typeof finding.severity !== 'string' ||
+        !['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(finding.severity)
+      ) {
+        addIssue(issues, 'INVALID_CHANGE_PLAN', `${findingPath}.severity`, 'is unsupported');
+      }
+      if (typeof finding.message !== 'string' || finding.message.length === 0) {
+        addIssue(issues, 'INVALID_CHANGE_PLAN', `${findingPath}.message`, 'must be non-empty');
+      }
+    });
+    const findingKeys = (value.findings as readonly { code: string; message: string }[]).map(
+      ({ code, message }) => `${code}\0${message}`,
+    );
+    if (!isSorted(findingKeys)) {
+      addIssue(issues, 'INVALID_CHANGE_PLAN', `${path}.findings`, 'must use canonical order');
     }
   }
 
