@@ -18,6 +18,11 @@ const prepare = vi.fn();
 vi.mock('../../../../infrastructure/workspace/local-feature-workflow-runtime', () => ({
   getLocalWorkspaceRuntime: () => ({ prepare }),
   getLocalFeatureWorkflow: () => ({ prepareTask: vi.fn() }),
+  getLocalWorkspaceSecurityConfiguration: () => ({
+    profile: 'TRUSTED_LOCAL',
+    projectId: 'builder-ai',
+    principalId: 'local-operator',
+  }),
 }));
 
 async function callPost(): Promise<Response> {

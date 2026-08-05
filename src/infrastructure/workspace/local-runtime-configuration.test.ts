@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import {
   isLocalWorkspaceRuntimeConfigured,
   loadLocalWorkspaceRuntimeConfiguration,
@@ -23,6 +25,7 @@ describe('local workspace runtime configuration', () => {
 
     expect(isLocalWorkspaceRuntimeConfigured()).toBe(true);
     expect(configuration.projectRoot).toBe(process.cwd());
+    expect(configuration.projectProfile).toBe('BUILDERAI_SELF');
     expect(configuration.provider).toMatchObject({
       kind: 'openai',
       apiKey: 'test-secret',
@@ -31,6 +34,7 @@ describe('local workspace runtime configuration', () => {
     // P1-10: the default preparation review window is 60 minutes, not the prior 15.
     expect(configuration.workspace.preparationTtlMs).toBe(3_600_000);
     expect(configuration.extraSourceScanRoots).toEqual([]);
+    expect(configuration.security.profile).toBe('TRUSTED_LOCAL');
   });
 
   it('parses BUILDERAI_EXTRA_SOURCE_SCAN_ROOTS for unusual layouts', () => {
@@ -39,9 +43,9 @@ describe('local workspace runtime configuration', () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-secret');
     vi.stubEnv('OPENAI_MODEL', 'configured-model');
     vi.stubEnv('BUILDERAI_PROJECT_ROOT', process.cwd());
-    vi.stubEnv('BUILDERAI_EXTRA_SOURCE_SCAN_ROOTS', 'features, ./features');
+    vi.stubEnv('BUILDERAI_EXTRA_SOURCE_SCAN_ROOTS', 'widgets, ./widgets');
 
-    expect(loadLocalWorkspaceRuntimeConfiguration().extraSourceScanRoots).toEqual(['features']);
+    expect(loadLocalWorkspaceRuntimeConfiguration().extraSourceScanRoots).toEqual(['widgets']);
   });
 
   it('selects Gemini using configuration alone and does not require OpenAI settings', () => {
@@ -175,5 +179,40 @@ describe('local workspace runtime configuration', () => {
     expect(loadLocalWorkspaceRuntimeConfiguration().provider.settings.maximumInputCharacters).toBe(
       150_000,
     );
+  });
+
+  it('loads protected security settings when explicitly configured', () => {
+    vi.stubEnv('BUILDERAI_LIVE_WORKFLOW_ENABLED', 'true');
+    vi.stubEnv('BUILDERAI_AI_PROVIDER', 'openai');
+    vi.stubEnv('OPENAI_API_KEY', 'test-secret');
+    vi.stubEnv('OPENAI_MODEL', 'configured-model');
+    vi.stubEnv('BUILDERAI_PROJECT_ROOT', process.cwd());
+    vi.stubEnv('BUILDERAI_WORKSPACE_SECURITY_PROFILE', 'protected');
+    vi.stubEnv('BUILDERAI_WORKSPACE_ACCESS_TOKEN', 'access-token');
+    vi.stubEnv('BUILDERAI_WORKSPACE_CSRF_TOKEN', 'csrf-token');
+
+    expect(loadLocalWorkspaceRuntimeConfiguration().security).toEqual({
+      profile: 'PROTECTED',
+      projectId: 'builder-ai',
+      accessToken: 'access-token',
+      csrfToken: 'csrf-token',
+      principalId: 'workspace-operator',
+    });
+  });
+
+  it('loads external-target profile settings from the synthetic fixture', () => {
+    vi.stubEnv('BUILDERAI_LIVE_WORKFLOW_ENABLED', 'true');
+    vi.stubEnv('BUILDERAI_AI_PROVIDER', 'openai');
+    vi.stubEnv('OPENAI_API_KEY', 'test-secret');
+    vi.stubEnv('OPENAI_MODEL', 'configured-model');
+    vi.stubEnv(
+      'BUILDERAI_PROJECT_ROOT',
+      path.resolve(process.cwd(), 'src/core/target-project/test/fixtures/zyro-style-project'),
+    );
+    vi.stubEnv('BUILDERAI_WORKSPACE_PROJECT_PROFILE', 'external-target');
+
+    const configuration = loadLocalWorkspaceRuntimeConfiguration();
+    expect(configuration.projectProfile).toBe('EXTERNAL_TARGET');
+    expect(configuration.security.projectId).toBe('zyro-style-fixture');
   });
 });

@@ -1,14 +1,28 @@
 import type { ModuleAnalysis } from '../../blueprint-reader';
 import type { ProjectBrain, ProjectTask } from '../../project-brain';
 import { CONTEXT_RETRIEVAL_SCORING } from '../config/context-retrieval-policy';
-import { buildReadShortlist, rankCandidatePaths } from '../internal/path-relevance';
+import {
+  extractExplicitPathMentions,
+  mergeExplicitPathsIntoShortlist,
+} from '../internal/explicit-path-mentions';
+import {
+  buildReadShortlist,
+  isTestCounterpart,
+  rankCandidatePaths,
+} from '../internal/path-relevance';
 import {
   directoryName,
   normalizeProjectPath,
   pathBelongsToModule,
   resolveRelativePath,
 } from '../internal/path';
-import { inferTaskCategories, isTestPrimaryTask } from '../internal/task-category';
+import { categoryEvidenceForPath } from '../internal/source-file-admission';
+import {
+  inferTaskCategories,
+  isTestPrimaryTask,
+  sourcePathCategory,
+  type TaskCategory,
+} from '../internal/task-category';
 import {
   boundedContentScore,
   effectiveAdmissionScore,
@@ -16,7 +30,12 @@ import {
   tokenize,
 } from '../internal/text-relevance';
 import type { ProjectFileSource } from '../ports';
-import type { ContextOmission, ContextSourceFile, ProjectSourceFile } from '../types';
+import type {
+  ContextOmission,
+  ContextSelectionEvidence,
+  ContextSourceFile,
+  ProjectSourceFile,
+} from '../types';
 import { ContextBuilderValidationError } from '../types';
 
 const IMPORT_PATTERN = /(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]/g;
@@ -31,6 +50,38 @@ export interface FileResolution {
 interface ScoredSourceFile extends ProjectSourceFile {
   readonly combinedScore: number;
   readonly effectiveScore: number;
+  readonly evidence: ContextSelectionEvidence[];
+}
+
+function appendEvidence(
+  evidence: ContextSelectionEvidence[],
+  kind: ContextSelectionEvidence['kind'],
+  detail: string,
+): ContextSelectionEvidence[] {
+  if (evidence.some((entry) => entry.kind === kind && entry.detail === detail)) return evidence;
+  return [...evidence, { kind, detail }];
+}
+
+function evidenceForShortlistPath(
+  sourcePath: string,
+  pathScore: number,
+  pathHints: ReadonlySet<string>,
+  categories: ReadonlySet<TaskCategory>,
+): ContextSelectionEvidence[] {
+  let evidence: ContextSelectionEvidence[] = [];
+  for (const hint of pathHints) {
+    if (sourcePath === hint || sourcePath.startsWith(`${hint}/`)) {
+      evidence = appendEvidence(evidence, 'EXPLICIT_PATH', hint);
+    }
+  }
+  if (pathScore >= CONTEXT_RETRIEVAL_SCORING.MIN_PATH_SCORE_FOR_READ) {
+    evidence = appendEvidence(evidence, 'TASK_KEYWORD', `pathScore=${pathScore}`);
+  }
+  const category = sourcePathCategory(sourcePath);
+  if (category !== undefined && categories.has(category)) {
+    evidence = appendEvidence(evidence, 'SOURCE_CATEGORY', category);
+  }
+  return evidence;
 }
 
 function taskText(task: ProjectTask): string {
@@ -128,24 +179,30 @@ export class DependencyResolutionService {
     const categories = inferTaskCategories(taskCorpus);
     const testPrimary = isTestPrimaryTask(taskCorpus, categories);
     const scoredModulePaths = new Set(relevantModules.map(({ path }) => path));
-    const pathHints = new Set(iterationPathHints);
+    const explicitPaths = extractExplicitPathMentions(taskCorpus, normalizedPaths);
+    const pathHints = new Set([...iterationPathHints, ...explicitPaths]);
     const rankedPaths = rankCandidatePaths(
       normalizedPaths,
       queryVariants,
       categories,
       scoredModulePaths,
       taskCorpus,
-      pathHints,
+      new Set(iterationPathHints),
+      new Set(explicitPaths),
     );
     const pathScoreByPath = new Map(rankedPaths.map(({ path, pathScore }) => [path, pathScore]));
     const eligiblePaths = rankedPaths.filter(
       ({ pathScore }) => pathScore >= CONTEXT_RETRIEVAL_SCORING.MIN_PATH_SCORE_FOR_READ,
     );
-    const shortlist = buildReadShortlist(
-      eligiblePaths,
-      categories,
+    const shortlist = mergeExplicitPathsIntoShortlist(
+      buildReadShortlist(
+        eligiblePaths,
+        categories,
+        CONTEXT_RETRIEVAL_SCORING.READ_SHORTLIST_CAPACITY,
+        taskCorpus,
+      ),
+      explicitPaths,
       CONTEXT_RETRIEVAL_SCORING.READ_SHORTLIST_CAPACITY,
-      taskCorpus,
     );
 
     const omissions: ContextOmission[] = [];
@@ -162,6 +219,7 @@ export class DependencyResolutionService {
       sourcePath: string,
       pathScore: number,
       contentScoreBoost: number,
+      incomingEvidence: readonly ContextSelectionEvidence[] = [],
     ): Promise<void> => {
       if (scoredFiles.has(sourcePath)) return;
       if (reads >= maxReads) {
@@ -190,11 +248,28 @@ export class DependencyResolutionService {
         CONTEXT_RETRIEVAL_SCORING.CONTENT_SCORE_CAP,
       );
       const combinedScore = pathScore + contentScore + contentScoreBoost;
+      const category = categoryEvidenceForPath(sourcePath);
+      const evidence =
+        incomingEvidence.length > 0
+          ? [...incomingEvidence]
+          : evidenceForShortlistPath(sourcePath, pathScore, pathHints, categories);
+      let finalEvidence = evidence;
+      if (isTestSourcePath(sourcePath) && testPrimary) {
+        finalEvidence = appendEvidence(
+          finalEvidence,
+          'NEARBY_TEST',
+          sourcePath.split('/').at(-1) ?? sourcePath,
+        );
+      }
       scoredFiles.set(sourcePath, {
         path: sourcePath,
         content,
         combinedScore,
         effectiveScore: effectiveAdmissionScore(combinedScore, content.length),
+        evidence:
+          category === undefined
+            ? finalEvidence
+            : appendEvidence(finalEvidence, 'SOURCE_CATEGORY', category),
       });
     };
 
@@ -239,12 +314,41 @@ export class DependencyResolutionService {
           parent.combinedScore * CONTEXT_RETRIEVAL_SCORING.IMPORT_PARENT_DECAY,
         ),
         0,
+        appendEvidence(parent.evidence, 'RELATED_IMPORT', parent.path),
       );
     };
 
     for (const parent of importParents) {
       for (const importPath of importedPaths(parent)) {
         await visitImport(parent, importPath);
+      }
+    }
+
+    if (!testPrimary) {
+      const anchorStems = new Set(
+        [...scoredFiles.values()]
+          .filter(({ path }) => !isTestSourcePath(path))
+          .slice(0, 6)
+          .map(
+            ({ path }) =>
+              path
+                .split('/')
+                .at(-1)
+                ?.replace(/\.[^.]+$/u, '') ?? path,
+          ),
+      );
+      for (const candidatePath of normalizedPaths) {
+        if (!isTestSourcePath(candidatePath) || scoredFiles.has(candidatePath)) continue;
+        const matchedAnchor = [...anchorStems].find((anchor) =>
+          isTestCounterpart(candidatePath, anchor),
+        );
+        if (matchedAnchor === undefined) continue;
+        await readFile(
+          candidatePath,
+          pathScoreByPath.get(candidatePath) ?? CONTEXT_RETRIEVAL_SCORING.TEST_FILENAME_AFFINITY,
+          0,
+          appendEvidence([], 'NEARBY_TEST', matchedAnchor),
+        );
       }
     }
 
@@ -256,6 +360,7 @@ export class DependencyResolutionService {
           path: file.path,
           content: file.content,
           priority: 'RELATED_SOURCE_FILES' as const,
+          selectionEvidence: file.evidence,
           ...(owner === undefined ? {} : { modulePath: owner.path }),
         };
       });

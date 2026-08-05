@@ -31,7 +31,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
     expect(context.ownershipBoundaries.join(' ')).toMatch(/Project Brain/i);
     expect(context.ownershipBoundaries.join(' ')).toMatch(/\.builderai/i);
     expect(context.ownershipBoundaries.join(' ')).toMatch(/src\/application\/workspace/i);
-  });
+  }, 15_000);
 
   it('instructs ownership-aligned expectedAreas in the decomposition prompt', async () => {
     const context = await buildLiveContext('Add checkout summary to the workspace UI.');

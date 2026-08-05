@@ -42,7 +42,12 @@ export const DECOMPOSITION_CONTEXT_LIMITS = {
 
 export interface FeatureTaskOutcomeVerificationStage {
   readonly stage:
-    'PROJECT_VALIDATION' | 'DEPENDENCY_VALIDATION' | 'BUILD_VALIDATION' | 'TEST_VALIDATION';
+    | 'PROJECT_VALIDATION'
+    | 'DEPENDENCY_VALIDATION'
+    | 'BUILD_VALIDATION'
+    | 'TEST_VALIDATION'
+    | 'LINT_VALIDATION'
+    | 'TYPECHECK_VALIDATION';
   readonly status: 'PASSED' | 'FAILED';
 }
 

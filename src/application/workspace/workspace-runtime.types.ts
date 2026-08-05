@@ -22,6 +22,8 @@ export interface WorkspacePreparation {
   readonly expiresAt: string;
   readonly responsePackage: ResponsePackage;
   readonly changePlan: ProjectChangePlan;
+  /** Server-issued apply authorization; required for protected-profile apply requests. */
+  readonly applyAuthorizationToken?: string;
 }
 
 export interface WorkspaceCompletion {
@@ -97,9 +99,16 @@ export class WorkspaceRuntimeError extends Error {
       | 'INVALID_FEATURE_PLAN'
       | 'FEATURE_PLAN_NOT_FOUND'
       | 'PROJECT_CONTEXT_INVALID'
+      | 'EXTERNAL_TARGET_ONBOARDING_REQUIRED'
       | 'PREPARATION_NOT_FOUND'
       | 'PREPARATION_EXPIRED'
       | 'APPROVAL_REQUIRED'
+      | 'UNAUTHENTICATED'
+      | 'UNAUTHORIZED'
+      | 'CSRF_VALIDATION_FAILED'
+      | 'APPLY_AUTHORIZATION_REQUIRED'
+      | 'APPLY_PATH_CONFLICT'
+      | 'BASELINE_INTEGRITY_REQUIRED'
       | 'WORKFLOW_FAILED',
     message: string,
   ) {

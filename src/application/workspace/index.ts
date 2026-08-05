@@ -15,3 +15,8 @@ export * from './preservation-rejection-builder.service';
 export * from './workspace-runtime.service';
 export * from './workspace-http-errors';
 export * from './workspace-runtime.types';
+export * from './workspace-authorization.types';
+export * from './workspace-authorization.service';
+export * from './workspace-apply-lock.service';
+export * from './workspace-apply-audit.service';
+export * from './workspace-apply-policy.service';

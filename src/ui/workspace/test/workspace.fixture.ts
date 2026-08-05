@@ -2,7 +2,11 @@ import { createOperationId, type ProjectChangePlan } from '../../../core/change-
 import type { FileApplyResult } from '../../../core/file-apply';
 import type { ResponsePackage } from '../../../core/response-processor';
 import type { VerificationReport } from '../../../core/verification';
-import type { WorkspaceProjectView, WorkspaceWorkflowPort } from '../workspace.types';
+import type {
+  Gate2CorrectionCapableWorkflow,
+  WorkspaceProjectView,
+  WorkspaceWorkflowPort,
+} from '../workspace.types';
 
 export const PROJECT_VIEW: WorkspaceProjectView = {
   id: 'builder-ai',
@@ -184,6 +188,8 @@ export const VERIFICATION_REPORT: VerificationReport = {
       ['DEPENDENCY_VALIDATION', {}],
       ['BUILD_VALIDATION', { 'exit-code': 0, 'package-manager': 'npm' }],
       ['TEST_VALIDATION', { 'exit-code': 0, 'output-bytes': 482, 'output-truncated': false }],
+      ['LINT_VALIDATION', { skipped: true }],
+      ['TYPECHECK_VALIDATION', { skipped: true }],
     ] as const
   ).map(([stage, metadata]) => ({
     stage,
@@ -199,13 +205,76 @@ export const VERIFICATION_REPORT: VerificationReport = {
   metadata: { sprint: 12 },
 };
 
+export const CORRECTED_CHANGE_PLAN: ProjectChangePlan = {
+  ...CHANGE_PLAN,
+  source: { responsePackageSchemaVersion: 1, executionId: 'execution-ui-002' },
+  summary: {
+    ...CHANGE_PLAN.summary,
+    filesCreated: ['src/example-corrected.ts'],
+  },
+  changeSet: {
+    operations: [
+      {
+        ...CHANGE_PLAN.changeSet.operations[0]!,
+        operationId: createOperationId('CREATE_FILE', 'src/example-corrected.ts'),
+        logicalPath: 'src/example-corrected.ts',
+      },
+    ],
+  },
+};
+
 export function createWorkflow(
   overrides: Partial<WorkspaceWorkflowPort> = {},
 ): WorkspaceWorkflowPort {
   return {
-    prepare: async () => ({ responsePackage: RESPONSE_PACKAGE, changePlan: CHANGE_PLAN }),
+    prepare: async () => ({
+      responsePackage: RESPONSE_PACKAGE,
+      changePlan: CHANGE_PLAN,
+      preparationId: 'prep-original-001',
+    }),
     apply: async () => APPLY_RESULT,
     verify: async () => VERIFICATION_REPORT,
     ...overrides,
   };
+}
+
+export function createGate2CorrectionWorkflow(
+  overrides: Partial<Gate2CorrectionCapableWorkflow> = {},
+): Gate2CorrectionCapableWorkflow & {
+  readonly getLastAppliedPreparationId: () => string | undefined;
+} {
+  let currentPreparationId = 'prep-original-001';
+  let lastAppliedPreparationId: string | undefined;
+
+  const workflow: Gate2CorrectionCapableWorkflow & {
+    getLastAppliedPreparationId: () => string | undefined;
+  } = {
+    prepare: async () => {
+      currentPreparationId = 'prep-original-001';
+      return {
+        responsePackage: RESPONSE_PACKAGE,
+        changePlan: CHANGE_PLAN,
+        preparationId: currentPreparationId,
+      };
+    },
+    prepareGate2PreservationCorrection: async (_request, _changePlan, preparationId) => {
+      currentPreparationId = 'prep-corrected-002';
+      return {
+        responsePackage: RESPONSE_PACKAGE,
+        changePlan: CORRECTED_CHANGE_PLAN,
+        preparationId: currentPreparationId,
+        sourcePreparationId: preparationId,
+        isCorrection: true,
+      };
+    },
+    apply: async () => {
+      lastAppliedPreparationId = currentPreparationId;
+      return APPLY_RESULT;
+    },
+    verify: async () => VERIFICATION_REPORT,
+    getLastAppliedPreparationId: () => lastAppliedPreparationId,
+    ...overrides,
+  };
+
+  return workflow;
 }

@@ -1,9 +1,8 @@
 import 'server-only';
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 
+import type { WorkspaceSecurityConfiguration } from '../../application/workspace/workspace-authorization.types';
 import {
   FeatureDecompositionService,
   FeaturePlanPersistence,
@@ -11,11 +10,14 @@ import {
   ActivityHistoryService,
   WorkspaceRuntimeService,
 } from '../../application/workspace';
-import { BlueprintReaderService } from '../../core/blueprint-reader';
+import {
+  createProjectContextReader,
+  loadExternalTargetSourceIndexOptions,
+  loadWorkspaceProjectBrain,
+} from '../../core/target-project';
 import { ChangePlannerService } from '../../core/change-planner';
 import { ContextBuilderService } from '../../core/context-builder';
 import { FileApplyEngineService } from '../../core/file-apply';
-import { parseProjectBrain } from '../../core/project-brain';
 import { PromptOrchestratorService } from '../../core/prompt-orchestrator';
 import { ResponseProcessorService } from '../../core/response-processor';
 import { VerificationEngineService } from '../../core/verification';
@@ -27,13 +29,7 @@ import { NodeProjectFileSystem } from '../file-system';
 import { NodeWorkspaceBaseline } from './node-workspace-baseline';
 import { NodeWorkspaceVisibility } from './node-workspace-visibility';
 import { NodeProjectFileSource } from '../project';
-import {
-  BoundedNpmCommandRunner,
-  NodeBuildRunner,
-  NodeDependencyValidator,
-  NodeProjectValidator,
-  NodeTestRunner,
-} from '../verification';
+import { createNodeVerificationRunners, NodeProjectValidator } from '../verification';
 import { loadLocalWorkspaceRuntimeConfiguration } from './local-runtime-configuration';
 import { StructuredRuntimeLogger } from './structured-runtime-logger';
 
@@ -42,6 +38,7 @@ type LocalWorkspaceServices = {
   readonly featureWorkflow: FeatureWorkflowService;
   readonly featureDecomposition: FeatureDecompositionService;
   readonly activityHistory: ActivityHistoryService;
+  readonly security: WorkspaceSecurityConfiguration;
 };
 
 let singleton: LocalWorkspaceServices | undefined;
@@ -62,6 +59,10 @@ export function getLocalActivityHistory(): ActivityHistoryService {
   return getLocalWorkspaceServices().activityHistory;
 }
 
+export function getLocalWorkspaceSecurityConfiguration(): WorkspaceSecurityConfiguration {
+  return getLocalWorkspaceServices().security;
+}
+
 function getLocalWorkspaceServices(): LocalWorkspaceServices {
   singleton ??= createLocalWorkspaceServices();
   return singleton;
@@ -69,8 +70,19 @@ function getLocalWorkspaceServices(): LocalWorkspaceServices {
 
 function createLocalWorkspaceServices(): LocalWorkspaceServices {
   const configuration = loadLocalWorkspaceRuntimeConfiguration();
+  const sourceIndexOptions = {
+    extraScanRoots: configuration.extraSourceScanRoots,
+    ...loadExternalTargetSourceIndexOptions(
+      configuration.projectRoot,
+      configuration.projectProfile,
+    ),
+  };
   const documentSource = new NodeFileSystemDocumentSource(configuration.projectRoot);
-  const blueprintReader = new BlueprintReaderService(documentSource);
+  const blueprintReader = createProjectContextReader({
+    profile: configuration.projectProfile,
+    projectRoot: configuration.projectRoot,
+    source: documentSource,
+  });
   const runtimeLogger = new StructuredRuntimeLogger();
   const providerExecution =
     configuration.provider.kind === 'openai'
@@ -125,7 +137,7 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
             }),
             configuration.provider.settings,
           );
-  const commandRunner = new BoundedNpmCommandRunner({
+  const verificationRunners = createNodeVerificationRunners({
     projectRoot: configuration.projectRoot,
     commandTimeoutMs: configuration.verificationCommandTimeoutMs,
     maximumOutputBytes: configuration.verificationMaximumOutputBytes,
@@ -134,11 +146,10 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
   const activityHistory = new ActivityHistoryService({ projectRoot: configuration.projectRoot });
   const workspaceBaseline = new NodeWorkspaceBaseline(configuration.projectRoot);
   const runtime = new WorkspaceRuntimeService({
-    loadProjectBrain: () => loadProjectBrain(configuration.projectRoot),
+    loadProjectBrain: () =>
+      loadWorkspaceProjectBrain(configuration.projectRoot, configuration.projectProfile),
     blueprintReader,
-    sourceFiles: new NodeProjectFileSource(configuration.projectRoot, {
-      extraScanRoots: configuration.extraSourceScanRoots,
-    }),
+    sourceFiles: new NodeProjectFileSource(configuration.projectRoot, sourceIndexOptions),
     contextBuilder: new ContextBuilderService(),
     promptOrchestrator: new PromptOrchestratorService(),
     workspaceBaseline,
@@ -152,39 +163,43 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     fileApply: new FileApplyEngineService(new NodeProjectFileSystem(configuration.projectRoot)),
     verification: new VerificationEngineService({
       projectValidator,
-      dependencyValidator: new NodeDependencyValidator(commandRunner),
-      buildRunner: new NodeBuildRunner(commandRunner),
-      testRunner: new NodeTestRunner(commandRunner),
+      dependencyValidator: verificationRunners.dependencyValidator,
+      buildRunner: verificationRunners.buildRunner,
+      testRunner: verificationRunners.testRunner,
+      lintRunner: verificationRunners.lintRunner,
+      typecheckRunner: verificationRunners.typecheckRunner,
     }),
     activityHistory,
     clock: { now: () => new Date() },
     ids: { generate: randomUUID },
     logger: runtimeLogger,
     configuration: configuration.workspace,
+    security: configuration.security,
+    projectRoot: configuration.projectRoot,
   });
   const persistence = new FeaturePlanPersistence(configuration.projectRoot);
   const featureWorkflow = new FeatureWorkflowService({
     runtime,
     persistence,
-    loadProjectBrain: () => loadProjectBrain(configuration.projectRoot),
+    loadProjectBrain: () =>
+      loadWorkspaceProjectBrain(configuration.projectRoot, configuration.projectProfile),
     clock: { now: () => new Date() },
   });
   const featureDecomposition = new FeatureDecompositionService({
-    loadProjectBrain: () => loadProjectBrain(configuration.projectRoot),
+    loadProjectBrain: () =>
+      loadWorkspaceProjectBrain(configuration.projectRoot, configuration.projectProfile),
     blueprintReader,
-    sourceFiles: new NodeProjectFileSource(configuration.projectRoot, {
-      extraScanRoots: configuration.extraSourceScanRoots,
-    }),
+    sourceFiles: new NodeProjectFileSource(configuration.projectRoot, sourceIndexOptions),
     providerExecution,
     projectRoot: configuration.projectRoot,
     clock: { now: () => new Date() },
     ids: { generate: randomUUID },
   });
-  return { runtime, featureWorkflow, featureDecomposition, activityHistory };
-}
-
-function loadProjectBrain(projectRoot: string) {
-  return parseProjectBrain(
-    JSON.parse(readFileSync(path.join(projectRoot, 'project-brain.json'), 'utf8')) as unknown,
-  );
+  return {
+    runtime,
+    featureWorkflow,
+    featureDecomposition,
+    activityHistory,
+    security: configuration.security,
+  };
 }

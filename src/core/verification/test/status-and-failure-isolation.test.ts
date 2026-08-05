@@ -31,7 +31,7 @@ describe('verification status and failure isolation', () => {
     expect(report.warnings).toEqual([
       { stage: 'BUILD_VALIDATION', code: 'LOCAL_WARNING', message: 'Local cache was stale' },
     ]);
-    expect(harness.calls).toHaveLength(4);
+    expect(harness.calls).toHaveLength(6);
   });
 
   it('derives FAILED only when every stage fails', async () => {
@@ -40,6 +40,8 @@ describe('verification status and failure isolation', () => {
       DEPENDENCY_VALIDATION: FAILED_STAGE,
       BUILD_VALIDATION: FAILED_STAGE,
       TEST_VALIDATION: FAILED_STAGE,
+      LINT_VALIDATION: FAILED_STAGE,
+      TYPECHECK_VALIDATION: FAILED_STAGE,
     });
 
     const report = await new VerificationEngineService(
@@ -49,7 +51,7 @@ describe('verification status and failure isolation', () => {
     ).verify(createAppliedResult());
 
     expect(report.status).toBe('FAILED');
-    expect(report.errors).toHaveLength(4);
+    expect(report.errors).toHaveLength(6);
   });
 
   it('contains thrown port failures and continues the remaining pipeline', async () => {
@@ -63,7 +65,7 @@ describe('verification status and failure isolation', () => {
       createDeterministicClock(),
     ).verify(createAppliedResult());
 
-    expect(harness.calls).toHaveLength(4);
+    expect(harness.calls).toHaveLength(6);
     expect(report.stages[1]).toMatchObject({
       stage: 'DEPENDENCY_VALIDATION',
       status: 'FAILED',
@@ -94,6 +96,6 @@ describe('verification status and failure isolation', () => {
         },
       ],
     });
-    expect(harness.calls).toHaveLength(4);
+    expect(harness.calls).toHaveLength(6);
   });
 });

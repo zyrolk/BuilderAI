@@ -87,9 +87,16 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     return {
       responsePackage: structuredClone(response.responsePackage),
       changePlan: structuredClone(response.changePlan),
+      preparationId: response.preparationId,
       ...(response.featurePlan === undefined
         ? {}
         : { featurePlan: structuredClone(response.featurePlan) }),
+      ...(options.iterationFeedback === undefined
+        ? {}
+        : {
+            isCorrection: true,
+            ...readSourcePreparationFromFeedback(options.iterationFeedback),
+          }),
     };
   }
 
@@ -105,7 +112,12 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
       ...(operatorReason === undefined ? {} : { operatorReason }),
       ...(this.lastRequest === undefined ? {} : { priorRequestSummary: this.lastRequest }),
     });
-    return this.prepare(request, { iterationFeedback });
+    const corrected = await this.prepare(request, { iterationFeedback });
+    return {
+      ...corrected,
+      sourcePreparationId: preparationId,
+      isCorrection: true,
+    };
   }
 
   async prepareCorrection(
@@ -186,6 +198,14 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     if (!response.ok) throw workspaceError(value);
     return parseActivityHistoryResponse(value);
   }
+}
+
+function readSourcePreparationFromFeedback(iterationFeedback: unknown): {
+  readonly sourcePreparationId?: string;
+} {
+  if (typeof iterationFeedback !== 'object' || iterationFeedback === null) return {};
+  const sourcePreparationId = Reflect.get(iterationFeedback, 'sourcePreparationId');
+  return typeof sourcePreparationId === 'string' ? { sourcePreparationId } : {};
 }
 
 async function post(url: string, body: unknown): Promise<unknown> {

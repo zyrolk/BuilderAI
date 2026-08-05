@@ -237,7 +237,7 @@ describe('ContextBuilderService Phase 2 integration', () => {
       'src/core/context-builder/context-builder.ts',
     ]);
     expect(packageValue.size.maxSourceReads).toBe(36);
-    expect(packageValue.size.maxFiles).toBe(12);
+    expect(packageValue.size.maxFiles).toBe(16);
     expect(packageValue.size.maxCharacters).toBe(95_000);
   });
 });

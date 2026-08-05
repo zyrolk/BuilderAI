@@ -2,16 +2,19 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import type { BlueprintReaderService } from '../../core/blueprint-reader';
+import type { ProjectContextReaderPort } from '../../core/target-project';
 import type {
   BuildRunnerPort,
   DependencyValidatorPort,
+  LintRunnerPort,
   ProjectValidatorPort,
   TestRunnerPort,
+  TypecheckRunnerPort,
   VerificationContext,
   VerificationMessage,
   VerificationStagePortResult,
 } from '../../core/verification';
+import { discoverPackageScripts, type DiscoveredPackageScripts } from './package-script-discovery';
 
 export interface NodeVerificationConfiguration {
   readonly projectRoot: string;
@@ -26,8 +29,12 @@ interface CommandResult {
   readonly outputTruncated: boolean;
 }
 
+interface RunOptions {
+  readonly failureCode: string;
+}
+
 export class NodeProjectValidator implements ProjectValidatorPort {
-  constructor(private readonly reader: BlueprintReaderService) {}
+  constructor(private readonly reader: ProjectContextReaderPort) {}
 
   async validateProject(context: VerificationContext): Promise<VerificationStagePortResult> {
     void context;
@@ -53,7 +60,9 @@ export class NodeDependencyValidator implements DependencyValidatorPort {
 
   async validateDependencies(context: VerificationContext): Promise<VerificationStagePortResult> {
     void context;
-    return this.runner.run('dependency-validation', ['ls', '--omit=dev', '--json', '--depth=0']);
+    return this.runner.run('dependency-validation', ['ls', '--omit=dev', '--json', '--depth=0'], {
+      failureCode: 'DEPENDENCY_VALIDATION_FAILED',
+    });
   }
 }
 
@@ -62,7 +71,7 @@ export class NodeBuildRunner implements BuildRunnerPort {
 
   async runBuild(context: VerificationContext): Promise<VerificationStagePortResult> {
     void context;
-    return this.runner.run('build-validation', ['run', 'build']);
+    return this.runner.run('build-validation', ['run', 'build'], { failureCode: 'BUILD_FAILED' });
   }
 }
 
@@ -71,8 +80,64 @@ export class NodeTestRunner implements TestRunnerPort {
 
   async runTests(context: VerificationContext): Promise<VerificationStagePortResult> {
     void context;
-    return this.runner.run('test-validation', ['test']);
+    return this.runner.run('test-validation', ['test'], { failureCode: 'TEST_FAILED' });
   }
+}
+
+export class NodeLintRunner implements LintRunnerPort {
+  constructor(
+    private readonly runner: BoundedNpmCommandRunner,
+    private readonly scripts: DiscoveredPackageScripts,
+  ) {}
+
+  async runLint(context: VerificationContext): Promise<VerificationStagePortResult> {
+    void context;
+    const script = this.scripts.lintScript;
+    if (script === undefined) {
+      return skippedOptionalStage('lint');
+    }
+    return this.runner.run('lint-validation', ['run', script], { failureCode: 'LINT_FAILED' });
+  }
+}
+
+export class NodeTypecheckRunner implements TypecheckRunnerPort {
+  constructor(
+    private readonly runner: BoundedNpmCommandRunner,
+    private readonly scripts: DiscoveredPackageScripts,
+  ) {}
+
+  async runTypecheck(context: VerificationContext): Promise<VerificationStagePortResult> {
+    void context;
+    const script = this.scripts.typecheckScript;
+    if (script === undefined) {
+      return skippedOptionalStage('typecheck');
+    }
+    return this.runner.run('typecheck-validation', ['run', script], {
+      failureCode: 'TYPECHECK_FAILED',
+    });
+  }
+}
+
+export function createNodeVerificationRunners(configuration: NodeVerificationConfiguration): {
+  readonly commandRunner: BoundedNpmCommandRunner;
+  readonly scripts: DiscoveredPackageScripts;
+  readonly dependencyValidator: NodeDependencyValidator;
+  readonly buildRunner: NodeBuildRunner;
+  readonly testRunner: NodeTestRunner;
+  readonly lintRunner: NodeLintRunner;
+  readonly typecheckRunner: NodeTypecheckRunner;
+} {
+  const commandRunner = new BoundedNpmCommandRunner(configuration);
+  const scripts = discoverPackageScripts(configuration.projectRoot);
+  return {
+    commandRunner,
+    scripts,
+    dependencyValidator: new NodeDependencyValidator(commandRunner),
+    buildRunner: new NodeBuildRunner(commandRunner),
+    testRunner: new NodeTestRunner(commandRunner),
+    lintRunner: new NodeLintRunner(commandRunner, scripts),
+    typecheckRunner: new NodeTypecheckRunner(commandRunner, scripts),
+  };
 }
 
 export class BoundedNpmCommandRunner {
@@ -93,6 +158,7 @@ export class BoundedNpmCommandRunner {
   async run(
     stageName: string,
     arguments_: readonly string[],
+    options: RunOptions,
   ): Promise<VerificationStagePortResult> {
     const invocation = npmInvocation(arguments_);
     const result = await executeBounded(
@@ -104,9 +170,15 @@ export class BoundedNpmCommandRunner {
     const errors: VerificationMessage[] = [];
     const warnings: VerificationMessage[] = [];
     if (result.timedOut) {
-      errors.push({ code: 'COMMAND_TIMED_OUT', message: `${stageName} exceeded its time limit.` });
+      errors.push({
+        code: 'VERIFICATION_COMMAND_TIMEOUT',
+        message: `${stageName} exceeded its time limit.`,
+      });
     } else if (result.exitCode !== 0) {
-      errors.push({ code: 'COMMAND_FAILED', message: `${stageName} exited unsuccessfully.` });
+      errors.push({
+        code: options.failureCode,
+        message: `${stageName} exited unsuccessfully.`,
+      });
     }
     if (result.outputTruncated) {
       warnings.push({
@@ -125,6 +197,20 @@ export class BoundedNpmCommandRunner {
       },
     };
   }
+}
+
+function skippedOptionalStage(scriptKind: 'lint' | 'typecheck'): VerificationStagePortResult {
+  return {
+    status: 'PASSED',
+    warnings: [
+      {
+        code: 'STAGE_SKIPPED',
+        message: `No ${scriptKind} script declared in package.json; ${scriptKind} validation was skipped.`,
+      },
+    ],
+    errors: [],
+    metadata: { skipped: true, 'script-kind': scriptKind },
+  };
 }
 
 function npmInvocation(arguments_: readonly string[]): {

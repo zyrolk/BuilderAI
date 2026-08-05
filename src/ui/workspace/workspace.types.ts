@@ -56,6 +56,27 @@ export interface PreparedWorkspaceChange {
   readonly responsePackage: ResponsePackage;
   readonly changePlan: ProjectChangePlan;
   readonly featurePlan?: FeaturePlan;
+  readonly preparationId?: string;
+  readonly sourcePreparationId?: string;
+  readonly isCorrection?: boolean;
+}
+
+export interface Gate2CorrectionCapableWorkflow extends WorkspaceWorkflowPort {
+  prepareGate2PreservationCorrection(
+    request: string,
+    changePlan: ProjectChangePlan,
+    preparationId: string,
+    operatorReason?: string,
+  ): Promise<PreparedWorkspaceChange>;
+}
+
+export function supportsGate2Correction(
+  workflow: WorkspaceWorkflowPort,
+): workflow is Gate2CorrectionCapableWorkflow {
+  return (
+    'prepareGate2PreservationCorrection' in workflow &&
+    typeof Reflect.get(workflow, 'prepareGate2PreservationCorrection') === 'function'
+  );
 }
 
 export interface WorkspaceWorkflowPort {
@@ -68,16 +89,20 @@ export interface WorkspaceWorkflowPort {
 export function isCorrectionEligible(snapshot: WorkspaceCompletionSnapshot | undefined): boolean {
   if (snapshot === undefined) return false;
   const { applyResult, verificationReport } = snapshot;
-  if (applyResult.status === 'PARTIALLY_APPLIED') return true;
+  if (applyResult.status === 'PARTIALLY_APPLIED') return false;
   if (applyResult.status === 'APPLIED' && verificationReport !== undefined) {
     return (
       verificationReport.status === 'FAILED' || verificationReport.status === 'PARTIALLY_PASSED'
     );
   }
   if (applyResult.status === 'FAILED' || applyResult.status === 'REJECTED') {
-    return applyResult.errors.length > 0;
+    return applyResult.errors.some(({ code }) => code !== 'BASELINE_CONTENT_DRIFT');
   }
   return false;
+}
+
+export function isPartialApplyRecovery(snapshot: WorkspaceCompletionSnapshot | undefined): boolean {
+  return snapshot?.applyResult.status === 'PARTIALLY_APPLIED';
 }
 
 export class WorkspaceWorkflowError extends Error {

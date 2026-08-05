@@ -730,6 +730,36 @@
         "summary": "Removed unused diagnostic harness code blocking ESLint: deleted unused pathChurn helper from .builderai/adr031-slice3-live-smoke.mts and dead requiredPatterns loop from .builderai/slice4b-capture-proposal.mts. Verification: npm run lint PASS; npm run ci PASS (964 passed, 1 skipped; coverage 87.07% statements; production audit 0 high vulnerabilities; build PASS).",
         "taskIds": [],
         "completedAt": "2026-08-04T14:40:00.000Z"
+      },
+      {
+        "id": "authorize-artifact-application-slice-1",
+        "summary": "authorize-artifact-application Slice 1: server-authoritative apply authorization foundation with TRUSTED_LOCAL and PROTECTED workspace security profiles, Bearer+CSRF protected prepare/apply boundary, server-issued applyAuthorizationToken, in-process project-scoped path locking (409 APPLY_PATH_CONFLICT), mandatory UPDATE baselineContentChecksum in protected mode, sanitized apply audit JSONL (.builderai/apply-audit.jsonl), and deterministic HTTP mappings. Verification: 24 Slice 1 tests + npm run ci PASS (996 passed, 1 skipped; coverage 80.16% branches; build PASS). Trusted-local loopback workflow preserved.",
+        "taskIds": [],
+        "completedAt": "2026-08-04T16:15:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-ready-checkpoint-1",
+        "summary": "BUILDERAI_ZYROLK_READY Checkpoint 1: external-target workspace project profile (BUILDERAI_SELF default, EXTERNAL_TARGET bootstrap), deterministic onboarding contract (.builderai/target-project.json plus architecture/constitution/ai-rules), synthetic Zyro-style fixture, context-builder ai-rules coding-standard fallback, and prepare integration to mocked provider boundary without requiring BuilderAI governance stack on target repos.",
+        "taskIds": [],
+        "completedAt": "2026-08-04T17:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-ready-checkpoint-2",
+        "summary": "BUILDERAI_ZYROLK_READY Checkpoint 2: full-stack indexing and context coverage for external targets — extended scan roots, manifest sourceRoots/staticSourceRoots opt-in, category-aware retrieval with quotas (maxFiles 16), explicit path and related-file evidence, cross-stack Zyro-style fixture, and eight deterministic scenario tests preserving ADR-031 scope separation.",
+        "taskIds": [],
+        "completedAt": "2026-08-05T02:40:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-ready-checkpoint-3",
+        "summary": "BUILDERAI_ZYROLK_READY Checkpoint 3: trusted-local operator iteration UX — Gate 2 reject/correction flow wired to prepareGate2PreservationCorrection, correction state UX with sourcePreparationId traceability, and feature task fail/skip/reopen lifecycle controls in workspace UI.",
+        "taskIds": [],
+        "completedAt": "2026-08-05T04:40:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-ready-checkpoint-4",
+        "summary": "BUILDERAI_ZYROLK_READY Checkpoint 4: Zyro-aligned verification (optional lint/typecheck script discovery), operator failure classification, post-apply verification failure UX, PARTIALLY_APPLIED recovery guidance with fresh-prepare safety, verification correction loop, dependency-change guidance, trusted-local operator runbook, and ADR-035.",
+        "taskIds": [],
+        "completedAt": "2026-08-05T06:00:00.000Z"
       }
     ],
     "pendingWork": [
@@ -790,7 +820,7 @@
       },
       {
         "id": "authorize-artifact-application",
-        "summary": "Before the Safe File Apply Engine is connected to a real project, approve caller authorization, a root-scoped adapter conformance suite across supported operating systems, expected-current-content checks, locking, recovery and reconciliation, restricted audit evidence, operator controls, and secret scanning; Git, builds, tests, deployment, and rollback remain separate decisions.",
+        "summary": "Remaining before Safe File Apply Engine production connection: cross-platform root-scoped adapter conformance suite, recovery and reconciliation after partial apply, distributed locking for multi-instance hosted runtime, external identity provider integration (OAuth/SSO) beyond internal Bearer profile, operator controls UI for protected mode, secret scanning at apply boundary, and Git/build/test/deployment/rollback decisions. Slice 1 closed server-authoritative authorization, CSRF, in-process path locking, protected-mode baseline checksum enforcement, and sanitized apply audit.",
         "priority": "HIGH"
       },
       {
@@ -826,7 +856,8 @@
       "decision-019",
       "decision-020",
       "decision-021",
-      "decision-022"
+      "decision-022",
+      "decision-023"
     ],
     "architecturalRules": [
       {
@@ -885,7 +916,7 @@
         "rationale": "The v1.0 composition must not turn a local integration milestone into an unauthenticated hosted execution service or let browser data become effect authority."
       }
     ],
-    "updatedAt": "2026-08-04T14:40:00.000Z"
+    "updatedAt": "2026-08-04T17:30:00.000Z"
   },
   "decisionLog": [
     {
@@ -1396,10 +1427,36 @@
       },
       "important": true,
       "recordedAt": "2026-08-04T14:00:00.000Z"
+    },
+    {
+      "id": "decision-023",
+      "title": "External target workspace project profile (ADR-0033)",
+      "context": "Trusted-local workspace prepare required BuilderAI's full governance document stack on every target repository, blocking onboarding for existing applications such as Zyro.lk with PROJECT_CONTEXT_INVALID before useful development.",
+      "decision": "Add BUILDERAI_WORKSPACE_PROJECT_PROFILE with BUILDERAI_SELF (default, unchanged strict Blueprint Reader validation) and EXTERNAL_TARGET (minimal bootstrap contract: .builderai/target-project.json, docs/architecture.md, docs/project-constitution.md, docs/ai-rules.md, package.json). Fail closed with EXTERNAL_TARGET_ONBOARDING_REQUIRED when bootstrap context is missing.",
+      "rationale": "Separate BuilderAI self-governance from external application onboarding without disabling project validation or filesystem, authorization, or apply protections.",
+      "status": "ACCEPTED",
+      "alternatives": [
+        "Disable PROJECT_VALIDATION for external repos",
+        "Require full BuilderAI governance stack in every target repository",
+        "Implicit profile detection without explicit operator configuration"
+      ],
+      "consequences": {
+        "positive": [
+          "Existing application repositories can onboard in under one hour with four bootstrap files",
+          "BuilderAI repository strict validation remains default",
+          "Context builder receives architecture, constitution, and ai-rules from target-owned docs"
+        ],
+        "negative": [
+          "Operators must set BUILDERAI_WORKSPACE_PROJECT_PROFILE explicitly for external targets",
+          "Full-stack indexing and hosted production onboarding remain future checkpoints"
+        ]
+      },
+      "important": true,
+      "recordedAt": "2026-08-04T17:30:00.000Z"
     }
   ],
   "progressLog": {
-    "currentMilestone": "ADR-031 baseline-guided surgical UPDATE contract and ADR-032 hybrid structured surgicality implemented and live-validated on smoke-atelier (initial prepare GATE_2_ACCEPT_RECOMMENDED, effect-free); project-brain closure recorded; ready for next approved roadmap checkpoint.",
+    "currentMilestone": "BUILDERAI_ZYROLK_READY complete: trusted-local single-operator development for external targets (e.g. Zyro.lk) with Gate 2 review, full-stack context, operator UX, and Zyro-aligned verification. Boundary: trusted-local only — not hosted production or unattended autonomy.",
     "completedSprints": [
       {
         "id": "foundation-zero",
@@ -1623,7 +1680,7 @@
       "verify-mvp-release",
       "add-gemini-local-provider"
     ],
-    "updatedAt": "2026-08-04T14:00:00.000Z"
+    "updatedAt": "2026-08-04T17:30:00.000Z"
   },
   "tasks": [
     {

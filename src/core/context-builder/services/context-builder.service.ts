@@ -2,6 +2,7 @@ import {
   CONTEXT_PACKAGE_RESERVED_HEADROOM_CHARACTERS,
   CONTEXT_PRIORITIES,
   DEFAULT_CONTEXT_LIMITS,
+  DEFAULT_SOURCE_FILE_ADMISSION_QUOTAS,
   ContextBuilderValidationError,
 } from '../types';
 import type {
@@ -89,6 +90,7 @@ export class ContextBuilderService {
       Math.max(0, limits.maxFiles - pinnedBaselineFiles.length),
       targetMaxCharacters,
       (files, omissions) => measureFiles([...pinnedBaselineFiles, ...files], omissions),
+      DEFAULT_SOURCE_FILE_ADMISSION_QUOTAS,
     );
     const mergedFiles = [...pinnedBaselineFiles, ...admitted];
     const draft: ContextPackageDraft = {

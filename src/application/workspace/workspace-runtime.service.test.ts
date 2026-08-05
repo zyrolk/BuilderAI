@@ -114,6 +114,8 @@ describe('WorkspaceRuntimeService', () => {
       'DEPENDENCY_VALIDATION',
       'BUILD_VALIDATION',
       'TEST_VALIDATION',
+      'LINT_VALIDATION',
+      'TYPECHECK_VALIDATION',
     ]);
   });
 
@@ -402,6 +404,8 @@ describe('WorkspaceRuntimeService', () => {
       'DEPENDENCY_VALIDATION',
       'BUILD_VALIDATION',
       'TEST_VALIDATION',
+      'LINT_VALIDATION',
+      'TYPECHECK_VALIDATION',
     ]);
 
     const mutationCallsAfterFirst = [...fileSystem.mutationCalls];
@@ -410,7 +414,7 @@ describe('WorkspaceRuntimeService', () => {
     expect(replay).toEqual(first);
     expect(fileApply.calls).toBe(1);
     expect(fileSystem.mutationCalls).toEqual(mutationCallsAfterFirst);
-    expect(verification.calls).toHaveLength(4);
+    expect(verification.calls).toHaveLength(6);
   });
 
   it('keeps APPLIED permanently terminal when verification FAILS and never repeats Apply (P1-6)', async () => {
@@ -421,6 +425,8 @@ describe('WorkspaceRuntimeService', () => {
       DEPENDENCY_VALIDATION: FAILED_STAGE_RESULT,
       BUILD_VALIDATION: FAILED_STAGE_RESULT,
       TEST_VALIDATION: FAILED_STAGE_RESULT,
+      LINT_VALIDATION: FAILED_STAGE_RESULT,
+      TYPECHECK_VALIDATION: FAILED_STAGE_RESULT,
     });
     const service = createService(
       fileSystem,

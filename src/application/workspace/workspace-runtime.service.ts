@@ -1,5 +1,7 @@
-import type { BlueprintReaderService } from '../../core/blueprint-reader';
+import type { ProjectContextReaderPort } from '../../core/target-project';
+import { ExternalTargetOnboardingError } from '../../core/target-project';
 import type { ChangePlannerService } from '../../core/change-planner';
+import type { ProjectChangeOperation } from '../../core/change-planner';
 import type { WorkspaceBaselinePort } from '../../core/change-planner/ports/workspace-baseline.port';
 import type { ContextBuilderService, ProjectFileSource } from '../../core/context-builder';
 import type { ExecutionCancellationToken } from '../../core/execution-engine';
@@ -22,6 +24,20 @@ import type { ContextPackage } from '../../core/context-builder';
 import type { VerificationEngineService, VerificationReport } from '../../core/verification';
 import type { ActivityHistoryService } from './activity-history.service';
 import type { WorkspaceActivity } from './activity-history.types';
+import { WorkspaceApplyAuditService } from './workspace-apply-audit.service';
+import {
+  listChangePlanTargetPaths,
+  WorkspaceApplyLockService,
+} from './workspace-apply-lock.service';
+import { WorkspaceApplyPolicyService } from './workspace-apply-policy.service';
+import {
+  createWorkspaceAuthorizationContext,
+  WorkspaceAuthorizationService,
+} from './workspace-authorization.service';
+import type {
+  WorkspaceRequestSecurityEvidence,
+  WorkspaceSecurityConfiguration,
+} from './workspace-authorization.types';
 import {
   createFileApplicationCompletedActivity,
   createFileApplicationFailedActivity,
@@ -55,7 +71,7 @@ import {
 
 interface WorkspaceRuntimeDependencies {
   readonly loadProjectBrain: () => ProjectBrain;
-  readonly blueprintReader: BlueprintReaderService;
+  readonly blueprintReader: ProjectContextReaderPort;
   readonly sourceFiles: ProjectFileSource;
   readonly contextBuilder: ContextBuilderService;
   readonly promptOrchestrator: PromptOrchestratorService;
@@ -71,12 +87,20 @@ interface WorkspaceRuntimeDependencies {
   readonly activityHistory?: ActivityHistoryService;
   readonly configuration?: WorkspaceRuntimeConfiguration;
   readonly prepareScope?: PrepareScopeService;
+  readonly security?: WorkspaceSecurityConfiguration;
+  readonly projectRoot?: string;
+  readonly applyLock?: WorkspaceApplyLockService;
 }
 
 export class WorkspaceRuntimeService {
   private readonly configuration: WorkspaceRuntimeConfiguration;
   private readonly store: InMemoryPreparationStore;
   private readonly prepareScope: PrepareScopeService;
+  private readonly security: WorkspaceSecurityConfiguration;
+  private readonly authorization: WorkspaceAuthorizationService;
+  private readonly applyLock: WorkspaceApplyLockService;
+  private readonly applyPolicy: WorkspaceApplyPolicyService;
+  private readonly applyAudit?: WorkspaceApplyAuditService;
 
   constructor(private readonly dependencies: WorkspaceRuntimeDependencies) {
     this.configuration = dependencies.configuration ?? DEFAULT_WORKSPACE_RUNTIME_CONFIGURATION;
@@ -86,6 +110,14 @@ export class WorkspaceRuntimeService {
       this.configuration.maximumPreparations,
     );
     this.prepareScope = dependencies.prepareScope ?? new PrepareScopeService();
+    this.security = dependencies.security ?? defaultTrustedLocalSecurity();
+    this.authorization = new WorkspaceAuthorizationService(this.security);
+    this.applyLock = dependencies.applyLock ?? new WorkspaceApplyLockService();
+    this.applyPolicy = new WorkspaceApplyPolicyService();
+    this.applyAudit =
+      dependencies.projectRoot === undefined
+        ? undefined
+        : new WorkspaceApplyAuditService({ projectRoot: dependencies.projectRoot });
   }
 
   async prepare(request: string, iterationFeedbackInput?: unknown): Promise<WorkspacePreparation> {
@@ -102,8 +134,8 @@ export class WorkspaceRuntimeService {
     const startedAt = this.dependencies.clock.now();
     this.log(correlationId, 'PREPARE', 'STARTED');
     try {
-      const canonicalBrain = this.dependencies.loadProjectBrain();
-      const readerOutput = await this.dependencies.blueprintReader.read();
+      const canonicalBrain = this.readProjectBrainOrThrow();
+      const readerOutput = await this.readProjectContextOrThrow();
       if (
         !readerOutput.valid ||
         readerOutput.analysis === undefined ||
@@ -146,13 +178,15 @@ export class WorkspaceRuntimeService {
         scopePlan,
       );
       const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
-      this.store.save(correlationId, changePlan, expiresAt);
+      const applyAuthorizationToken = this.issueApplyAuthorizationToken();
+      this.store.save(correlationId, changePlan, expiresAt, undefined, applyAuthorizationToken);
       this.log(correlationId, 'PREPARE', 'SUCCEEDED', startedAt);
       return {
         preparationId: correlationId,
         expiresAt: expiresAt.toISOString(),
         responsePackage,
         changePlan,
+        ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
       };
     } catch (error: unknown) {
       this.log(correlationId, 'PREPARE', 'FAILED', startedAt, safeCode(error));
@@ -186,8 +220,8 @@ export class WorkspaceRuntimeService {
       },
     });
     try {
-      const canonicalBrain = this.dependencies.loadProjectBrain();
-      const readerOutput = await this.dependencies.blueprintReader.read();
+      const canonicalBrain = this.readProjectBrainOrThrow();
+      const readerOutput = await this.readProjectContextOrThrow();
       if (
         !readerOutput.valid ||
         readerOutput.analysis === undefined ||
@@ -243,7 +277,14 @@ export class WorkspaceRuntimeService {
         scopePlan,
       );
       const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
-      this.store.save(correlationId, changePlan, expiresAt, featureBinding);
+      const applyAuthorizationToken = this.issueApplyAuthorizationToken();
+      this.store.save(
+        correlationId,
+        changePlan,
+        expiresAt,
+        featureBinding,
+        applyAuthorizationToken,
+      );
       const durationMs = Math.max(0, this.dependencies.clock.now().getTime() - startedAt.getTime());
       await this.recordFeatureActivity({
         binding: featureBinding,
@@ -262,6 +303,7 @@ export class WorkspaceRuntimeService {
         expiresAt: expiresAt.toISOString(),
         responsePackage,
         changePlan,
+        ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
       };
     } catch (error: unknown) {
       const durationMs = Math.max(0, this.dependencies.clock.now().getTime() - startedAt.getTime());
@@ -282,17 +324,96 @@ export class WorkspaceRuntimeService {
     }
   }
 
-  async approveAndApply(preparationId: string, approved: boolean): Promise<WorkspaceCompletion> {
+  async approveAndApply(
+    preparationId: string,
+    approved: boolean,
+    evidence?: WorkspaceRequestSecurityEvidence,
+  ): Promise<WorkspaceCompletion> {
+    const requestEvidence = evidence ?? { operatorApproved: approved };
+    const authorizationContext = createWorkspaceAuthorizationContext({
+      configuration: this.security,
+      action: 'APPLY',
+      evidence: { ...requestEvidence, operatorApproved: approved },
+    });
+    const authorizationDecision = this.authorization.authorize(authorizationContext);
+    if (authorizationDecision.outcome === 'REJECTED') {
+      this.recordApplyAudit({
+        correlationId: preparationId,
+        preparationId,
+        principal: authorizationContext.principal,
+        authorizationOutcome: 'REJECTED',
+        reasonCode: authorizationDecision.code,
+      });
+      throw new WorkspaceRuntimeError(
+        authorizationDecision.code ?? 'UNAUTHORIZED',
+        authorizationDecision.message ?? 'The workspace apply request is not authorized.',
+      );
+    }
+
     if (!approved) {
       throw new WorkspaceRuntimeError('APPROVAL_REQUIRED', 'Explicit approval is required.');
     }
     if (!isIdentifier(preparationId)) {
       throw new WorkspaceRuntimeError('INVALID_REQUEST', 'Preparation identifier is invalid.');
     }
+
+    const tokenDecision = this.authorization.validateApplyAuthorizationToken(
+      preparationId,
+      requestEvidence.applyAuthorizationToken,
+      this.store,
+    );
+    if (tokenDecision.outcome === 'REJECTED') {
+      this.recordApplyAudit({
+        correlationId: preparationId,
+        preparationId,
+        principal: authorizationContext.principal,
+        authorizationOutcome: 'REJECTED',
+        reasonCode: tokenDecision.code,
+      });
+      throw new WorkspaceRuntimeError(
+        tokenDecision.code ?? 'APPLY_AUTHORIZATION_REQUIRED',
+        tokenDecision.message ?? 'Server-issued apply authorization is required.',
+      );
+    }
+
     const startedAt = this.dependencies.clock.now();
     this.log(preparationId, 'APPLY_AND_VERIFY', 'STARTED');
     const claim = this.store.claim(preparationId);
     if (claim.kind === 'COMPLETED') return claim.completion;
+
+    const targetPaths = listChangePlanTargetPaths(claim.plan.changeSet.operations);
+    let locksAcquired = false;
+    try {
+      this.applyPolicy.assertUpdateBaselineIntegrity(this.security.profile, claim.plan);
+    } catch (error: unknown) {
+      this.store.fail(preparationId);
+      this.recordApplyAudit({
+        correlationId: preparationId,
+        preparationId,
+        principal: authorizationContext.principal,
+        operations: claim.plan.changeSet.operations,
+        authorizationOutcome: 'AUTHORIZED',
+        reasonCode: safeCode(error),
+      });
+      throw error;
+    }
+
+    try {
+      this.applyLock.acquire(this.security.projectId, preparationId, targetPaths);
+      locksAcquired = true;
+    } catch (error: unknown) {
+      this.store.fail(preparationId);
+      this.recordApplyAudit({
+        correlationId: preparationId,
+        preparationId,
+        principal: authorizationContext.principal,
+        operations: claim.plan.changeSet.operations,
+        authorizationOutcome: 'AUTHORIZED',
+        reasonCode: safeCode(error),
+      });
+      throw error;
+    }
+
     const featureBinding = claim.featureTaskBinding;
     const applyStartedAt = this.dependencies.clock.now();
     if (featureBinding !== undefined) {
@@ -378,26 +499,73 @@ export class WorkspaceRuntimeService {
       }
       const completion: WorkspaceCompletion =
         verificationReport === undefined ? { applyResult } : { applyResult, verificationReport };
-      /**
-       * Bounded, caller-driven Apply retry for provably zero-mutation failures (P1-6 / ADR-020).
-       * `PARTIALLY_APPLIED` and `APPLIED` (regardless of verification outcome) never satisfy
-       * `isZeroMutationFileApplyResult` and always fall through to the unconditional `complete()` below,
-       * exactly as before this change. Reclaim never happens automatically; a caller must invoke
-       * `approveAndApply` again with the same `preparationId` to trigger a genuine new
-       * `FileApplyEngineService.apply()` call, including its full fresh preflight.
-       */
       if (isZeroMutationFileApplyResult(applyResult) && claim.attempt < MAXIMUM_APPLY_ATTEMPTS) {
         this.store.releaseForRetry(preparationId);
       } else {
         this.store.complete(preparationId, completion);
       }
+      this.recordApplyAudit({
+        correlationId: preparationId,
+        preparationId,
+        principal: authorizationContext.principal,
+        operations: claim.plan.changeSet.operations,
+        authorizationOutcome: 'AUTHORIZED',
+        applyResult,
+      });
       this.log(preparationId, 'APPLY_AND_VERIFY', 'SUCCEEDED', startedAt);
       return structuredClone(completion);
     } catch (error: unknown) {
       this.store.fail(preparationId);
+      this.recordApplyAudit({
+        correlationId: preparationId,
+        preparationId,
+        principal: authorizationContext.principal,
+        operations: claim.plan.changeSet.operations,
+        authorizationOutcome: 'AUTHORIZED',
+        reasonCode: safeCode(error),
+      });
       this.log(preparationId, 'APPLY_AND_VERIFY', 'FAILED', startedAt, safeCode(error));
       throw error;
+    } finally {
+      if (locksAcquired) {
+        this.applyLock.release(this.security.projectId, preparationId, targetPaths);
+      }
     }
+  }
+
+  private issueApplyAuthorizationToken(): string | undefined {
+    if (this.security.profile !== 'PROTECTED') return undefined;
+    return this.dependencies.ids.generate();
+  }
+
+  private readProjectBrainOrThrow(): ProjectBrain {
+    try {
+      return this.dependencies.loadProjectBrain();
+    } catch (error: unknown) {
+      throw mapExternalTargetOnboardingError(error);
+    }
+  }
+
+  private async readProjectContextOrThrow(): Promise<
+    Awaited<ReturnType<ProjectContextReaderPort['read']>>
+  > {
+    try {
+      return await this.dependencies.blueprintReader.read();
+    } catch (error: unknown) {
+      throw mapExternalTargetOnboardingError(error);
+    }
+  }
+
+  private recordApplyAudit(input: {
+    readonly correlationId: string;
+    readonly preparationId: string;
+    readonly principal: { readonly principalId: string; readonly projectId: string };
+    readonly operations?: readonly ProjectChangeOperation[];
+    readonly authorizationOutcome: 'AUTHORIZED' | 'REJECTED';
+    readonly applyResult?: FileApplyResult;
+    readonly reasonCode?: string;
+  }): void {
+    this.applyAudit?.record(input);
   }
 
   private async recordApplyOutcome(
@@ -453,7 +621,7 @@ export class WorkspaceRuntimeService {
   private async buildScopedPrepareArtifacts(input: {
     readonly taskText: string;
     readonly executionBrain: ProjectBrain;
-    readonly readerOutput: Awaited<ReturnType<BlueprintReaderService['read']>>;
+    readonly readerOutput: Awaited<ReturnType<ProjectContextReaderPort['read']>>;
     readonly currentTaskId: string;
     readonly iterationPathHints: readonly string[];
     readonly correlationId: string;
@@ -629,6 +797,13 @@ function validateConfiguration(configuration: WorkspaceRuntimeConfiguration): vo
   }
 }
 
+function mapExternalTargetOnboardingError(error: unknown): unknown {
+  if (error instanceof ExternalTargetOnboardingError) {
+    return new WorkspaceRuntimeError('EXTERNAL_TARGET_ONBOARDING_REQUIRED', error.message);
+  }
+  return error;
+}
+
 function safeCode(error: unknown): string {
   if (error instanceof WorkspaceRuntimeError) return error.code;
   if (typeof error === 'object' && error !== null) {
@@ -661,4 +836,12 @@ function readOptionalPriorSummary(value: unknown): string | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const summary = Reflect.get(value, 'priorRequestSummary');
   return typeof summary === 'string' ? summary : undefined;
+}
+
+function defaultTrustedLocalSecurity(): WorkspaceSecurityConfiguration {
+  return {
+    profile: 'TRUSTED_LOCAL',
+    projectId: 'builder-ai',
+    principalId: 'local-operator',
+  };
 }

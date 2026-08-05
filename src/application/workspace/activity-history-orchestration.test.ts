@@ -404,6 +404,8 @@ describe('Workspace activity history orchestration integration', () => {
         DEPENDENCY_VALIDATION: FAILED_STAGE,
         BUILD_VALIDATION: FAILED_STAGE,
         TEST_VALIDATION: FAILED_STAGE,
+        LINT_VALIDATION: FAILED_STAGE,
+        TYPECHECK_VALIDATION: FAILED_STAGE,
       }).ports,
     });
     const plan = approvedFeaturePlan();

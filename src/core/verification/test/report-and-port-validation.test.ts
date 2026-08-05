@@ -89,6 +89,8 @@ describe('verification report and port result validation', () => {
         'DEPENDENCY_VALIDATION',
         'BUILD_VALIDATION',
         'TEST_VALIDATION',
+        'LINT_VALIDATION',
+        'TYPECHECK_VALIDATION',
       ],
       maximumFindingsPerStage: 1,
       maximumFindingMessageCharacters: 3,

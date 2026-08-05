@@ -3,6 +3,10 @@ import {
   buildReadShortlist,
   rankCandidatePaths,
 } from '../../context-builder/internal/path-relevance';
+import {
+  extractExplicitPathMentions,
+  resolveExistingSourcePath,
+} from '../../context-builder/internal/explicit-path-mentions';
 import { inferTaskCategories } from '../../context-builder/internal/task-category';
 import { expandQueryTokens, tokenize } from '../../context-builder/internal/text-relevance';
 import { CONTEXT_RETRIEVAL_SCORING } from '../../context-builder/config/context-retrieval-policy';
@@ -14,9 +18,6 @@ import {
   type UpdateScopeEvidence,
   type UpdateScopePlan,
 } from '../types/update-scope-plan';
-
-const LOGICAL_PATH_PATTERN =
-  /\b(?:[\w.-]+\/)*[\w.-]+\.(?:html?|css|(?:c|m)?js|jsx|tsx?|json|md)\b/giu;
 
 const ONLY_PATH_PATTERNS: readonly RegExp[] = [
   /\bonly\s+(?:modify\s+)?((?:[\w.-]+\/)*[\w.-]+\.(?:html?|css|(?:c|m)?js|jsx|tsx?))\b/giu,
@@ -41,32 +42,6 @@ function comparePath(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-function normalizeExistingPath(path: string, sourcePaths: readonly string[]): string | undefined {
-  const normalized = normalizeProjectPath(path);
-  if (!isScopeEligiblePath(normalized)) return undefined;
-  const available = new Set(sourcePaths.map((value) => normalizeProjectPath(value)));
-  if (available.has(normalized)) return normalized;
-  const basename = normalized.split('/').at(-1);
-  if (basename === undefined) return undefined;
-  const matches = [...available].filter(
-    (candidate) => candidate.endsWith(`/${basename}`) || candidate === basename,
-  );
-  if (matches.length === 1) return matches[0];
-  return undefined;
-}
-
-function extractExplicitPathMentions(
-  taskText: string,
-  sourcePaths: readonly string[],
-): readonly string[] {
-  const paths = new Set<string>();
-  for (const match of taskText.matchAll(LOGICAL_PATH_PATTERN)) {
-    const resolved = normalizeExistingPath(match[0], sourcePaths);
-    if (resolved !== undefined) paths.add(resolved);
-  }
-  return [...paths].sort(comparePath);
-}
-
 function extractOnlyPathInstructions(
   taskText: string,
   sourcePaths: readonly string[],
@@ -74,7 +49,7 @@ function extractOnlyPathInstructions(
   const paths = new Set<string>();
   for (const pattern of ONLY_PATH_PATTERNS) {
     for (const match of taskText.matchAll(pattern)) {
-      const resolved = normalizeExistingPath(match[1] ?? '', sourcePaths);
+      const resolved = resolveExistingSourcePath(match[1] ?? '', sourcePaths);
       if (resolved !== undefined) paths.add(resolved);
     }
   }

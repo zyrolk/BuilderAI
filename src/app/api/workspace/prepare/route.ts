@@ -10,10 +10,13 @@ import { ResponseProcessorValidationError } from '../../../../core/response-proc
 import {
   assertTrustedLocalRequest,
   LocalRequestRejectedError,
+  mapWorkspaceRuntimeErrorStatus,
   readBoundedJson,
+  assertAuthorizedWorkspaceRequest,
 } from '../../../../infrastructure/workspace';
 import { getLocalWorkspaceRuntime } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
 import { getLocalFeatureWorkflow } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
+import { getLocalWorkspaceSecurityConfiguration } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,6 +25,13 @@ export async function POST(request: Request): Promise<Response> {
   try {
     assertTrustedLocalRequest(request);
     const body = await readBoundedJson(request);
+    const security = getLocalWorkspaceSecurityConfiguration();
+    assertAuthorizedWorkspaceRequest({
+      security,
+      request,
+      body,
+      action: 'PREPARE',
+    });
     const userRequest = readStringField(body, 'request');
     const iterationFeedback = readOptionalField(body, 'iterationFeedback');
     const featurePlanId = readOptionalString(body, 'featurePlanId');
@@ -77,13 +87,17 @@ function errorResponse(error: unknown): Response {
     return json({ code: error.code, message: error.message }, 403);
   }
   if (error instanceof WorkspaceRuntimeError) {
-    const status =
+    const mappedStatus = mapWorkspaceRuntimeErrorStatus(error);
+    if (mappedStatus !== undefined) {
+      return json({ code: error.code, message: error.message }, mappedStatus);
+    }
+    const validationStatus =
       error.code === 'INVALID_REQUEST' ||
       error.code === 'INVALID_ITERATION_FEEDBACK' ||
       error.code === 'INVALID_FEATURE_PLAN'
         ? 400
         : 422;
-    return json({ code: error.code, message: error.message }, status);
+    return json({ code: error.code, message: error.message }, validationStatus);
   }
   if (error instanceof ContextBuilderValidationError) {
     return validationErrorResponse(error.code, error.message, error.issues);

@@ -32,7 +32,9 @@ describe('Node verification ports', () => {
       commandTimeoutMs: 30_000,
       maximumOutputBytes: 1_024,
     });
-    const result = await runner.run('npm-version', ['--version']);
+    const result = await runner.run('npm-version', ['--version'], {
+      failureCode: 'COMMAND_FAILED',
+    });
     expect(result.status).toBe('PASSED');
     expect(result.metadata['exit-code']).toBe(0);
   });

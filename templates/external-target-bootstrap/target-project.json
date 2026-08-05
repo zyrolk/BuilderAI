@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "projectId": "example-target",
+  "name": "Example Target Application",
+  "vision": "Describe what the application does and the outcomes it must preserve.",
+  "currentMilestone": "External target bootstrap",
+  "constraints": [
+    {
+      "id": "preserve-production-data",
+      "statement": "Do not modify production databases or customer records from local development.",
+      "rationale": "Local BuilderAI sessions must not create irreversible external effects."
+    }
+  ],
+  "protectedAreas": ["infra/", ".env", "secrets/"],
+  "folderOwnership": [
+    {
+      "path": "src/",
+      "owner": "Application team",
+      "responsibility": "Primary application source code and UI."
+    },
+    {
+      "path": "server/",
+      "owner": "Platform team",
+      "responsibility": "API routes, background jobs, and server-only integrations."
+    }
+  ],
+  "sourceRoots": ["src", "server", "tests"],
+  "staticSourceRoots": ["public"]
+}

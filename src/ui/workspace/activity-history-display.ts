@@ -168,7 +168,9 @@ function formatVerificationStatus(status: 'PASSED' | 'PARTIALLY_PASSED' | 'FAILE
   return 'Failed';
 }
 
-function formatStageName(name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST'): string {
+function formatStageName(
+  name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST' | 'LINT' | 'TYPECHECK',
+): string {
   switch (name) {
     case 'PROJECT':
       return 'Project';
@@ -178,6 +180,10 @@ function formatStageName(name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST'): str
       return 'Build';
     case 'TEST':
       return 'Test';
+    case 'LINT':
+      return 'Lint';
+    case 'TYPECHECK':
+      return 'Typecheck';
   }
 }
 

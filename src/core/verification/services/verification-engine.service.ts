@@ -141,6 +141,10 @@ export class VerificationEngineService {
         return this.ports.buildRunner.runBuild(context);
       case 'TEST_VALIDATION':
         return this.ports.testRunner.runTests(context);
+      case 'LINT_VALIDATION':
+        return this.ports.lintRunner.runLint(context);
+      case 'TYPECHECK_VALIDATION':
+        return this.ports.typecheckRunner.runTypecheck(context);
     }
   }
 

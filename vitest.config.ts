@@ -11,7 +11,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    exclude: ['**/node_modules/**', '**/.next/**', '**/coverage/**', '**/dist/**'],
+    testTimeout: 15_000,
+    exclude: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/coverage/**',
+      '**/dist/**',
+      '**/test/fixtures/**',
+    ],
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',

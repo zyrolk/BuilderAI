@@ -1,15 +1,21 @@
 import { CONTEXT_RETRIEVAL_SCORING } from '../config/context-retrieval-policy';
 import { isSafeProjectPath, normalizeProjectPath } from './path';
 import type { TaskCategory } from './task-category';
-import { categoryKeywords, isTestPrimaryTask, TASK_CATEGORIES } from './task-category';
+import {
+  categoryKeywords,
+  isTestPrimaryTask,
+  sourcePathCategory,
+  TASK_CATEGORIES,
+} from './task-category';
 import { normalizeText, tokenize, tokenOverlapCount } from './text-relevance';
 
 const ROLE_SEGMENTS: Readonly<Record<TaskCategory, readonly string[]>> = {
   DATABASE: ['prisma', 'drizzle', 'migrations', 'migration', 'schema', 'models', 'repositories'],
-  API: ['api', 'routes', 'route', 'controllers', 'server'],
+  API: ['api', 'routes', 'route', 'controllers', 'server', 'backend', 'services', 'validation'],
   AUTH_ADMIN: ['auth', 'admin', 'session', 'middleware'],
+  SHARED: ['shared', 'common', 'types', 'contracts', 'lib'],
   TESTS: ['tests', 'test', '__tests__'],
-  UI: ['components', 'component', 'pages', 'page', 'hooks', 'hook', 'ui'],
+  UI: ['components', 'component', 'pages', 'page', 'hooks', 'hook', 'ui', 'features', 'client'],
 };
 
 const TEST_FILE_PATTERN = /\.(spec|test)\.(cjs|js|jsx|mjs|ts|tsx)$/u;
@@ -129,6 +135,33 @@ function iterationHintBoost(
   return 0;
 }
 
+function explicitPathHintBoost(sourcePath: string, explicitPathHints: ReadonlySet<string>): number {
+  if (explicitPathHints.size === 0) return 0;
+  for (const hint of explicitPathHints) {
+    if (normalizeHintPath(sourcePath) === normalizeHintPath(hint)) {
+      return CONTEXT_RETRIEVAL_SCORING.EXPLICIT_PATH_BOOST;
+    }
+  }
+  return 0;
+}
+
+function domainDirectoryBoost(queryVariants: ReadonlySet<string>, sourcePath: string): number {
+  for (const segment of pathSegments(sourcePath)) {
+    const segmentTokens = tokenize(segment);
+    if (tokenOverlapCount(queryVariants, segmentTokens) >= 2) {
+      return CONTEXT_RETRIEVAL_SCORING.DOMAIN_DIRECTORY;
+    }
+  }
+  return 0;
+}
+
+function basenameAffinityBoost(queryVariants: ReadonlySet<string>, sourcePath: string): number {
+  const stemTokens = tokenize(basenameStem(sourcePath));
+  return tokenOverlapCount(queryVariants, stemTokens) >= 2
+    ? CONTEXT_RETRIEVAL_SCORING.BASENAME_AFFINITY
+    : 0;
+}
+
 export function scoreCandidatePath(
   sourcePath: string,
   queryVariants: ReadonlySet<string>,
@@ -136,9 +169,18 @@ export function scoreCandidatePath(
   scoredModulePaths: ReadonlySet<string>,
   taskCorpus: string,
   iterationPathHints: ReadonlySet<string> = new Set(),
+  explicitPathHints: ReadonlySet<string> = new Set(),
 ): number {
   if (!isTestPrimaryTask(taskCorpus, categories) && sourcePath.includes('.fixture.')) {
     return 0;
+  }
+  if (categories.has('API') && !categories.has('UI')) {
+    const pathCategory = sourcePathCategory(sourcePath);
+    if (pathCategory === 'UI') return 0;
+  }
+  if (categories.has('UI') && !categories.has('API')) {
+    const pathCategory = sourcePathCategory(sourcePath);
+    if (pathCategory === 'API') return 0;
   }
   const pathTokens = tokenize(sourcePath.replaceAll('/', ' '));
   const baseScore =
@@ -146,10 +188,17 @@ export function scoreCandidatePath(
     pathSegmentScore(queryVariants, sourcePath) +
     filenameScore(queryVariants, sourcePath) +
     roleHintScore(categories, sourcePath) +
-    specialFileBoost(categories, sourcePath, taskCorpus);
+    specialFileBoost(categories, sourcePath, taskCorpus) +
+    domainDirectoryBoost(queryVariants, sourcePath) +
+    testAffinityBoost(sourcePath, collectAnchorStems(queryVariants)) +
+    basenameAffinityBoost(queryVariants, sourcePath);
   const eligibleBase =
     baseScore + (baseScore >= 1 ? moduleBoost(sourcePath, scoredModulePaths) : 0);
-  return eligibleBase + iterationHintBoost(sourcePath, iterationPathHints, baseScore);
+  return (
+    eligibleBase +
+    explicitPathHintBoost(sourcePath, explicitPathHints) +
+    iterationHintBoost(sourcePath, iterationPathHints, baseScore)
+  );
 }
 
 export function compareCandidatePaths(
@@ -170,6 +219,7 @@ export function rankCandidatePaths(
   scoredModulePaths: ReadonlySet<string>,
   taskCorpus: string,
   iterationPathHints: ReadonlySet<string> = new Set(),
+  explicitPathHints: ReadonlySet<string> = new Set(),
 ): readonly RankedCandidatePath[] {
   return sourcePaths
     .map((path) => ({
@@ -181,6 +231,7 @@ export function rankCandidatePaths(
         scoredModulePaths,
         taskCorpus,
         iterationPathHints,
+        explicitPathHints,
       ),
     }))
     .sort(compareCandidatePaths);
@@ -206,8 +257,19 @@ function matchesCategoryFloor(path: string, category: TaskCategory): boolean {
       );
     case 'API':
       return (
-        normalized.includes('api') &&
-        (normalized.includes('route') || normalized.includes('routes'))
+        (normalized.includes('api') &&
+          (normalized.includes('route') || normalized.includes('routes'))) ||
+        (normalized.includes('server') &&
+          (normalized.includes('routes') ||
+            normalized.includes('services') ||
+            normalized.includes('validation')))
+      );
+    case 'SHARED':
+      return (
+        normalized.includes('shared') ||
+        normalized.includes('common') ||
+        normalized.includes('types') ||
+        normalized.includes('contracts')
       );
     default:
       return categoryKeywords(category).some((keyword) => normalized.includes(keyword));
@@ -260,4 +322,8 @@ export function testAffinityBoost(sourcePath: string, anchorStems: ReadonlySet<s
 
 export function basenameStemForPath(sourcePath: string): string {
   return basenameStem(sourcePath);
+}
+
+function collectAnchorStems(queryVariants: ReadonlySet<string>): ReadonlySet<string> {
+  return new Set([...queryVariants].filter((token) => token.length >= 4));
 }

@@ -42,9 +42,12 @@ export function FeatureWorkflowPanel({
     [injectedFeatureApi],
   );
   const featureRequestId = useId();
+  const lifecycleReasonId = useId();
   const [featureRequest, setFeatureRequest] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [lifecycleReason, setLifecycleReason] = useState('');
+  const [lifecycleActionTaskId, setLifecycleActionTaskId] = useState<string>();
   const [dependencyOverrides, setDependencyOverrides] = useState<readonly string[]>([]);
   const [acknowledgePartialPass, setAcknowledgePartialPass] = useState(false);
 
@@ -123,6 +126,75 @@ export function FeatureWorkflowPanel({
     }
   }
 
+  async function handleFailTask(task: FeatureTask, reason: string): Promise<void> {
+    if (plan === undefined || disabled || busy) return;
+    if (
+      !window.confirm(
+        `Mark task "${task.title}" as failed? This records a failed outcome without applying further changes.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const updated = await featureApi.failTask(plan.featurePlanId, task.taskId, {
+        summary:
+          reason.trim().length > 0
+            ? reason.trim().slice(0, 500)
+            : 'Operator marked task as failed.',
+        completedAt: new Date().toISOString(),
+      });
+      onPlanUpdated(updated);
+    } catch (failError: unknown) {
+      setError(failError instanceof Error ? failError.message : 'Task failure recording failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSkipTask(task: FeatureTask, reason: string): Promise<void> {
+    if (plan === undefined || disabled || busy) return;
+    if (!window.confirm(`Skip task "${task.title}"? No execution will run for this task.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const updated = await featureApi.skipTask(
+        plan.featurePlanId,
+        task.taskId,
+        reason.trim().length > 0 ? reason.trim().slice(0, 500) : 'Operator skipped task.',
+      );
+      onPlanUpdated(updated);
+    } catch (skipError: unknown) {
+      setError(skipError instanceof Error ? skipError.message : 'Task skip failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReopenTask(task: FeatureTask): Promise<void> {
+    if (plan === undefined || disabled || busy) return;
+    if (
+      !window.confirm(
+        `Reopen task "${task.title}" for correction? Execution will not start automatically.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const updated = await featureApi.reopenTask(plan.featurePlanId, task.taskId);
+      onPlanUpdated(updated);
+    } catch (reopenError: unknown) {
+      setError(reopenError instanceof Error ? reopenError.message : 'Task reopen failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function toggleDependencyOverride(taskId: string): void {
     updateDependencyOverrides(
       dependencyOverrides.includes(taskId)
@@ -190,14 +262,102 @@ export function FeatureWorkflowPanel({
                 </div>
                 <div className={styles.featureTaskActions}>
                   {task.status === 'READY' && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={disabled || busy}
+                        onClick={() => void handleExecuteTask(task)}
+                      >
+                        Execute task
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={disabled || busy}
+                        onClick={() =>
+                          setLifecycleActionTaskId(
+                            lifecycleActionTaskId === task.taskId ? undefined : task.taskId,
+                          )
+                        }
+                        aria-expanded={lifecycleActionTaskId === task.taskId}
+                      >
+                        Skip task
+                      </button>
+                    </>
+                  )}
+                  {task.status === 'IN_PROGRESS' && (
                     <button
                       type="button"
+                      className={styles.rejectButton}
                       disabled={disabled || busy}
-                      onClick={() => void handleExecuteTask(task)}
+                      onClick={() =>
+                        setLifecycleActionTaskId(
+                          lifecycleActionTaskId === task.taskId ? undefined : task.taskId,
+                        )
+                      }
+                      aria-expanded={lifecycleActionTaskId === task.taskId}
                     >
-                      Execute task
+                      Mark task failed
                     </button>
                   )}
+                  {task.status === 'COMPLETED' && (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={disabled || busy}
+                      onClick={() => void handleReopenTask(task)}
+                    >
+                      Reopen for correction
+                    </button>
+                  )}
+                  {lifecycleActionTaskId === task.taskId &&
+                    (task.status === 'READY' || task.status === 'IN_PROGRESS') && (
+                      <div className={styles.gate2RejectForm}>
+                        <label htmlFor={`${lifecycleReasonId}-${task.taskId}`}>
+                          Optional reason
+                        </label>
+                        <input
+                          id={`${lifecycleReasonId}-${task.taskId}`}
+                          type="text"
+                          value={lifecycleReason}
+                          maxLength={500}
+                          disabled={disabled || busy}
+                          onChange={(event) => setLifecycleReason(event.target.value)}
+                        />
+                        <div className={styles.approvalActions}>
+                          {task.status === 'READY' ? (
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              disabled={disabled || busy}
+                              onClick={() => void handleSkipTask(task, lifecycleReason)}
+                            >
+                              Confirm skip
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.rejectButton}
+                              disabled={disabled || busy}
+                              onClick={() => void handleFailTask(task, lifecycleReason)}
+                            >
+                              Confirm fail
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            disabled={disabled || busy}
+                            onClick={() => {
+                              setLifecycleActionTaskId(undefined);
+                              setLifecycleReason('');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   {task.status === 'IN_PROGRESS' &&
                     activeTaskId === task.taskId &&
                     verificationReport?.status === 'PASSED' && (

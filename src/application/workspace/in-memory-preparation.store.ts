@@ -20,6 +20,7 @@ interface PreparationRecord {
   readonly plan: ProjectChangePlan;
   readonly expiresAt: number;
   readonly featureTaskBinding?: FeatureTaskPreparationBinding;
+  readonly applyAuthorizationToken?: string;
   state: 'READY' | 'APPLYING' | 'RECLAIMABLE' | 'COMPLETED';
   attempts: number;
   completion?: WorkspaceCompletion;
@@ -38,6 +39,7 @@ export class InMemoryPreparationStore {
     plan: ProjectChangePlan,
     expiresAt: Date,
     featureTaskBinding?: FeatureTaskPreparationBinding,
+    applyAuthorizationToken?: string,
   ): void {
     this.removeExpired();
     while (this.records.size >= this.maximumRecords) {
@@ -55,9 +57,14 @@ export class InMemoryPreparationStore {
       plan: structuredClone(plan),
       expiresAt: expiresAt.getTime(),
       ...(featureTaskBinding === undefined ? {} : { featureTaskBinding }),
+      ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
       state: 'READY',
       attempts: 0,
     });
+  }
+
+  readApplyAuthorizationToken(id: string): string | undefined {
+    return this.records.get(id)?.applyAuthorizationToken;
   }
 
   /**

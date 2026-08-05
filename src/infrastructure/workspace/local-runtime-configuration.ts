@@ -7,6 +7,12 @@ import {
   type OpenRouterProviderConfiguration,
 } from '../../providers/openrouter';
 import type { WorkspaceRuntimeConfiguration } from '../../application/workspace';
+import type { WorkspaceSecurityConfiguration } from '../../application/workspace/workspace-authorization.types';
+import {
+  parseWorkspaceProjectProfile,
+  readWorkspaceProjectId,
+  type WorkspaceProjectProfile,
+} from '../../core/target-project';
 import { parseExtraSourceScanRoots } from '../project/project-source-index-policy';
 import { assertBudgetOrdering } from './budget-invariant';
 
@@ -32,9 +38,11 @@ export type LocalProviderConfiguration =
 
 export interface LocalWorkspaceRuntimeConfiguration {
   readonly projectRoot: string;
+  readonly projectProfile: WorkspaceProjectProfile;
   readonly extraSourceScanRoots: readonly string[];
   readonly provider: LocalProviderConfiguration;
   readonly workspace: WorkspaceRuntimeConfiguration;
+  readonly security: WorkspaceSecurityConfiguration;
   readonly verificationCommandTimeoutMs: number;
   readonly verificationMaximumOutputBytes: number;
 }
@@ -54,9 +62,14 @@ export function loadLocalWorkspaceRuntimeConfiguration(): LocalWorkspaceRuntimeC
     throw new Error('The local workspace runtime is disabled.');
   }
   const projectRoot = path.resolve(required('BUILDERAI_PROJECT_ROOT'));
+  const projectProfile = parseWorkspaceProjectProfile(
+    process.env.BUILDERAI_WORKSPACE_PROJECT_PROFILE,
+  );
   const providerKind = providerSelection();
+  const projectId = readWorkspaceProjectId(projectRoot, projectProfile);
   return {
     projectRoot,
+    projectProfile,
     extraSourceScanRoots: parseExtraSourceScanRoots(process.env.BUILDERAI_EXTRA_SOURCE_SCAN_ROOTS),
     provider: providerConfiguration(providerKind),
     workspace: {
@@ -64,6 +77,7 @@ export function loadLocalWorkspaceRuntimeConfiguration(): LocalWorkspaceRuntimeC
       maximumPreparations: integer('BUILDERAI_MAX_PREPARATIONS', 50, 1, 500),
       providerTimeoutMs: integer('BUILDERAI_PROVIDER_TIMEOUT_MS', 120_000, 1_000, 600_000),
     },
+    security: loadWorkspaceSecurityConfiguration(projectId),
     verificationCommandTimeoutMs: integer(
       'BUILDERAI_VERIFICATION_TIMEOUT_MS',
       600_000,
@@ -157,4 +171,25 @@ function integer(name: string, fallback: number, minimum: number, maximum: numbe
     throw new Error(`${name} is outside its supported range.`);
   }
   return value;
+}
+
+export function loadWorkspaceSecurityConfiguration(
+  projectId: string,
+): WorkspaceSecurityConfiguration {
+  const profileRaw = process.env.BUILDERAI_WORKSPACE_SECURITY_PROFILE?.trim().toLowerCase();
+  const profile = profileRaw === 'protected' ? 'PROTECTED' : 'TRUSTED_LOCAL';
+  if (profile === 'TRUSTED_LOCAL') {
+    return {
+      profile: 'TRUSTED_LOCAL',
+      projectId,
+      principalId: 'local-operator',
+    };
+  }
+  return {
+    profile: 'PROTECTED',
+    projectId,
+    accessToken: required('BUILDERAI_WORKSPACE_ACCESS_TOKEN'),
+    csrfToken: required('BUILDERAI_WORKSPACE_CSRF_TOKEN'),
+    principalId: optional('BUILDERAI_WORKSPACE_PRINCIPAL_ID') ?? 'workspace-operator',
+  };
 }

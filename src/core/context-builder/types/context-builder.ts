@@ -54,10 +54,23 @@ export interface ContextLimits {
  */
 export const DEFAULT_CONTEXT_LIMITS: ContextLimits = {
   maxCharacters: 95_000,
-  maxFiles: 12,
+  maxFiles: 16,
   maxDocuments: 8,
   maxSourcePaths: 15_000,
   maxSourceReads: 36,
+};
+
+export interface SourceFileAdmissionQuotas {
+  readonly implementation: number;
+  readonly tests: number;
+  readonly config: number;
+}
+
+/** Separate bounded quotas so tests and shared contracts can coexist with implementation files. */
+export const DEFAULT_SOURCE_FILE_ADMISSION_QUOTAS: SourceFileAdmissionQuotas = {
+  implementation: 11,
+  tests: 4,
+  config: 1,
 };
 
 /** Reserved headroom subtracted before source-file admission (ADR-018, ADR-023). */
@@ -92,9 +105,25 @@ export interface ContextDocument {
 
 export type ContextSourceFilePriority = 'PINNED_BASELINE' | 'RELATED_SOURCE_FILES';
 
+export type ContextSelectionEvidenceKind =
+  | 'EXPLICIT_PATH'
+  | 'TASK_KEYWORD'
+  | 'SOURCE_CATEGORY'
+  | 'RELATED_IMPORT'
+  | 'NEARBY_TEST'
+  | 'DOMAIN_DIRECTORY'
+  | 'BASENAME_AFFINITY'
+  | 'PINNED_BASELINE';
+
+export interface ContextSelectionEvidence {
+  readonly kind: ContextSelectionEvidenceKind;
+  readonly detail: string;
+}
+
 export interface ContextSourceFile extends ProjectSourceFile {
   readonly priority: ContextSourceFilePriority;
   readonly modulePath?: string;
+  readonly selectionEvidence?: readonly ContextSelectionEvidence[];
 }
 
 export interface CodingStandardContext {

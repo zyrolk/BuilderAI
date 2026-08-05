@@ -7,9 +7,9 @@ describe('parseExtraSourceScanRoots', () => {
   });
 
   it('parses safe relative roots and deduplicates them', () => {
-    expect(parseExtraSourceScanRoots('custom-root, ./features , custom-root')).toEqual([
+    expect(parseExtraSourceScanRoots('custom-root, ./widgets , custom-root')).toEqual([
       'custom-root',
-      'features',
+      'widgets',
     ]);
   });
 
@@ -24,6 +24,6 @@ describe('parseExtraSourceScanRoots', () => {
   });
 
   it('ignores roots that are already part of the default scan policy', () => {
-    expect(parseExtraSourceScanRoots('src,app')).toEqual([]);
+    expect(parseExtraSourceScanRoots('src,app,features')).toEqual([]);
   });
 });

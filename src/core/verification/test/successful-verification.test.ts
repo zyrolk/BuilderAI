@@ -68,6 +68,22 @@ describe('successful verification', () => {
           durationMs: 6,
           metadata: {},
         },
+        {
+          stage: 'LINT_VALIDATION',
+          status: 'PASSED',
+          warnings: [],
+          errors: [],
+          durationMs: 4,
+          metadata: {},
+        },
+        {
+          stage: 'TYPECHECK_VALIDATION',
+          status: 'PASSED',
+          warnings: [],
+          errors: [],
+          durationMs: 4,
+          metadata: {},
+        },
       ],
       warnings: [
         {
@@ -82,7 +98,7 @@ describe('successful verification', () => {
         },
       ],
       errors: [],
-      durationMs: 25,
+      durationMs: 31,
       metadata: { 'change-id': 'change-11', sprint: 11 },
     });
   });
@@ -98,7 +114,7 @@ describe('successful verification', () => {
 
     await engine.verify(input);
 
-    expect(harness.contexts).toHaveLength(4);
+    expect(harness.contexts).toHaveLength(6);
     expect(harness.contexts[0]?.affectedFiles).toEqual({
       created: ['src/new.ts'],
       updated: ['src/existing.ts'],

@@ -59,8 +59,9 @@ function selectCodingStandards(
   documents: readonly ParsedMarkdownDocument[],
 ): readonly CodingStandardContext[] {
   const codingStandards = documents.find(({ kind }) => kind === 'coding-standards');
+  const source = codingStandards ?? documents.find(({ kind }) => kind === 'ai-rules');
   return (
-    codingStandards?.sections
+    source?.sections
       .filter(({ level, content }) => level === 2 && content.length > 0)
       .map(({ heading, content }) => ({ heading, content })) ?? []
   );

@@ -2,7 +2,9 @@ import { WorkspaceRuntimeError } from '../../../../application/workspace';
 import {
   assertTrustedLocalRequest,
   LocalRequestRejectedError,
+  mapWorkspaceRuntimeErrorStatus,
   readBoundedJson,
+  readWorkspaceRequestSecurityEvidence,
 } from '../../../../infrastructure/workspace';
 import { getLocalWorkspaceRuntime } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
 
@@ -13,18 +15,23 @@ export async function POST(request: Request): Promise<Response> {
   try {
     assertTrustedLocalRequest(request);
     const body = await readBoundedJson(request);
+    const evidence = readWorkspaceRequestSecurityEvidence(request, body, 'APPLY');
     const preparationId = field(body, 'preparationId');
     const approved =
       typeof body === 'object' && body !== null && Reflect.get(body, 'approved') === true;
-    const completion = await getLocalWorkspaceRuntime().approveAndApply(preparationId, approved);
+    const completion = await getLocalWorkspaceRuntime().approveAndApply(
+      preparationId,
+      approved,
+      evidence,
+    );
     return json(completion, 200);
   } catch (error: unknown) {
     if (error instanceof LocalRequestRejectedError) {
       return json({ code: error.code, message: error.message }, 403);
     }
     if (error instanceof WorkspaceRuntimeError) {
-      const status = ['INVALID_REQUEST', 'APPROVAL_REQUIRED'].includes(error.code) ? 400 : 409;
-      return json({ code: error.code, message: error.message }, status);
+      const mappedStatus = mapWorkspaceRuntimeErrorStatus(error);
+      return json({ code: error.code, message: error.message }, mappedStatus ?? 409);
     }
     return json({ code: 'WORKFLOW_FAILED', message: 'The workflow could not be completed.' }, 500);
   }

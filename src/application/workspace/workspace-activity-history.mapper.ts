@@ -118,6 +118,10 @@ function mapVerificationStageName(
       return 'BUILD';
     case 'TEST_VALIDATION':
       return 'TEST';
+    case 'LINT_VALIDATION':
+      return 'LINT';
+    case 'TYPECHECK_VALIDATION':
+      return 'TYPECHECK';
   }
 }
 

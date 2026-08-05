@@ -17,6 +17,26 @@ import {
   listPreservationMetricItems,
   preservationSeverityLabel,
 } from './change-plan-preservation-display';
+import {
+  formatFailureCategory,
+  summarizeVerificationFailures,
+} from './verification-outcome-display';
+import {
+  appliedWithVerificationFailureHeadline,
+  baselineDriftGuidance,
+  dependencyChangeGuidance,
+  PARTIAL_APPLY_RECOVERY_STEPS,
+  partialApplyHeadline,
+  partialApplySafetyNotice,
+  summarizePartialApplyOperations,
+} from './operator-recovery-guidance';
+import {
+  changePlanTouchesLockfile,
+  changePlanTouchesPackageJson,
+  hasBaselineDriftApplyFailure,
+  isAppliedWithVerificationFailure,
+  isPartialApplyOutcome,
+} from './verification-outcome-display';
 import styles from './workspace.module.css';
 import { RESULT_PANEL_TABS, type ResultPanelTab } from './workspace.types';
 
@@ -82,9 +102,14 @@ export function ResultPanel({
           <ResponsePackageView responsePackage={responsePackage} />
         )}
         {activeTab === 'CHANGE_PLAN' && <ChangePlanView changePlan={changePlan} />}
-        {activeTab === 'APPLY_RESULT' && <ApplyResultView applyResult={applyResult} />}
+        {activeTab === 'APPLY_RESULT' && (
+          <ApplyResultView applyResult={applyResult} changePlan={changePlan} />
+        )}
         {activeTab === 'VERIFICATION_REPORT' && (
-          <VerificationReportView verificationReport={verificationReport} />
+          <VerificationReportView
+            applyResult={applyResult}
+            verificationReport={verificationReport}
+          />
         )}
       </div>
     </aside>
@@ -233,8 +258,16 @@ function ChangePlanView({ changePlan }: { readonly changePlan?: ProjectChangePla
   if (!changePlan) {
     return <EmptyResult message="A reviewable plan will appear before approval is requested." />;
   }
+  const dependencyChange =
+    changePlanTouchesPackageJson(changePlan) || changePlanTouchesLockfile(changePlan);
   return (
     <div className={styles.resultContent}>
+      {dependencyChange && (
+        <section className={styles.operatorGuidance} role="status">
+          <h3>Dependency change</h3>
+          <p>{dependencyChangeGuidance()}</p>
+        </section>
+      )}
       <ResultSummary
         items={[
           ['Create', changePlan.summary.filesCreated.length],
@@ -269,13 +302,60 @@ function ChangePlanView({ changePlan }: { readonly changePlan?: ProjectChangePla
   );
 }
 
-function ApplyResultView({ applyResult }: { readonly applyResult?: FileApplyResult }) {
+function ApplyResultView({
+  applyResult,
+  changePlan,
+}: {
+  readonly applyResult?: FileApplyResult;
+  readonly changePlan?: ProjectChangePlan;
+}) {
   if (!applyResult) {
     return <EmptyResult message="No filesystem action occurs before explicit approval." />;
   }
+
+  const partialApply = isPartialApplyOutcome(applyResult);
+  const baselineDrift = hasBaselineDriftApplyFailure(applyResult);
+  const dependencyChange =
+    changePlanTouchesPackageJson(changePlan) || changePlanTouchesLockfile(changePlan);
+  const partialSummary = partialApply ? summarizePartialApplyOperations(applyResult) : undefined;
+
   return (
     <div className={styles.resultContent}>
       <StatusHeading label="Apply status" status={formatLabel(applyResult.status)} />
+      {partialApply && (
+        <section className={styles.operatorGuidance} role="status" aria-live="polite">
+          <h3>Partial apply warning</h3>
+          <p>{partialApplyHeadline()}</p>
+          <p>{partialApplySafetyNotice()}</p>
+          {partialSummary !== undefined && (
+            <ResultSummary
+              items={[
+                ['Applied operations', partialSummary.appliedCount],
+                ['Failed operations', partialSummary.failedCount],
+                ['Skipped paths', partialSummary.skippedCount],
+              ]}
+            />
+          )}
+          <h4>Recovery checklist</h4>
+          <ol className={styles.recoveryChecklist}>
+            {PARTIAL_APPLY_RECOVERY_STEPS.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </section>
+      )}
+      {baselineDrift && (
+        <section className={styles.operatorGuidance} role="status">
+          <h3>Baseline drift</h3>
+          <p>{baselineDriftGuidance()}</p>
+        </section>
+      )}
+      {dependencyChange && (
+        <section className={styles.operatorGuidance} role="status">
+          <h3>Dependency change</h3>
+          <p>{dependencyChangeGuidance()}</p>
+        </section>
+      )}
       <ResultSummary
         items={[
           ['Created', applyResult.createdFiles.length],
@@ -294,15 +374,50 @@ function ApplyResultView({ applyResult }: { readonly applyResult?: FileApplyResu
 
 function VerificationReportView({
   verificationReport,
+  applyResult,
 }: {
   readonly verificationReport?: VerificationReport;
+  readonly applyResult?: FileApplyResult;
 }) {
   if (!verificationReport) {
-    return <EmptyResult message="Verification evidence appears after a successful apply result." />;
+    return (
+      <EmptyResult message="Verification evidence appears after an eligible apply result (applied or partially applied)." />
+    );
   }
+
+  const failureSummary = summarizeVerificationFailures(verificationReport);
+  const appliedVerificationFailure = isAppliedWithVerificationFailure(
+    applyResult,
+    verificationReport,
+  );
+
   return (
     <div className={styles.resultContent}>
       <StatusHeading label="Verification status" status={formatLabel(verificationReport.status)} />
+      {appliedVerificationFailure && (
+        <section className={styles.operatorGuidance} role="status" aria-live="polite">
+          <h3>Applied with verification failure</h3>
+          <p>{appliedWithVerificationFailureHeadline()}</p>
+          <p>
+            Files were already written to disk. Review stages below before requesting correction.
+          </p>
+        </section>
+      )}
+      {failureSummary.primaryLabel !== undefined && (
+        <section className={styles.operatorGuidance} role="status">
+          <h3>Failure classification</h3>
+          <p>
+            Primary category: <strong>{failureSummary.primaryLabel}</strong>
+          </p>
+          {failureSummary.categories.length > 1 && (
+            <ul>
+              {failureSummary.categories.map((category) => (
+                <li key={category}>{formatFailureCategory(category)}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
       <div className={styles.stageList}>
         {verificationReport.stages.map((stage) => (
           <article key={stage.stage} className={styles.stageResult}>

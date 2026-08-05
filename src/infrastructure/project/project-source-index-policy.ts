@@ -9,9 +9,13 @@ export const DEFAULT_SCAN_ROOTS: readonly string[] = [
   'app',
   'pages',
   'components',
+  'features',
   'lib',
+  'shared',
+  'client',
   'server',
   'api',
+  'backend',
   'prisma',
   'drizzle',
   'migrations',
@@ -25,6 +29,7 @@ export const DEFAULT_SCAN_ROOTS: readonly string[] = [
 
 /** Scan roots that must not be supplied through {@link parseExtraSourceScanRoots}. */
 export const BLOCKED_EXTRA_SCAN_ROOTS: ReadonlySet<string> = new Set([
+  '.builderai',
   '.git',
   'coverage',
   'dist',
@@ -32,6 +37,25 @@ export const BLOCKED_EXTRA_SCAN_ROOTS: ReadonlySet<string> = new Set([
   'node_modules',
   'public',
   'static',
+]);
+
+/** Binary or asset extensions excluded from static/public opt-in indexing. */
+export const BINARY_OR_ASSET_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.bin',
+  '.eot',
+  '.gif',
+  '.ico',
+  '.jpeg',
+  '.jpg',
+  '.mp3',
+  '.mp4',
+  '.pdf',
+  '.png',
+  '.ttf',
+  '.webp',
+  '.woff',
+  '.woff2',
+  '.zip',
 ]);
 
 export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -83,11 +107,20 @@ const MAX_EXTRA_SCAN_ROOTS = 32;
 
 export interface ProjectSourceIndexOptions {
   readonly extraScanRoots?: readonly string[];
+  readonly manifestScanRoots?: readonly string[];
+  readonly staticScanRoots?: readonly string[];
 }
 
-export function resolveScanRoots(extraScanRoots: readonly string[] = []): readonly string[] {
-  const merged = [...DEFAULT_SCAN_ROOTS, ...extraScanRoots];
+export function resolveScanRoots(
+  extraScanRoots: readonly string[] = [],
+  manifestScanRoots: readonly string[] = [],
+): readonly string[] {
+  const merged = [...DEFAULT_SCAN_ROOTS, ...extraScanRoots, ...manifestScanRoots];
   return [...new Set(merged)];
+}
+
+export function resolveStaticScanRoots(staticScanRoots: readonly string[] = []): readonly string[] {
+  return [...new Set(staticScanRoots)];
 }
 
 export function parseExtraSourceScanRoots(raw: string | undefined): readonly string[] {
@@ -138,7 +171,14 @@ export function isExcludedFileName(name: string): boolean {
 }
 
 export function hasSourceExtension(fileName: string): boolean {
-  return SOURCE_EXTENSIONS.has(pathExtname(fileName));
+  return hasIndexableSourceExtension(fileName, false);
+}
+
+export function hasIndexableSourceExtension(fileName: string, staticRoot: boolean): boolean {
+  const extension = pathExtname(fileName);
+  if (!SOURCE_EXTENSIONS.has(extension)) return false;
+  if (staticRoot && BINARY_OR_ASSET_EXTENSIONS.has(extension)) return false;
+  return true;
 }
 
 export function isRootConfigFile(fileName: string): boolean {

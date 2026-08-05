@@ -1,0 +1,11 @@
+{
+  "name": "zyro-style-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "node scripts/verify-stage.js build",
+    "test": "node scripts/verify-stage.js test",
+    "lint": "node scripts/verify-stage.js lint",
+    "typecheck": "node scripts/verify-stage.js typecheck"
+  }
+}

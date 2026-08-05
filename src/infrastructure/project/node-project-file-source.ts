@@ -4,27 +4,36 @@ import path from 'node:path';
 import type { ProjectFileSource } from '../../core/context-builder';
 import {
   EXCLUDED_DIRECTORIES,
-  hasSourceExtension,
+  hasIndexableSourceExtension,
   isExcludedFileName,
   isRootConfigFile,
   resolveScanRoots,
+  resolveStaticScanRoots,
   type ProjectSourceIndexOptions,
 } from './project-source-index-policy';
 
 export class NodeProjectFileSource implements ProjectFileSource {
   private readonly root: string;
   private readonly scanRoots: readonly string[];
+  private readonly staticScanRoots: readonly string[];
 
   constructor(projectRoot: string, options: ProjectSourceIndexOptions = {}) {
     this.root = path.resolve(projectRoot);
-    this.scanRoots = resolveScanRoots(options.extraScanRoots ?? []);
+    this.scanRoots = resolveScanRoots(
+      options.extraScanRoots ?? [],
+      options.manifestScanRoots ?? [],
+    );
+    this.staticScanRoots = resolveStaticScanRoots(options.staticScanRoots ?? []);
   }
 
   async listSourcePaths(): Promise<readonly string[]> {
     const paths = new Set<string>();
     await this.collectRootLevelFiles(paths);
     for (const scanRoot of this.scanRoots) {
-      await this.collect(path.join(this.root, ...scanRoot.split('/')), paths);
+      await this.collect(path.join(this.root, ...scanRoot.split('/')), paths, false);
+    }
+    for (const scanRoot of this.staticScanRoots) {
+      await this.collect(path.join(this.root, ...scanRoot.split('/')), paths, true);
     }
     return [...paths].sort(compareText);
   }
@@ -49,12 +58,13 @@ export class NodeProjectFileSource implements ProjectFileSource {
         paths.add(entry.name);
         continue;
       }
-      if (isExcludedFileName(entry.name) || !hasSourceExtension(entry.name)) continue;
+      if (isExcludedFileName(entry.name) || !hasIndexableSourceExtension(entry.name, false))
+        continue;
       paths.add(entry.name);
     }
   }
 
-  private async collect(directory: string, paths: Set<string>): Promise<void> {
+  private async collect(directory: string, paths: Set<string>, staticRoot: boolean): Promise<void> {
     let entries;
     try {
       entries = await readdir(directory, { withFileTypes: true });
@@ -69,11 +79,11 @@ export class NodeProjectFileSource implements ProjectFileSource {
         if (EXCLUDED_DIRECTORIES.has(entry.name)) continue;
         const entryStat = await lstat(absolutePath);
         if (entryStat.isSymbolicLink()) continue;
-        await this.collect(absolutePath, paths);
+        await this.collect(absolutePath, paths, staticRoot);
       } else if (
         entry.isFile() &&
         !isExcludedFileName(entry.name) &&
-        hasSourceExtension(entry.name)
+        hasIndexableSourceExtension(entry.name, staticRoot)
       ) {
         paths.add(path.relative(this.root, absolutePath).replaceAll('\\', '/'));
       }

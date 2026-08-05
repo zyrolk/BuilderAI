@@ -18,8 +18,16 @@ import styles from './workspace.module.css';
 import {
   WorkspaceWorkflowError,
   isCorrectionEligible,
+  isPartialApplyRecovery,
+  supportsGate2Correction,
   type WorkspaceCompletionSnapshot,
 } from './workspace.types';
+import {
+  appliedWithVerificationFailureHeadline,
+  freshPrepareRequiredNotice,
+  verificationFailureCorrectionHint,
+} from './operator-recovery-guidance';
+import { isAppliedWithVerificationFailure } from './verification-outcome-display';
 import type {
   PreparedWorkspaceChange,
   PrepareWorkspaceOptions,
@@ -57,6 +65,12 @@ interface WorkspaceShellProps {
   readonly runtimeAvailable?: boolean;
 }
 
+interface PreparationTrace {
+  readonly preparationId?: string;
+  readonly sourcePreparationId?: string;
+  readonly isCorrection?: boolean;
+}
+
 export function WorkspaceShell({
   project,
   workflow: injectedWorkflow,
@@ -69,11 +83,18 @@ export function WorkspaceShell({
   const workflow = injectedWorkflow ?? runtimeWorkflow;
   const requestId = useId();
   const approvalId = useId();
+  const gate2RejectReasonId = useId();
   const [request, setRequest] = useState('');
   const [phase, setPhase] = useState<WorkspacePhase>('READY');
   const [progressIndex, setProgressIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<ResultPanelTab>('RESPONSE_PACKAGE');
   const [prepared, setPrepared] = useState<PreparedWorkspaceChange>();
+  const [preparationTrace, setPreparationTrace] = useState<PreparationTrace>();
+  const [rejectedPreparedSnapshot, setRejectedPreparedSnapshot] =
+    useState<PreparedWorkspaceChange>();
+  const [showGate2RejectForm, setShowGate2RejectForm] = useState(false);
+  const [gate2RejectionReason, setGate2RejectionReason] = useState('');
+  const [gate2CorrectionInFlight, setGate2CorrectionInFlight] = useState(false);
   const [applyResult, setApplyResult] = useState<FileApplyResult>();
   const [verificationReport, setVerificationReport] = useState<VerificationReport>();
   const [completionSnapshot, setCompletionSnapshot] = useState<WorkspaceCompletionSnapshot>();
@@ -95,7 +116,9 @@ export function WorkspaceShell({
     () => (runtimeAvailable ? new HttpFeatureWorkflow() : undefined),
     [runtimeAvailable],
   );
-  const isBusy = ['PROCESSING_REQUEST', 'APPLYING_CHANGES', 'VERIFYING_PROJECT'].includes(phase);
+  const isBusy =
+    gate2CorrectionInFlight ||
+    ['PROCESSING_REQUEST', 'APPLYING_CHANGES', 'VERIFYING_PROJECT'].includes(phase);
   const historySupported =
     runtimeAvailable && workflow !== undefined && workflow.loadActivityHistory !== undefined;
 
@@ -170,6 +193,28 @@ export function WorkspaceShell({
     await runPrepare(request.trim());
   }
 
+  async function handleFreshPrepare(): Promise<void> {
+    if (!workflow || isBusy) return;
+    setCompletionSnapshot(undefined);
+    setApplyResult(undefined);
+    setVerificationReport(undefined);
+    setPrepared(undefined);
+    setApproved(false);
+    setPhase('READY');
+    setProgressIndex(0);
+    setError(undefined);
+    setPreparationTrace(undefined);
+    setConversation((entries) => [
+      ...entries,
+      {
+        id: nextConversationId(entries),
+        author: 'BUILDER_AI',
+        message:
+          'Previous partial apply requires a fresh prepare from the current filesystem state. Enter a new request when ready.',
+      },
+    ]);
+  }
+
   async function handleCorrectionPrepare(): Promise<void> {
     if (!workflow || !completionSnapshot || isBusy) return;
     const correctionRequest =
@@ -237,6 +282,20 @@ export function WorkspaceShell({
               ...featureOptions,
             });
       setPrepared(nextPrepared);
+      setPreparationTrace({
+        preparationId: nextPrepared.preparationId,
+        ...(nextPrepared.sourcePreparationId === undefined
+          ? {}
+          : { sourcePreparationId: nextPrepared.sourcePreparationId }),
+        ...(nextPrepared.isCorrection === undefined
+          ? {}
+          : { isCorrection: nextPrepared.isCorrection }),
+      });
+      if (!nextPrepared.isCorrection) {
+        setRejectedPreparedSnapshot(undefined);
+        setShowGate2RejectForm(false);
+        setGate2RejectionReason('');
+      }
       setLastPreparedRequest(normalizedRequest);
       if (featureOptions.taskId !== undefined) {
         setActiveFeatureTaskId(featureOptions.taskId);
@@ -263,6 +322,89 @@ export function WorkspaceShell({
           : 'The request could not be prepared. No project changes were made.',
         1,
       );
+    }
+  }
+
+  async function handleGate2RejectCorrection(): Promise<void> {
+    if (
+      !workflow ||
+      !prepared ||
+      preparationTrace?.preparationId === undefined ||
+      gate2CorrectionInFlight ||
+      !supportsGate2Correction(workflow)
+    ) {
+      return;
+    }
+
+    const originalRequest = (lastPreparedRequest ?? request).trim();
+    if (originalRequest.length === 0) return;
+
+    setGate2CorrectionInFlight(true);
+    setError(undefined);
+    const rejectedPlan = prepared;
+    setRejectedPreparedSnapshot(rejectedPlan);
+    setApproved(false);
+    setConversation((entries) => [
+      ...entries,
+      {
+        id: nextConversationId(entries),
+        author: 'USER',
+        message:
+          gate2RejectionReason.trim().length > 0
+            ? `Rejected plan for correction: ${gate2RejectionReason.trim()}`
+            : 'Rejected plan for correction at Gate 2.',
+      },
+    ]);
+
+    try {
+      const corrected = await workflow.prepareGate2PreservationCorrection(
+        originalRequest,
+        prepared.changePlan,
+        preparationTrace.preparationId,
+        gate2RejectionReason.trim().length > 0 ? gate2RejectionReason.trim() : undefined,
+      );
+      setPrepared(corrected);
+      setPreparationTrace({
+        preparationId: corrected.preparationId,
+        sourcePreparationId: corrected.sourcePreparationId ?? preparationTrace.preparationId,
+        isCorrection: true,
+      });
+      setPhase('AWAITING_APPROVAL');
+      setProgressIndex(3);
+      setActiveTab('CHANGE_PLAN');
+      setShowGate2RejectForm(false);
+      setGate2RejectionReason('');
+      setConversation((entries) => [
+        ...entries,
+        {
+          id: nextConversationId(entries),
+          author: 'BUILDER_AI',
+          message: `Prepared corrected plan with ${corrected.changePlan.summary.totalOperations} operation${corrected.changePlan.summary.totalOperations === 1 ? '' : 's'} for Gate 2 review. Approval is required before apply.`,
+        },
+      ]);
+      void refreshActivityHistory();
+    } catch (workflowError: unknown) {
+      setPrepared(rejectedPlan);
+      setPhase('AWAITING_APPROVAL');
+      setProgressIndex(3);
+      setError(
+        workflowError instanceof WorkspaceWorkflowError
+          ? `${workflowError.message} The rejected plan was not applied.`
+          : 'Correction could not be prepared. The rejected plan was not applied.',
+      );
+      setConversation((entries) => [
+        ...entries,
+        {
+          id: nextConversationId(entries),
+          author: 'BUILDER_AI',
+          message:
+            workflowError instanceof WorkspaceWorkflowError
+              ? workflowError.message
+              : 'Correction could not be prepared.',
+        },
+      ]);
+    } finally {
+      setGate2CorrectionInFlight(false);
     }
   }
 
@@ -480,31 +622,143 @@ export function WorkspaceShell({
               <div>
                 <p className={styles.eyebrow}>Human checkpoint</p>
                 <h3 id="approval-title">Review before applying</h3>
+                {preparationTrace?.isCorrection &&
+                  preparationTrace.sourcePreparationId !== undefined && (
+                    <p className={styles.correctionTrace} role="status">
+                      Correction plan linked to source preparation{' '}
+                      <code>{preparationTrace.sourcePreparationId}</code>
+                      {preparationTrace.preparationId !== undefined && (
+                        <>
+                          {' '}
+                          · current preparation <code>{preparationTrace.preparationId}</code>
+                        </>
+                      )}
+                    </p>
+                  )}
                 <p>
                   {prepared.changePlan.summary.totalOperations} planned operation
                   {prepared.changePlan.summary.totalOperations === 1 ? '' : 's'}. Review paths,
                   risks, and warnings in the Change Plan tab.
                 </p>
+                {gate2CorrectionInFlight && (
+                  <p className={styles.correctionStatus} role="status" aria-live="polite">
+                    Preparing correction — the rejected plan will not be applied.
+                  </p>
+                )}
               </div>
               <label className={styles.approvalCheck} htmlFor={approvalId}>
                 <input
                   id={approvalId}
                   type="checkbox"
                   checked={approved}
+                  disabled={gate2CorrectionInFlight}
                   onChange={(event) => setApproved(event.target.checked)}
                 />
                 I reviewed this plan and explicitly approve these file operations.
               </label>
-              <button
-                type="button"
-                className={styles.approveButton}
-                disabled={!approved}
-                onClick={handleApproval}
-              >
-                Approve and apply changes
-              </button>
+              <div className={styles.approvalActions}>
+                <button
+                  type="button"
+                  className={styles.approveButton}
+                  disabled={!approved || gate2CorrectionInFlight}
+                  onClick={() => void handleApproval()}
+                >
+                  Approve and apply changes
+                </button>
+                {workflow !== undefined && supportsGate2Correction(workflow) && (
+                  <>
+                    {!showGate2RejectForm ? (
+                      <button
+                        type="button"
+                        className={styles.rejectButton}
+                        disabled={gate2CorrectionInFlight}
+                        onClick={() => {
+                          setShowGate2RejectForm(true);
+                          setApproved(false);
+                        }}
+                      >
+                        Reject / Request correction
+                      </button>
+                    ) : (
+                      <div className={styles.gate2RejectForm}>
+                        <label htmlFor={gate2RejectReasonId}>
+                          Optional correction guidance (concise)
+                        </label>
+                        <textarea
+                          id={gate2RejectReasonId}
+                          value={gate2RejectionReason}
+                          maxLength={500}
+                          rows={3}
+                          disabled={gate2CorrectionInFlight}
+                          placeholder="Describe the smallest safe correction you expect…"
+                          onChange={(event) => setGate2RejectionReason(event.target.value)}
+                        />
+                        <div className={styles.approvalActions}>
+                          <button
+                            type="button"
+                            className={styles.rejectButton}
+                            disabled={gate2CorrectionInFlight}
+                            onClick={() => void handleGate2RejectCorrection()}
+                          >
+                            {gate2CorrectionInFlight
+                              ? 'Preparing correction…'
+                              : 'Submit rejection for correction'}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            disabled={gate2CorrectionInFlight}
+                            onClick={() => {
+                              setShowGate2RejectForm(false);
+                              setGate2RejectionReason('');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              {rejectedPreparedSnapshot !== undefined && preparationTrace?.isCorrection && (
+                <details className={styles.rejectedPlanInspect}>
+                  <summary>Inspect rejected plan summary</summary>
+                  <p>
+                    {rejectedPreparedSnapshot.changePlan.summary.totalOperations} operation
+                    {rejectedPreparedSnapshot.changePlan.summary.totalOperations === 1
+                      ? ''
+                      : 's'}{' '}
+                    in the rejected preparation (not applied).
+                  </p>
+                </details>
+              )}
             </section>
           )}
+
+          {isPartialApplyRecovery(completionSnapshot) &&
+            (phase === 'COMPLETED' || phase === 'FAILED') && (
+              <section className={styles.approvalCard} aria-labelledby="partial-recovery-title">
+                <div>
+                  <p className={styles.eyebrow}>Partial apply recovery</p>
+                  <h3 id="partial-recovery-title">Manual recovery required</h3>
+                  <p>{freshPrepareRequiredNotice()}</p>
+                  <p>
+                    Review applied, failed, and skipped operations in the Apply Result tab before
+                    continuing. Automatic AI correction from the previous prepare baseline is not
+                    offered for partial apply.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={!workflow || isBusy}
+                  onClick={() => void handleFreshPrepare()}
+                >
+                  Start fresh prepare
+                </button>
+              </section>
+            )}
 
           {isCorrectionEligible(completionSnapshot) &&
             (phase === 'COMPLETED' || phase === 'FAILED') && (
@@ -512,16 +766,19 @@ export function WorkspaceShell({
                 <div>
                   <p className={styles.eyebrow}>Explicit correction</p>
                   <h3 id="correction-title">Fix verification failures</h3>
-                  <p>
-                    Start a new correction prepare with bounded evidence from the immediately
-                    previous iteration. Approval is still required before any file changes apply.
-                  </p>
+                  {isAppliedWithVerificationFailure(
+                    completionSnapshot?.applyResult,
+                    completionSnapshot?.verificationReport,
+                  ) ? (
+                    <p role="status">{appliedWithVerificationFailureHeadline()}</p>
+                  ) : null}
+                  <p>{verificationFailureCorrectionHint()}</p>
                 </div>
                 <button
                   type="button"
                   className={styles.approveButton}
                   disabled={!workflow || isBusy}
-                  onClick={handleCorrectionPrepare}
+                  onClick={() => void handleCorrectionPrepare()}
                 >
                   Fix verification failures
                 </button>

@@ -6,7 +6,7 @@ import {
   parseDecompositionOutput,
   type RawDecompositionTask,
 } from '../../core/feature-decomposition';
-import type { BlueprintReaderService } from '../../core/blueprint-reader';
+import type { ProjectContextReaderPort } from '../../core/target-project';
 import type { ProjectBrain } from '../../core/project-brain';
 import type { ProjectFileSource } from '../../core/context-builder';
 import { readFile } from 'node:fs/promises';
@@ -28,7 +28,7 @@ const RETRY_DELAY_MS = 300;
 
 export interface FeatureDecompositionDependencies {
   readonly loadProjectBrain: () => ProjectBrain;
-  readonly blueprintReader: BlueprintReaderService;
+  readonly blueprintReader: ProjectContextReaderPort;
   readonly sourceFiles: ProjectFileSource;
   readonly providerExecution: ProviderExecutionPort;
   readonly projectRoot: string;

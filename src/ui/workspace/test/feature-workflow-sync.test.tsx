@@ -84,6 +84,7 @@ describe('FeatureWorkflowPanel synchronization', () => {
       completeTask,
       failTask: vi.fn(),
       skipTask: vi.fn(),
+      reopenTask: vi.fn(),
     };
     const onPlanUpdated = vi.fn();
     render(

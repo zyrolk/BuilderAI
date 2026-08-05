@@ -98,6 +98,18 @@ export class HttpFeatureWorkflow {
     );
     return response.plan;
   }
+
+  async reopenTask(featurePlanId: string, taskId: string): Promise<FeaturePlan> {
+    const response = await post<FeaturePlanMutationResponse>(
+      '/api/workspace/feature/task/outcome',
+      {
+        featurePlanId,
+        taskId,
+        action: 'reopen',
+      },
+    );
+    return response.plan;
+  }
 }
 
 async function get<T>(path: string): Promise<T> {

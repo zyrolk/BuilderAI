@@ -324,6 +324,112 @@
   cursor: not-allowed;
 }
 
+.approvalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: flex-start;
+}
+
+.rejectButton,
+.secondaryButton {
+  padding: 0.72rem 1rem;
+  border-radius: 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rejectButton {
+  border: 1px solid #8f4a4a;
+  background: #3a2228;
+  color: #ffb4b4;
+}
+
+.rejectButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  border: 1px solid #3a4254;
+  background: #1a2030;
+  color: #c8ceda;
+}
+
+.gate2RejectForm {
+  display: grid;
+  gap: 0.55rem;
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.gate2RejectForm label {
+  font-size: 0.72rem;
+  color: #9aa3b5;
+}
+
+.gate2RejectForm textarea,
+.gate2RejectForm input[type='text'] {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #303746;
+  border-radius: 0.55rem;
+  background: #0f131c;
+  color: #e8ebf2;
+  font: inherit;
+}
+
+.correctionTrace,
+.correctionStatus {
+  margin: 0.45rem 0 0;
+  color: #9aa3b5;
+  font-size: 0.72rem;
+}
+
+.correctionTrace code {
+  color: #c8ceda;
+}
+
+.operatorGuidance {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #303746;
+}
+
+.operatorGuidance h3,
+.operatorGuidance h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.operatorGuidance p {
+  margin: 0 0 0.5rem;
+}
+
+.recoveryChecklist {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.recoveryChecklist li {
+  margin-bottom: 0.35rem;
+}
+
+.rejectedPlanInspect {
+  margin-top: 0.85rem;
+  color: #9aa3b5;
+  font-size: 0.72rem;
+}
+
+.rejectedPlanInspect summary {
+  cursor: pointer;
+  color: #c8ceda;
+}
+
 .progressSection,
 .conversation,
 .approvalCard {
