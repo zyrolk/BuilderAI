@@ -1,4 +1,6 @@
 import { createOperationId, type ProjectChangePlan } from '../../../core/change-planner';
+import type { Gate2ReviewProjection } from '../../../application/workspace/gate2-review';
+import { projectGate2ReviewForPlan } from '../../../application/workspace/gate2-review/gate2-review.fixture';
 import type { FileApplyResult } from '../../../core/file-apply';
 import type { ResponsePackage } from '../../../core/response-processor';
 import type { VerificationReport } from '../../../core/verification';
@@ -103,6 +105,8 @@ export const CHANGE_PLAN: ProjectChangePlan = {
   warnings: [],
   metadata: { sprint: 12 },
 };
+
+export const GATE2_REVIEW: Gate2ReviewProjection = projectGate2ReviewForPlan(CHANGE_PLAN);
 
 export const APPLY_RESULT: FileApplyResult = {
   schemaVersion: 1,
@@ -231,6 +235,7 @@ export function createWorkflow(
       responsePackage: RESPONSE_PACKAGE,
       changePlan: CHANGE_PLAN,
       preparationId: 'prep-original-001',
+      gate2Review: GATE2_REVIEW,
     }),
     apply: async () => APPLY_RESULT,
     verify: async () => VERIFICATION_REPORT,
@@ -255,6 +260,7 @@ export function createGate2CorrectionWorkflow(
         responsePackage: RESPONSE_PACKAGE,
         changePlan: CHANGE_PLAN,
         preparationId: currentPreparationId,
+        gate2Review: GATE2_REVIEW,
       };
     },
     prepareGate2PreservationCorrection: async (_request, _changePlan, preparationId) => {
@@ -265,6 +271,7 @@ export function createGate2CorrectionWorkflow(
         preparationId: currentPreparationId,
         sourcePreparationId: preparationId,
         isCorrection: true,
+        gate2Review: projectGate2ReviewForPlan(CORRECTED_CHANGE_PLAN),
       };
     },
     apply: async () => {

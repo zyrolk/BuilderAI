@@ -1,5 +1,6 @@
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
+import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
 import type { ProjectChangePlan } from '../../core/change-planner';
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
@@ -35,6 +36,7 @@ export const WORKSPACE_PHASES = [
 export const RESULT_PANEL_TABS = [
   'RESPONSE_PACKAGE',
   'CHANGE_PLAN',
+  'DIFF',
   'APPLY_RESULT',
   'VERIFICATION_REPORT',
 ] as const;
@@ -55,6 +57,7 @@ export interface WorkspaceProjectView {
 export interface PreparedWorkspaceChange {
   readonly responsePackage: ResponsePackage;
   readonly changePlan: ProjectChangePlan;
+  readonly gate2Review?: Gate2ReviewProjection;
   readonly featurePlan?: FeaturePlan;
   readonly preparationId?: string;
   readonly sourcePreparationId?: string;

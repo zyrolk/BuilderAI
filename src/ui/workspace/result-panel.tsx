@@ -1,5 +1,6 @@
 'use client';
 
+import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
 import type {
   ProjectChangePlan,
   ProjectChangeWarning,
@@ -37,12 +38,14 @@ import {
   isAppliedWithVerificationFailure,
   isPartialApplyOutcome,
 } from './verification-outcome-display';
+import { Gate2DiffView } from './gate2-diff-view';
 import styles from './workspace.module.css';
 import { RESULT_PANEL_TABS, type ResultPanelTab } from './workspace.types';
 
 const TAB_LABELS: Readonly<Record<ResultPanelTab, string>> = {
   RESPONSE_PACKAGE: 'Response Package',
   CHANGE_PLAN: 'Change Plan',
+  DIFF: 'Diff',
   APPLY_RESULT: 'Apply Result',
   VERIFICATION_REPORT: 'Verification Report',
 };
@@ -52,6 +55,7 @@ interface ResultPanelProps {
   readonly onTabChange: (tab: ResultPanelTab) => void;
   readonly responsePackage?: ResponsePackage;
   readonly changePlan?: ProjectChangePlan;
+  readonly gate2Review?: Gate2ReviewProjection;
   readonly applyResult?: FileApplyResult;
   readonly verificationReport?: VerificationReport;
 }
@@ -61,6 +65,7 @@ export function ResultPanel({
   onTabChange,
   responsePackage,
   changePlan,
+  gate2Review,
   applyResult,
   verificationReport,
 }: ResultPanelProps) {
@@ -102,6 +107,7 @@ export function ResultPanel({
           <ResponsePackageView responsePackage={responsePackage} />
         )}
         {activeTab === 'CHANGE_PLAN' && <ChangePlanView changePlan={changePlan} />}
+        {activeTab === 'DIFF' && <Gate2DiffView gate2Review={gate2Review} />}
         {activeTab === 'APPLY_RESULT' && (
           <ApplyResultView applyResult={applyResult} changePlan={changePlan} />
         )}

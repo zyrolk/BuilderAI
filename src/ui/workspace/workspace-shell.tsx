@@ -305,7 +305,7 @@ export function WorkspaceShell({
       }
       setPhase('AWAITING_APPROVAL');
       setProgressIndex(3);
-      setActiveTab('CHANGE_PLAN');
+      setActiveTab('DIFF');
       setConversation((entries) => [
         ...entries,
         {
@@ -371,7 +371,7 @@ export function WorkspaceShell({
       });
       setPhase('AWAITING_APPROVAL');
       setProgressIndex(3);
-      setActiveTab('CHANGE_PLAN');
+      setActiveTab('DIFF');
       setShowGate2RejectForm(false);
       setGate2RejectionReason('');
       setConversation((entries) => [
@@ -824,6 +824,7 @@ export function WorkspaceShell({
             onTabChange={setActiveTab}
             responsePackage={prepared?.responsePackage}
             changePlan={prepared?.changePlan}
+            gate2Review={prepared?.gate2Review}
             applyResult={applyResult}
             verificationReport={verificationReport}
           />

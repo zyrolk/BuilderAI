@@ -1,20 +1,36 @@
 import { CHANGE_PLAN, APPLY_RESULT } from '../../ui/workspace/test/workspace.fixture';
+import { EMPTY_GATE2_REVIEW } from './gate2-review/gate2-review.fixture';
 import { InMemoryPreparationStore, MAXIMUM_APPLY_ATTEMPTS } from './in-memory-preparation.store';
 
 describe('InMemoryPreparationStore', () => {
   it('never evicts or double-claims an in-flight preparation', () => {
     let now = new Date('2026-07-31T13:00:00.000Z');
     const store = new InMemoryPreparationStore({ now: () => new Date(now) }, 1);
-    store.save('preparation-one', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z'));
+    store.save(
+      'preparation-one',
+      CHANGE_PLAN,
+      EMPTY_GATE2_REVIEW,
+      new Date('2026-07-31T13:15:00.000Z'),
+    );
     expect(store.claim('preparation-one').kind).toBe('CLAIMED');
 
     expect(() => store.claim('preparation-one')).toThrow('already being applied');
     expect(() =>
-      store.save('preparation-two', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z')),
+      store.save(
+        'preparation-two',
+        CHANGE_PLAN,
+        EMPTY_GATE2_REVIEW,
+        new Date('2026-07-31T13:15:00.000Z'),
+      ),
     ).toThrow('capacity');
 
     store.complete('preparation-one', { applyResult: APPLY_RESULT });
-    store.save('preparation-two', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z'));
+    store.save(
+      'preparation-two',
+      CHANGE_PLAN,
+      EMPTY_GATE2_REVIEW,
+      new Date('2026-07-31T13:15:00.000Z'),
+    );
     expect(() => store.claim('preparation-one')).toThrow('not found');
 
     now = new Date('2026-07-31T13:16:00.000Z');
@@ -26,7 +42,12 @@ describe('InMemoryPreparationStore', () => {
       { now: () => new Date('2026-07-31T13:00:00.000Z') },
       10,
     );
-    store.save('preparation-one', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z'));
+    store.save(
+      'preparation-one',
+      CHANGE_PLAN,
+      EMPTY_GATE2_REVIEW,
+      new Date('2026-07-31T13:15:00.000Z'),
+    );
 
     const first = store.claim('preparation-one');
     expect(first).toMatchObject({ kind: 'CLAIMED', attempt: 1 });
@@ -40,7 +61,12 @@ describe('InMemoryPreparationStore', () => {
       { now: () => new Date('2026-07-31T13:00:00.000Z') },
       10,
     );
-    store.save('preparation-one', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z'));
+    store.save(
+      'preparation-one',
+      CHANGE_PLAN,
+      EMPTY_GATE2_REVIEW,
+      new Date('2026-07-31T13:15:00.000Z'),
+    );
 
     const first = store.claim('preparation-one');
     expect(first).toMatchObject({ kind: 'CLAIMED', attempt: 1 });
@@ -59,7 +85,12 @@ describe('InMemoryPreparationStore', () => {
   it('does not reset or extend the original expiry when a record is released for retry', () => {
     let now = new Date('2026-07-31T13:00:00.000Z');
     const store = new InMemoryPreparationStore({ now: () => new Date(now) }, 10);
-    store.save('preparation-one', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z'));
+    store.save(
+      'preparation-one',
+      CHANGE_PLAN,
+      EMPTY_GATE2_REVIEW,
+      new Date('2026-07-31T13:15:00.000Z'),
+    );
 
     store.claim('preparation-one');
     now = new Date('2026-07-31T13:14:00.000Z');
@@ -74,7 +105,12 @@ describe('InMemoryPreparationStore', () => {
       { now: () => new Date('2026-07-31T13:00:00.000Z') },
       10,
     );
-    store.save('preparation-one', CHANGE_PLAN, new Date('2026-07-31T13:15:00.000Z'));
+    store.save(
+      'preparation-one',
+      CHANGE_PLAN,
+      EMPTY_GATE2_REVIEW,
+      new Date('2026-07-31T13:15:00.000Z'),
+    );
     expect(() => store.releaseForRetry('preparation-one')).toThrow('inconsistent');
   });
 });

@@ -52,6 +52,7 @@ import {
 } from './feature-plan.service';
 import type { FeatureTaskPrepareInput } from './workspace-runtime.types';
 import { InMemoryPreparationStore, MAXIMUM_APPLY_ATTEMPTS } from './in-memory-preparation.store';
+import { Gate2ReviewProjectionService } from './gate2-review';
 import {
   extractIterationPathHints,
   normalizeIterationFeedback,
@@ -95,6 +96,7 @@ interface WorkspaceRuntimeDependencies {
 export class WorkspaceRuntimeService {
   private readonly configuration: WorkspaceRuntimeConfiguration;
   private readonly store: InMemoryPreparationStore;
+  private readonly gate2ReviewProjection = new Gate2ReviewProjectionService();
   private readonly prepareScope: PrepareScopeService;
   private readonly security: WorkspaceSecurityConfiguration;
   private readonly authorization: WorkspaceAuthorizationService;
@@ -177,15 +179,27 @@ export class WorkspaceRuntimeService {
         undefined,
         scopePlan,
       );
+      const gate2Review = this.gate2ReviewProjection.project(
+        changePlan,
+        this.dependencies.workspaceBaseline,
+      );
       const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
       const applyAuthorizationToken = this.issueApplyAuthorizationToken();
-      this.store.save(correlationId, changePlan, expiresAt, undefined, applyAuthorizationToken);
+      this.store.save(
+        correlationId,
+        changePlan,
+        gate2Review,
+        expiresAt,
+        undefined,
+        applyAuthorizationToken,
+      );
       this.log(correlationId, 'PREPARE', 'SUCCEEDED', startedAt);
       return {
         preparationId: correlationId,
         expiresAt: expiresAt.toISOString(),
         responsePackage,
         changePlan,
+        gate2Review,
         ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
       };
     } catch (error: unknown) {
@@ -276,11 +290,16 @@ export class WorkspaceRuntimeService {
         undefined,
         scopePlan,
       );
+      const gate2Review = this.gate2ReviewProjection.project(
+        changePlan,
+        this.dependencies.workspaceBaseline,
+      );
       const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
       const applyAuthorizationToken = this.issueApplyAuthorizationToken();
       this.store.save(
         correlationId,
         changePlan,
+        gate2Review,
         expiresAt,
         featureBinding,
         applyAuthorizationToken,
@@ -303,6 +322,7 @@ export class WorkspaceRuntimeService {
         expiresAt: expiresAt.toISOString(),
         responsePackage,
         changePlan,
+        gate2Review,
         ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
       };
     } catch (error: unknown) {

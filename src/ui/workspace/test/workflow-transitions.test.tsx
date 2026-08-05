@@ -9,6 +9,7 @@ import {
   createWorkflow,
   FAILED_APPLY_RESULT,
   PARTIALLY_APPLIED_RESULT,
+  GATE2_REVIEW,
   PROJECT_VIEW,
   REJECTED_APPLY_RESULT,
   RESPONSE_PACKAGE,
@@ -21,11 +22,15 @@ describe('Workspace workflow transitions', () => {
       | ((value: {
           responsePackage: typeof RESPONSE_PACKAGE;
           changePlan: typeof CHANGE_PLAN;
+          gate2Review: typeof GATE2_REVIEW;
+          preparationId: string;
         }) => void)
       | undefined;
     const preparation = new Promise<{
       responsePackage: typeof RESPONSE_PACKAGE;
       changePlan: typeof CHANGE_PLAN;
+      gate2Review: typeof GATE2_REVIEW;
+      preparationId: string;
     }>((resolve) => {
       resolvePreparation = resolve;
     });
@@ -47,7 +52,12 @@ describe('Workspace workflow transitions', () => {
     );
 
     await act(async () =>
-      resolvePreparation?.({ responsePackage: RESPONSE_PACKAGE, changePlan: CHANGE_PLAN }),
+      resolvePreparation?.({
+        responsePackage: RESPONSE_PACKAGE,
+        changePlan: CHANGE_PLAN,
+        gate2Review: GATE2_REVIEW,
+        preparationId: 'prep-pending-001',
+      }),
     );
     expect(
       await screen.findByRole('heading', { name: 'Review before applying' }),
@@ -58,6 +68,8 @@ describe('Workspace workflow transitions', () => {
     const prepare = vi.fn(async () => ({
       responsePackage: RESPONSE_PACKAGE,
       changePlan: CHANGE_PLAN,
+      gate2Review: GATE2_REVIEW,
+      preparationId: 'prep-workflow-001',
     }));
     const apply = vi.fn(async () => APPLY_RESULT);
     const verify = vi.fn(async () => VERIFICATION_REPORT);
@@ -72,7 +84,7 @@ describe('Workspace workflow transitions', () => {
       await screen.findByRole('heading', { name: 'Review before applying' }),
     ).toBeInTheDocument();
     expect(prepare).toHaveBeenCalledWith('Create a focused example module.');
-    expect(screen.getByText('Create File')).toBeInTheDocument();
+    expect(screen.getByText('NEW FILE')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /approve and apply/i })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Response Package' }));

@@ -760,6 +760,12 @@
         "summary": "BUILDERAI_ZYROLK_READY Checkpoint 4: Zyro-aligned verification (optional lint/typecheck script discovery), operator failure classification, post-apply verification failure UX, PARTIALLY_APPLIED recovery guidance with fresh-prepare safety, verification correction loop, dependency-change guidance, trusted-local operator runbook, and ADR-035.",
         "taskIds": [],
         "completedAt": "2026-08-05T06:00:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp6",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP6: Gate 2 server-authoritative unified diff review — deterministic diff projection at prepare time from server-held ChangePlan and baseline port, bounded Gate2ReviewProjection DTO, protected-path fail-closed masking, and workspace Diff tab for UPDATE/CREATE/DELETE operations.",
+        "taskIds": [],
+        "completedAt": "2026-08-05T12:15:00.000Z"
       }
     ],
     "pendingWork": [

@@ -1,4 +1,5 @@
 import type { ProjectChangePlan } from '../../core/change-planner';
+import type { Gate2ReviewProjection } from './gate2-review';
 import type {
   FeatureTaskPreparationBinding,
   WorkspaceCompletion,
@@ -18,6 +19,7 @@ export const MAXIMUM_APPLY_ATTEMPTS = 2;
 interface PreparationRecord {
   readonly id: string;
   readonly plan: ProjectChangePlan;
+  readonly gate2Review: Gate2ReviewProjection;
   readonly expiresAt: number;
   readonly featureTaskBinding?: FeatureTaskPreparationBinding;
   readonly applyAuthorizationToken?: string;
@@ -37,6 +39,7 @@ export class InMemoryPreparationStore {
   save(
     id: string,
     plan: ProjectChangePlan,
+    gate2Review: Gate2ReviewProjection,
     expiresAt: Date,
     featureTaskBinding?: FeatureTaskPreparationBinding,
     applyAuthorizationToken?: string,
@@ -55,6 +58,7 @@ export class InMemoryPreparationStore {
     this.records.set(id, {
       id,
       plan: structuredClone(plan),
+      gate2Review: structuredClone(gate2Review),
       expiresAt: expiresAt.getTime(),
       ...(featureTaskBinding === undefined ? {} : { featureTaskBinding }),
       ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),

@@ -1,6 +1,7 @@
 import {
   APPLY_RESULT,
   CHANGE_PLAN,
+  GATE2_REVIEW,
   RESPONSE_PACKAGE,
   VERIFICATION_REPORT,
 } from './test/workspace.fixture';
@@ -17,6 +18,7 @@ describe('HttpWorkspaceWorkflow', () => {
           preparationId: '123e4567-e89b-12d3-a456-426614174000',
           responsePackage: RESPONSE_PACKAGE,
           changePlan: CHANGE_PLAN,
+          gate2Review: GATE2_REVIEW,
         }),
       )
       .mockResolvedValueOnce(

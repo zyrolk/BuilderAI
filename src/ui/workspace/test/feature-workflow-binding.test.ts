@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FileApplyResult } from '../../../core/file-apply';
 import type { VerificationReport } from '../../../core/verification';
 import { HttpWorkspaceWorkflow } from '../http-workspace-workflow';
-import { CHANGE_PLAN, RESPONSE_PACKAGE } from './workspace.fixture';
+import { CHANGE_PLAN, GATE2_REVIEW, RESPONSE_PACKAGE } from './workspace.fixture';
 
 const APPLIED_RESULT: FileApplyResult = {
   schemaVersion: 1,
@@ -37,6 +37,7 @@ describe('HttpWorkspaceWorkflow feature binding', () => {
           preparationId: 'prep-feature-001',
           responsePackage: RESPONSE_PACKAGE,
           changePlan: CHANGE_PLAN,
+          gate2Review: GATE2_REVIEW,
           featurePlan: {
             schemaVersion: 1,
             featurePlanId: 'plan-bind-001',
@@ -90,6 +91,7 @@ describe('HttpWorkspaceWorkflow feature binding', () => {
           preparationId: 'prep-ordinary-001',
           responsePackage: RESPONSE_PACKAGE,
           changePlan: CHANGE_PLAN,
+          gate2Review: GATE2_REVIEW,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),

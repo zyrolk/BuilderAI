@@ -6,6 +6,7 @@ import type { ResponsePackage } from '../../core/response-processor';
 import type { VerificationReport } from '../../core/verification';
 
 import type { FeaturePlan, FeatureTask } from './feature-plan.types';
+import type { Gate2ReviewProjection } from './gate2-review';
 import type { IterationFeedback } from './iteration-feedback.types';
 
 export interface ProviderExecutionOutput {
@@ -22,6 +23,7 @@ export interface WorkspacePreparation {
   readonly expiresAt: string;
   readonly responsePackage: ResponsePackage;
   readonly changePlan: ProjectChangePlan;
+  readonly gate2Review: Gate2ReviewProjection;
   /** Server-issued apply authorization; required for protected-profile apply requests. */
   readonly applyAuthorizationToken?: string;
 }

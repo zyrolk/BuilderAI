@@ -4,6 +4,7 @@ import {
   buildIterationFeedbackFromCompletion,
   buildIterationFeedbackFromGate2Rejection,
 } from '../../application/workspace/iteration-feedback.service';
+import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
 import { parseWorkspaceActivity } from '../../application/workspace/activity-history.schemas';
@@ -27,6 +28,7 @@ interface PreparationWireResponse {
   readonly preparationId: string;
   readonly responsePackage: ResponsePackage;
   readonly changePlan: ProjectChangePlan;
+  readonly gate2Review: Gate2ReviewProjection;
   readonly featurePlan?: FeaturePlan;
 }
 
@@ -87,6 +89,7 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     return {
       responsePackage: structuredClone(response.responsePackage),
       changePlan: structuredClone(response.changePlan),
+      gate2Review: structuredClone(response.gate2Review),
       preparationId: response.preparationId,
       ...(response.featurePlan === undefined
         ? {}
@@ -232,13 +235,38 @@ function parsePreparation(value: unknown): PreparationWireResponse {
   const planValidator: ProjectChangePlanValidator = new ProjectChangePlanValidator();
   responseValidator.validate(responsePackage);
   planValidator.validate(changePlan);
+  const gate2Review = readGate2Review(value);
   const featurePlan = readFeaturePlan(value);
   return {
     preparationId,
     responsePackage,
     changePlan,
+    gate2Review,
     ...(featurePlan === undefined ? {} : { featurePlan }),
   };
+}
+
+function readGate2Review(value: unknown): Gate2ReviewProjection {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Invalid Gate 2 review response.');
+  }
+  const candidate = Reflect.get(value, 'gate2Review');
+  if (typeof candidate !== 'object' || candidate === null) {
+    throw new Error('Gate 2 review projection is required.');
+  }
+  const schemaVersion = Reflect.get(candidate, 'schemaVersion');
+  const operationDiffs = Reflect.get(candidate, 'operationDiffs');
+  const totalCharacterCount = Reflect.get(candidate, 'totalCharacterCount');
+  const truncated = Reflect.get(candidate, 'truncated');
+  if (
+    schemaVersion !== 1 ||
+    !Array.isArray(operationDiffs) ||
+    typeof totalCharacterCount !== 'number' ||
+    typeof truncated !== 'boolean'
+  ) {
+    throw new Error('Gate 2 review projection is invalid.');
+  }
+  return candidate as Gate2ReviewProjection;
 }
 
 function readFeaturePlan(value: unknown): FeaturePlan | undefined {
