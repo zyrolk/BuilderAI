@@ -1,20 +1,11 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-
-import {
-  loadCanonicalProjectBrain,
-  parseProjectBrain,
-  type ProjectBrain,
-} from '../../core/project-brain';
-import {
-  isLocalWorkspaceRuntimeConfigured,
-  loadLocalWorkspaceRuntimeConfiguration,
-} from './local-runtime-configuration';
+import { loadCanonicalProjectBrain, type ProjectBrain } from '../../core/project-brain';
+import { loadWorkspaceProjectBrain } from '../../core/target-project';
+import { loadLocalWorkspaceRuntimeConfiguration } from './local-runtime-configuration';
 
 export function loadWorkspaceProjectBrainForView(): ProjectBrain {
-  if (!isLocalWorkspaceRuntimeConfigured()) return loadCanonicalProjectBrain();
-  const { projectRoot } = loadLocalWorkspaceRuntimeConfiguration();
-  return parseProjectBrain(
-    JSON.parse(readFileSync(path.join(projectRoot, 'project-brain.json'), 'utf8')) as unknown,
-  );
+  if (process.env.BUILDERAI_LIVE_WORKFLOW_ENABLED !== 'true') {
+    return loadCanonicalProjectBrain();
+  }
+  const { projectRoot, projectProfile } = loadLocalWorkspaceRuntimeConfiguration();
+  return loadWorkspaceProjectBrain(projectRoot, projectProfile);
 }
