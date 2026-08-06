@@ -1,5 +1,6 @@
 import { createOperationId, type ProjectChangePlan } from '../../../core/change-planner';
 import type { Gate2ReviewProjection } from '../../../application/workspace/gate2-review';
+import type { WorkspaceInvestigation } from '../../../application/workspace/investigation';
 import { projectGate2ReviewForPlan } from '../../../application/workspace/gate2-review/gate2-review.fixture';
 import type { FileApplyResult } from '../../../core/file-apply';
 import type { ResponsePackage } from '../../../core/response-processor';
@@ -236,6 +237,29 @@ export function createWorkflow(
       changePlan: CHANGE_PLAN,
       preparationId: 'prep-original-001',
       gate2Review: GATE2_REVIEW,
+    }),
+    investigate: async (request: string): Promise<WorkspaceInvestigation> => ({
+      investigationId: 'investigation-fixture-001',
+      request,
+      bounded: false,
+      searchResult: {
+        queries: ['fixture'],
+        matches: [],
+        filesScanned: 0,
+        truncated: false,
+        limitationMessages: [],
+      },
+      report: {
+        schemaVersion: 1,
+        investigationId: 'investigation-fixture-001',
+        summary: 'Fixture investigation summary.',
+        confidence: 'LOW',
+        hypotheses: [],
+        evidence: [],
+        affectedAreas: [],
+        recommendedNextSteps: ['Prepare a focused fix through Gate 2.'],
+        limitations: [],
+      },
     }),
     apply: async () => APPLY_RESULT,
     verify: async () => VERIFICATION_REPORT,

@@ -11,15 +11,21 @@ import type {
   TestRunnerPort,
   TypecheckRunnerPort,
   VerificationContext,
+  VerificationDiagnostic,
   VerificationMessage,
   VerificationStagePortResult,
 } from '../../core/verification';
+import { DEFAULT_VERIFICATION_CONFIGURATION } from '../../core/verification';
 import { discoverPackageScripts, type DiscoveredPackageScripts } from './package-script-discovery';
+import { buildVerificationDiagnostic } from './verification-diagnostic';
 
 export interface NodeVerificationConfiguration {
   readonly projectRoot: string;
   readonly commandTimeoutMs: number;
   readonly maximumOutputBytes: number;
+  readonly maximumDiagnosticStdoutCharacters?: number;
+  readonly maximumDiagnosticStderrCharacters?: number;
+  readonly maximumDiagnosticCombinedCharacters?: number;
 }
 
 interface CommandResult {
@@ -27,10 +33,13 @@ interface CommandResult {
   readonly timedOut: boolean;
   readonly outputBytes: number;
   readonly outputTruncated: boolean;
+  readonly stdout: string;
+  readonly stderr: string;
 }
 
 interface RunOptions {
   readonly failureCode: string;
+  readonly commandLabel: string;
 }
 
 export class NodeProjectValidator implements ProjectValidatorPort {
@@ -62,6 +71,7 @@ export class NodeDependencyValidator implements DependencyValidatorPort {
     void context;
     return this.runner.run('dependency-validation', ['ls', '--omit=dev', '--json', '--depth=0'], {
       failureCode: 'DEPENDENCY_VALIDATION_FAILED',
+      commandLabel: 'npm ls --omit=dev --json --depth=0',
     });
   }
 }
@@ -71,7 +81,10 @@ export class NodeBuildRunner implements BuildRunnerPort {
 
   async runBuild(context: VerificationContext): Promise<VerificationStagePortResult> {
     void context;
-    return this.runner.run('build-validation', ['run', 'build'], { failureCode: 'BUILD_FAILED' });
+    return this.runner.run('build-validation', ['run', 'build'], {
+      failureCode: 'BUILD_FAILED',
+      commandLabel: 'npm run build',
+    });
   }
 }
 
@@ -80,7 +93,10 @@ export class NodeTestRunner implements TestRunnerPort {
 
   async runTests(context: VerificationContext): Promise<VerificationStagePortResult> {
     void context;
-    return this.runner.run('test-validation', ['test'], { failureCode: 'TEST_FAILED' });
+    return this.runner.run('test-validation', ['test'], {
+      failureCode: 'TEST_FAILED',
+      commandLabel: 'npm test',
+    });
   }
 }
 
@@ -96,7 +112,10 @@ export class NodeLintRunner implements LintRunnerPort {
     if (script === undefined) {
       return skippedOptionalStage('lint');
     }
-    return this.runner.run('lint-validation', ['run', script], { failureCode: 'LINT_FAILED' });
+    return this.runner.run('lint-validation', ['run', script], {
+      failureCode: 'LINT_FAILED',
+      commandLabel: `npm run ${script}`,
+    });
   }
 }
 
@@ -114,6 +133,7 @@ export class NodeTypecheckRunner implements TypecheckRunnerPort {
     }
     return this.runner.run('typecheck-validation', ['run', script], {
       failureCode: 'TYPECHECK_FAILED',
+      commandLabel: `npm run ${script}`,
     });
   }
 }
@@ -142,9 +162,25 @@ export function createNodeVerificationRunners(configuration: NodeVerificationCon
 
 export class BoundedNpmCommandRunner {
   private readonly root: string;
+  private readonly diagnosticLimits: {
+    readonly maximumStdoutCharacters: number;
+    readonly maximumStderrCharacters: number;
+    readonly maximumCombinedCharacters: number;
+  };
 
   constructor(private readonly configuration: NodeVerificationConfiguration) {
     this.root = path.resolve(configuration.projectRoot);
+    this.diagnosticLimits = {
+      maximumStdoutCharacters:
+        configuration.maximumDiagnosticStdoutCharacters ??
+        DEFAULT_VERIFICATION_CONFIGURATION.maximumDiagnosticStdoutCharacters,
+      maximumStderrCharacters:
+        configuration.maximumDiagnosticStderrCharacters ??
+        DEFAULT_VERIFICATION_CONFIGURATION.maximumDiagnosticStderrCharacters,
+      maximumCombinedCharacters:
+        configuration.maximumDiagnosticCombinedCharacters ??
+        DEFAULT_VERIFICATION_CONFIGURATION.maximumDiagnosticCombinedCharacters,
+    };
     if (
       !Number.isSafeInteger(configuration.commandTimeoutMs) ||
       configuration.commandTimeoutMs <= 0 ||
@@ -186,8 +222,21 @@ export class BoundedNpmCommandRunner {
         message: `${stageName} output exceeded the configured diagnostic limit.`,
       });
     }
+    const failed = errors.length > 0;
+    const diagnostic = failed
+      ? buildVerificationDiagnostic({
+          commandLabel: options.commandLabel,
+          exitCode: result.exitCode,
+          timedOut: result.timedOut,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          outputBytes: result.outputBytes,
+          outputTruncated: result.outputTruncated,
+          limits: this.diagnosticLimits,
+        })
+      : undefined;
     return {
-      status: errors.length === 0 ? 'PASSED' : 'FAILED',
+      status: failed ? 'FAILED' : 'PASSED',
       warnings,
       errors,
       metadata: {
@@ -195,6 +244,7 @@ export class BoundedNpmCommandRunner {
         'output-bytes': result.outputBytes,
         'output-truncated': result.outputTruncated,
       },
+      ...(diagnostic === undefined ? {} : { diagnostic }),
     };
   }
 }
@@ -243,12 +293,17 @@ function executeBounded(
     let outputTruncated = false;
     let timedOut = false;
     let hardKill: ReturnType<typeof setTimeout> | undefined;
-    const observe = (chunk: Buffer | string): void => {
-      outputBytes += Buffer.byteLength(chunk);
+    let stdout = '';
+    let stderr = '';
+    const append = (target: 'stdout' | 'stderr', chunk: Buffer | string): void => {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      outputBytes += Buffer.byteLength(text, 'utf8');
       if (outputBytes > configuration.maximumOutputBytes) outputTruncated = true;
+      if (target === 'stdout') stdout += text;
+      else stderr += text;
     };
-    child.stdout.on('data', observe);
-    child.stderr.on('data', observe);
+    child.stdout.on('data', (chunk: Buffer | string) => append('stdout', chunk));
+    child.stderr.on('data', (chunk: Buffer | string) => append('stderr', chunk));
     child.once('error', reject);
     const timeout = setTimeout(() => {
       timedOut = true;
@@ -260,7 +315,7 @@ function executeBounded(
     child.once('close', (exitCode) => {
       clearTimeout(timeout);
       if (hardKill !== undefined) clearTimeout(hardKill);
-      resolve({ exitCode, timedOut, outputBytes, outputTruncated });
+      resolve({ exitCode, timedOut, outputBytes, outputTruncated, stdout, stderr });
     });
   });
 }
@@ -297,3 +352,5 @@ function toMessage(diagnostic: {
 }): VerificationMessage {
   return { code: diagnostic.code, message: diagnostic.message.slice(0, 2_000) };
 }
+
+export type { VerificationDiagnostic };

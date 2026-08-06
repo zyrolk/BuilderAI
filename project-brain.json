@@ -766,6 +766,30 @@
         "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP6: Gate 2 server-authoritative unified diff review — deterministic diff projection at prepare time from server-held ChangePlan and baseline port, bounded Gate2ReviewProjection DTO, protected-path fail-closed masking, and workspace Diff tab for UPDATE/CREATE/DELETE operations.",
         "taskIds": [],
         "completedAt": "2026-08-05T12:15:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp7",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP7: read-only investigation and evidence-driven diagnosis — explicit Investigate workflow mode, bounded Node-native repository search, validated InvestigationReport contract with FACT/INFERENCE/UNKNOWN claim discipline, protected-path fail-closed handling, and Prepare Fix handoff into normal Gate 2 prepare.",
+        "taskIds": [],
+        "completedAt": "2026-08-05T12:45:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp8",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP8: durable external-target project memory — local .builderai/project-memory.json storage, bounded schema with decisions/completed-work/investigations/findings, explicit investigation save, verified-apply completed-work memory, deterministic relevance selection for prepare/investigate, restart durability, protected-path and secret fail-closed handling, and project isolation.",
+        "taskIds": [],
+        "completedAt": "2026-08-05T14:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp9",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP9: verification diagnostic output and operator failure UX — bounded stdout/stderr excerpts for failed build/test/lint/typecheck stages, deterministic secret redaction, failure-category operator guidance, correction feedback integration, compact success UI, optional verification-to-investigation handoff, and CP8 runtime completed-work memory regression coverage.",
+        "taskIds": [],
+        "completedAt": "2026-08-06T00:00:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp9-1",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP9_1: cross-platform change-planner line/churn normalization — canonical logical-line semantics with CRLF/LF parity, pinned 36-line smoke-atelier golden fixture replacing mutable external path, LF/CRLF/trailing-newline regression coverage, and full CI green.",
+        "taskIds": [],
+        "completedAt": "2026-08-06T03:30:00.000Z"
       }
     ],
     "pendingWork": [

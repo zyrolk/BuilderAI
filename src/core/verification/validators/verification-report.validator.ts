@@ -19,6 +19,8 @@ import {
   validateExactKeys,
   validateMessages,
   validateMetadata,
+  validateOptionalDiagnostic,
+  validateRequiredKeys,
 } from './validation-helpers';
 import { VerificationConfigurationValidator } from './configuration.validator';
 
@@ -82,13 +84,28 @@ export class VerificationReportValidator {
         addIssue(issues, 'INVALID_REPORT', path, 'must be an object');
         return;
       }
-      validateExactKeys(
+      validateRequiredKeys(
         stage,
         ['stage', 'status', 'warnings', 'errors', 'durationMs', 'metadata'],
         path,
         issues,
         'INVALID_REPORT',
       );
+      for (const key of Object.keys(stage)) {
+        if (
+          ![
+            'stage',
+            'status',
+            'warnings',
+            'errors',
+            'durationMs',
+            'metadata',
+            'diagnostic',
+          ].includes(key)
+        ) {
+          addIssue(issues, 'INVALID_REPORT', `${path}.${key}`, 'is not allowed');
+        }
+      }
       if (stage.stage !== VERIFICATION_STAGES[index]) {
         addIssue(issues, 'INVALID_STAGE_ORDER', `${path}.stage`, 'does not match canonical order');
       }
@@ -122,6 +139,11 @@ export class VerificationReportValidator {
         this.configuration.maximumStageMetadataStringCharacters,
         true,
       );
+      validateOptionalDiagnostic(stage.diagnostic, `${path}.diagnostic`, issues, 'INVALID_REPORT', {
+        maximumStdoutCharacters: this.configuration.maximumDiagnosticStdoutCharacters,
+        maximumStderrCharacters: this.configuration.maximumDiagnosticStderrCharacters,
+        maximumCombinedCharacters: this.configuration.maximumDiagnosticCombinedCharacters,
+      });
       if (!isNonNegativeFiniteNumber(stage.durationMs)) {
         addIssue(issues, 'INVALID_REPORT', `${path}.durationMs`, 'must be non-negative and finite');
       }

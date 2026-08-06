@@ -133,6 +133,52 @@ describe('UpdatePreservationAnalysisService', () => {
     expect(first.baselineContentChecksum.value).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('analyzeSynchronously normalizes line endings before computing metrics', () => {
+    const baseline = 'line one\r\nline two\r\n';
+    const proposed = 'line one\r\nline two-updated\r\n';
+    const result = service.analyzeSynchronously({
+      logicalPath: 'src/example.ts',
+      baselineContent: baseline,
+      proposedContent: proposed,
+      baselineContentChecksum: { algorithm: 'sha256', value: 'a'.repeat(64) },
+    });
+
+    expect(result.baselineLines).toBe(2);
+    expect(result.linesAdded).toBe(1);
+    expect(result.linesDeleted).toBe(1);
+    expect(result.churnRatio).toBe(1);
+  });
+
+  it('reports full churn when baseline is empty and proposal introduces content', async () => {
+    const result = await service.analyze({
+      logicalPath: 'src/new.ts',
+      baselineContent: '',
+      proposedContent: 'created line\n',
+    });
+
+    expect(result.baselineLines).toBe(0);
+    expect(result.proposedLines).toBe(1);
+    expect(result.linesUnchanged).toBe(0);
+    expect(result.linesAdded).toBe(1);
+    expect(result.linesDeleted).toBe(0);
+    expect(result.churnRatio).toBe(1);
+  });
+
+  it('reports full churn when proposal is empty and baseline had content', async () => {
+    const result = await service.analyze({
+      logicalPath: 'src/removed.ts',
+      baselineContent: 'removed line\n',
+      proposedContent: '',
+    });
+
+    expect(result.baselineLines).toBe(1);
+    expect(result.proposedLines).toBe(0);
+    expect(result.linesUnchanged).toBe(0);
+    expect(result.linesAdded).toBe(0);
+    expect(result.linesDeleted).toBe(1);
+    expect(result.churnRatio).toBe(1);
+  });
+
   it('returns deterministic metrics across repeated runs', async () => {
     const input = {
       logicalPath: 'index.html',

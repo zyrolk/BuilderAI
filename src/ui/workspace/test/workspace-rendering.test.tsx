@@ -35,9 +35,14 @@ describe('WorkspaceShell rendering', () => {
 
     fireEvent.keyDown(planTab, { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Diff' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText(/line-level diff will appear/i)).toBeInTheDocument();
 
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Diff' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Investigation' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Investigation' }), { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Apply Result' })).toHaveAttribute(
       'aria-selected',
       'true',

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atelier Local Counter</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Atelier Local</h1>
+    </header>
+    <main>
+      <section class="counter-section">
+        <h2>Interactive Counter</h2>
+        <div class="counter-display">
+          <span id="counter-value">0</span>
+        </div>
+        <div class="counter-controls">
+          <button id="increment-counter" aria-label="Increment counter">Increment</button>
+          <button id="reset-counter" aria-label="Reset counter to zero">Reset</button>
+        </div>
+      </section>
+      <section class="quote-section">
+        <h2>Inspirational Quote</h2>
+        <blockquote id="quote-text">Loading quote...</blockquote>
+        <p id="quote-author"></p>
+        <button id="next-quote" aria-label="Show next quote">Next Quote</button>
+      </section>
+    </main>
+    <footer>
+      <p>&copy; 2026 Atelier Local. All rights reserved.</p>
+    </footer>
+    <script src="assets/app.js"></script>
+  </body>
+</html>

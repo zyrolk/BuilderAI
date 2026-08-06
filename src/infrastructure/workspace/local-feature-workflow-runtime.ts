@@ -3,17 +3,24 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 
 import type { WorkspaceSecurityConfiguration } from '../../application/workspace/workspace-authorization.types';
+import type { InvestigationService } from '../../application/workspace';
 import {
   FeatureDecompositionService,
   FeaturePlanPersistence,
   FeatureWorkflowService,
   ActivityHistoryService,
   WorkspaceRuntimeService,
+  ProjectMemoryService,
 } from '../../application/workspace';
+import {
+  createDefaultInvestigationService,
+  ProviderInvestigationAnalyzer,
+} from '../../application/workspace/investigation';
 import {
   createProjectContextReader,
   loadExternalTargetSourceIndexOptions,
   loadWorkspaceProjectBrain,
+  readWorkspaceProjectId,
 } from '../../core/target-project';
 import { ChangePlannerService } from '../../core/change-planner';
 import { ContextBuilderService } from '../../core/context-builder';
@@ -35,13 +42,19 @@ import { StructuredRuntimeLogger } from './structured-runtime-logger';
 
 type LocalWorkspaceServices = {
   readonly runtime: WorkspaceRuntimeService;
+  readonly investigation: InvestigationService;
   readonly featureWorkflow: FeatureWorkflowService;
   readonly featureDecomposition: FeatureDecompositionService;
   readonly activityHistory: ActivityHistoryService;
+  readonly projectMemory?: ProjectMemoryService;
   readonly security: WorkspaceSecurityConfiguration;
 };
 
 let singleton: LocalWorkspaceServices | undefined;
+
+export function getLocalInvestigationService(): InvestigationService {
+  return getLocalWorkspaceServices().investigation;
+}
 
 export function getLocalWorkspaceRuntime(): WorkspaceRuntimeService {
   return getLocalWorkspaceServices().runtime;
@@ -57,6 +70,10 @@ export function getLocalFeatureDecomposition(): FeatureDecompositionService {
 
 export function getLocalActivityHistory(): ActivityHistoryService {
   return getLocalWorkspaceServices().activityHistory;
+}
+
+export function getLocalProjectMemory(): ProjectMemoryService | undefined {
+  return getLocalWorkspaceServices().projectMemory;
 }
 
 export function getLocalWorkspaceSecurityConfiguration(): WorkspaceSecurityConfiguration {
@@ -144,12 +161,17 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
   });
   const projectValidator = new NodeProjectValidator(blueprintReader);
   const activityHistory = new ActivityHistoryService({ projectRoot: configuration.projectRoot });
+  const projectMemory = createProjectMemoryService(
+    configuration.projectRoot,
+    configuration.projectProfile,
+  );
   const workspaceBaseline = new NodeWorkspaceBaseline(configuration.projectRoot);
+  const sourceFiles = new NodeProjectFileSource(configuration.projectRoot, sourceIndexOptions);
   const runtime = new WorkspaceRuntimeService({
     loadProjectBrain: () =>
       loadWorkspaceProjectBrain(configuration.projectRoot, configuration.projectProfile),
     blueprintReader,
-    sourceFiles: new NodeProjectFileSource(configuration.projectRoot, sourceIndexOptions),
+    sourceFiles,
     contextBuilder: new ContextBuilderService(),
     promptOrchestrator: new PromptOrchestratorService(),
     workspaceBaseline,
@@ -176,6 +198,16 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     configuration: configuration.workspace,
     security: configuration.security,
     projectRoot: configuration.projectRoot,
+    projectMemory,
+  });
+  const investigation = createDefaultInvestigationService({
+    sourceFiles,
+    clock: { now: () => new Date() },
+    ids: { generate: randomUUID },
+    logger: runtimeLogger,
+    providerTimeoutMs: configuration.workspace.providerTimeoutMs,
+    analyzer: new ProviderInvestigationAnalyzer(providerExecution),
+    projectMemory,
   });
   const persistence = new FeaturePlanPersistence(configuration.projectRoot);
   const featureWorkflow = new FeatureWorkflowService({
@@ -197,9 +229,30 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
   });
   return {
     runtime,
+    investigation,
     featureWorkflow,
     featureDecomposition,
     activityHistory,
+    projectMemory,
     security: configuration.security,
   };
+}
+
+function createProjectMemoryService(
+  projectRoot: string,
+  profile: ReturnType<typeof loadLocalWorkspaceRuntimeConfiguration>['projectProfile'],
+): ProjectMemoryService | undefined {
+  if (profile !== 'EXTERNAL_TARGET') return undefined;
+  try {
+    const projectId = readWorkspaceProjectId(projectRoot, profile);
+    return new ProjectMemoryService({
+      projectRoot,
+      projectId,
+      profile,
+      clock: () => new Date(),
+      ids: { generate: randomUUID },
+    });
+  } catch {
+    return undefined;
+  }
 }

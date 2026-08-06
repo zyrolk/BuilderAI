@@ -96,6 +96,10 @@ describe('verification report and port result validation', () => {
       maximumFindingMessageCharacters: 3,
       maximumStageMetadataEntries: 1,
       maximumStageMetadataStringCharacters: 3,
+      maximumDiagnosticStdoutCharacters: 8_192,
+      maximumDiagnosticStderrCharacters: 8_192,
+      maximumDiagnosticCombinedCharacters: 16_384,
+      maximumReportDiagnosticCharacters: 48_768,
     });
 
     expect(() =>

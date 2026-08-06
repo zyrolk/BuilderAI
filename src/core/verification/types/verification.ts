@@ -55,6 +55,16 @@ export interface VerificationStagePortResult {
   readonly warnings: readonly VerificationMessage[];
   readonly errors: readonly VerificationMessage[];
   readonly metadata: ResponseMetadata;
+  readonly diagnostic?: VerificationDiagnostic;
+}
+
+export interface VerificationDiagnostic {
+  readonly commandLabel?: string;
+  readonly exitCode?: number;
+  readonly stdoutExcerpt?: string;
+  readonly stderrExcerpt?: string;
+  readonly truncated: boolean;
+  readonly omittedBytes?: number;
 }
 
 export interface VerificationStageResult extends VerificationStagePortResult {

@@ -67,6 +67,67 @@ describe('HttpWorkspaceWorkflow', () => {
       'Invalid preparation identifier.',
     );
   });
+
+  it('loads and saves project memory through workspace endpoints', async () => {
+    const memoryPayload = {
+      schemaVersion: 1,
+      projectId: 'zyro-style-fixture',
+      updatedAt: '2026-08-05T12:00:00.000Z',
+      decisions: [],
+      completedWork: [],
+      investigations: [
+        {
+          id: 'inv-1',
+          category: 'INVESTIGATION',
+          createdAt: '2026-08-05T12:00:00.000Z',
+          updatedAt: '2026-08-05T12:00:00.000Z',
+          summary: 'Supplier Hub cancellation depends on shared validation.',
+          supportingPaths: ['server/services/order-cancellation.service.ts'],
+          source: 'INVESTIGATION_SAVE',
+          investigationId: 'inv-1',
+          confidence: 'MEDIUM',
+          affectedAreas: ['server/services/order-cancellation.service.ts'],
+        },
+      ],
+      findings: [],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(memoryPayload))
+      .mockResolvedValueOnce(response(memoryPayload))
+      .mockResolvedValueOnce(response(memoryPayload));
+    vi.stubGlobal('fetch', fetchMock);
+    const workflow = new HttpWorkspaceWorkflow();
+
+    const loaded = await workflow.loadProjectMemory();
+    expect(loaded.investigations).toHaveLength(1);
+
+    await workflow.saveInvestigationMemory({
+      investigationId: 'inv-2',
+      requestSummary: 'Supplier cancellation bug',
+      summary: 'Shared validation service participates in cancellation.',
+      confidence: 'LOW',
+      affectedAreas: ['server/services/order-cancellation.service.ts'],
+      recommendedNextSteps: ['Review cancellation service status updates.'],
+    });
+    await workflow.saveOperatorMemory({
+      category: 'DECISION',
+      summary: 'Supplier cancellation must preserve audit trail.',
+      supportingPaths: ['server/routes/supplier-orders.ts'],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspace/memory',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspace/memory',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"category":"INVESTIGATION"'),
+      }),
+    );
+  });
 });
 
 function response(value: unknown, status = 200): Response {

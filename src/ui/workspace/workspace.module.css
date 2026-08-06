@@ -112,6 +112,18 @@
   max-height: 50vh;
   overflow: auto;
 }
+.memoryPanel {
+  padding: 1rem 1.25rem 1.25rem;
+}
+.memoryPanelHeader {
+  margin-bottom: 0.75rem;
+}
+.memorySection + .memorySection {
+  margin-top: 1rem;
+}
+.investigationActions {
+  margin-top: 1rem;
+}
 .historyRefreshing {
   margin: 0;
   padding: 0.45rem 1rem 0;
@@ -1221,6 +1233,62 @@
   flex-direction: column;
   gap: 0.45rem;
   align-items: flex-end;
+}
+
+.formActions {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.investigationMeta {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.88rem;
+}
+
+.investigationList {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.investigationExcerpt {
+  margin: 0.45rem 0 0;
+  padding: 0.55rem 0.7rem;
+  overflow-x: auto;
+  border-radius: 0.45rem;
+  background: rgba(0, 0, 0, 0.28);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.verificationDiagnostic {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.diagnosticDetails summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.diagnosticDetails pre {
+  margin-top: 0.35rem;
+}
+
+.claimBadge {
+  display: inline-block;
+  min-width: 5.5rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .diffOperationList {

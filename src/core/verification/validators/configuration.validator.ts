@@ -22,6 +22,10 @@ export class VerificationConfigurationValidator {
         'maximumFindingMessageCharacters',
         'maximumStageMetadataEntries',
         'maximumStageMetadataStringCharacters',
+        'maximumDiagnosticStdoutCharacters',
+        'maximumDiagnosticStderrCharacters',
+        'maximumDiagnosticCombinedCharacters',
+        'maximumReportDiagnosticCharacters',
       ],
       '$',
       issues,
@@ -44,6 +48,10 @@ export class VerificationConfigurationValidator {
       'maximumFindingMessageCharacters',
       'maximumStageMetadataEntries',
       'maximumStageMetadataStringCharacters',
+      'maximumDiagnosticStdoutCharacters',
+      'maximumDiagnosticStderrCharacters',
+      'maximumDiagnosticCombinedCharacters',
+      'maximumReportDiagnosticCharacters',
     ] as const) {
       if (!isPositiveSafeInteger(value[key])) {
         addIssue(issues, 'INVALID_CONFIGURATION', `$.${key}`, 'must be a positive safe integer');

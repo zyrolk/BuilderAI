@@ -7,9 +7,14 @@ import type { FormEvent } from 'react';
 import { isVerificationEligibleFileApplyResult, type FileApplyResult } from '../../core/file-apply';
 import type { VerificationReport } from '../../core/verification';
 import { buildIterationFeedbackFromCompletion } from '../../application/workspace/iteration-feedback.service';
+import { buildInvestigationHandoffFeedback } from '../../application/workspace/investigation/investigation-handoff';
+import { buildVerificationFailureInvestigationRequest } from '../../application/workspace/verification-failure-investigation';
+import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
+import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
 import type { WorkspaceActivity } from '../../application/workspace/activity-history.types';
 import type { FeaturePlan, FeatureTask } from '../../application/workspace/feature-plan.types';
 import { ActivityHistoryPanel } from './activity-history-panel';
+import { ProjectMemoryPanel } from './project-memory-panel';
 import { FeatureWorkflowPanel } from './feature-workflow-panel';
 import { HttpFeatureWorkflow } from './http-feature-workflow';
 import { ResultPanel } from './result-panel';
@@ -51,6 +56,8 @@ const PROGRESS_STEPS = [
 
 const PHASE_LABELS: Readonly<Record<WorkspacePhase, string>> = {
   READY: 'Ready for request',
+  INVESTIGATING: 'Investigating repository evidence',
+  INVESTIGATION_COMPLETE: 'Investigation complete',
   PROCESSING_REQUEST: 'Preparing response and change plan',
   AWAITING_APPROVAL: 'Waiting for explicit approval',
   APPLYING_CHANGES: 'Applying approved changes',
@@ -95,6 +102,8 @@ export function WorkspaceShell({
   const [showGate2RejectForm, setShowGate2RejectForm] = useState(false);
   const [gate2RejectionReason, setGate2RejectionReason] = useState('');
   const [gate2CorrectionInFlight, setGate2CorrectionInFlight] = useState(false);
+  const [investigation, setInvestigation] = useState<WorkspaceInvestigation>();
+  const [lastInvestigationRequest, setLastInvestigationRequest] = useState<string>();
   const [applyResult, setApplyResult] = useState<FileApplyResult>();
   const [verificationReport, setVerificationReport] = useState<VerificationReport>();
   const [completionSnapshot, setCompletionSnapshot] = useState<WorkspaceCompletionSnapshot>();
@@ -111,6 +120,13 @@ export function WorkspaceShell({
   const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyError, setHistoryError] = useState<string>();
+  const [projectMemory, setProjectMemory] = useState<ExternalTargetProjectMemory>();
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [memoryLoaded, setMemoryLoaded] = useState(false);
+  const [memoryError, setMemoryError] = useState<string>();
+  const [investigationMemorySaveState, setInvestigationMemorySaveState] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle');
   const historyLoadedRef = useRef(false);
   const featureApi = useMemo(
     () => (runtimeAvailable ? new HttpFeatureWorkflow() : undefined),
@@ -118,9 +134,34 @@ export function WorkspaceShell({
   );
   const isBusy =
     gate2CorrectionInFlight ||
-    ['PROCESSING_REQUEST', 'APPLYING_CHANGES', 'VERIFYING_PROJECT'].includes(phase);
+    ['INVESTIGATING', 'PROCESSING_REQUEST', 'APPLYING_CHANGES', 'VERIFYING_PROJECT'].includes(
+      phase,
+    );
+  const supportsInvestigation = workflow?.investigate !== undefined;
   const historySupported =
     runtimeAvailable && workflow !== undefined && workflow.loadActivityHistory !== undefined;
+  const memorySupported =
+    runtimeAvailable && workflow !== undefined && workflow.loadProjectMemory !== undefined;
+
+  const loadProjectMemoryFromWorkflow = useCallback(async (): Promise<void> => {
+    if (workflow?.loadProjectMemory === undefined) return;
+    const memory = await workflow.loadProjectMemory();
+    setProjectMemory(memory);
+    setMemoryError(undefined);
+    setMemoryLoaded(true);
+  }, [workflow]);
+
+  const refreshProjectMemory = useCallback(async (): Promise<void> => {
+    if (!memorySupported || workflow?.loadProjectMemory === undefined) return;
+    setMemoryLoading(true);
+    try {
+      await loadProjectMemoryFromWorkflow();
+    } catch {
+      setMemoryError('Project memory could not be loaded.');
+    } finally {
+      setMemoryLoading(false);
+    }
+  }, [loadProjectMemoryFromWorkflow, memorySupported, workflow]);
 
   const loadActivityHistoryFromWorkflow = useCallback(async (): Promise<void> => {
     if (workflow?.loadActivityHistory === undefined) return;
@@ -164,6 +205,35 @@ export function WorkspaceShell({
   }, [historySupported, loadActivityHistoryFromWorkflow]);
 
   useEffect(() => {
+    if (!memorySupported) return;
+    void refreshProjectMemory();
+  }, [memorySupported, refreshProjectMemory]);
+
+  async function handleSaveInvestigationMemory(): Promise<void> {
+    if (investigation === undefined || workflow?.saveInvestigationMemory === undefined || isBusy) {
+      return;
+    }
+    setInvestigationMemorySaveState('saving');
+    try {
+      const memory = await workflow.saveInvestigationMemory({
+        investigationId: investigation.investigationId,
+        requestSummary: lastInvestigationRequest ?? request,
+        summary: investigation.report.summary,
+        confidence: investigation.report.confidence,
+        likelyRootCause: investigation.report.likelyRootCause,
+        affectedAreas: investigation.report.affectedAreas,
+        recommendedNextSteps: investigation.report.recommendedNextSteps,
+        suggestedFixScope: investigation.report.suggestedFixScope,
+      });
+      setProjectMemory(memory);
+      setInvestigationMemorySaveState('saved');
+      setMemoryLoaded(true);
+    } catch {
+      setInvestigationMemorySaveState('error');
+    }
+  }
+
+  useEffect(() => {
     if (featureApi === undefined) return;
     void (async () => {
       try {
@@ -193,6 +263,73 @@ export function WorkspaceShell({
     await runPrepare(request.trim());
   }
 
+  async function handleInvestigate(): Promise<void> {
+    if (!workflow?.investigate || request.trim().length === 0 || isBusy) return;
+    const normalizedRequest = request.trim();
+    setError(undefined);
+    setPrepared(undefined);
+    setApplyResult(undefined);
+    setVerificationReport(undefined);
+    setApproved(false);
+    setPhase('INVESTIGATING');
+    setActiveTab('INVESTIGATION');
+    setConversation((entries) => [
+      ...entries,
+      { id: nextConversationId(entries), author: 'USER', message: normalizedRequest },
+    ]);
+    try {
+      const result = await workflow.investigate(normalizedRequest);
+      setInvestigation(result);
+      setLastInvestigationRequest(normalizedRequest);
+      setPhase('INVESTIGATION_COMPLETE');
+      setConversation((entries) => [
+        ...entries,
+        {
+          id: nextConversationId(entries),
+          author: 'BUILDER_AI',
+          message: `Investigation complete (${result.report.confidence} confidence). No files were changed.`,
+        },
+      ]);
+    } catch (workflowError: unknown) {
+      stopWorkflow(
+        workflowError instanceof WorkspaceWorkflowError
+          ? `${workflowError.message} No project changes were made.`
+          : 'Investigation could not be completed. No project changes were made.',
+        0,
+      );
+    }
+  }
+
+  async function handlePrepareFixFromInvestigation(): Promise<void> {
+    if (investigation === undefined || !workflow || isBusy) return;
+    const originalRequest = (lastInvestigationRequest ?? request).trim();
+    if (originalRequest.length === 0) return;
+    const enrichedRequest = [
+      originalRequest,
+      '',
+      'Investigation summary:',
+      investigation.report.summary,
+      investigation.report.suggestedFixScope === undefined
+        ? ''
+        : `Suggested fix scope: ${investigation.report.suggestedFixScope}`,
+      'Prepare the smallest safe fix using investigation evidence as hints only.',
+    ]
+      .filter((line) => line.length > 0)
+      .join('\n');
+    setRequest(enrichedRequest);
+    await runPrepare(enrichedRequest, undefined, {
+      iterationFeedback: buildInvestigationHandoffFeedback({
+        sourceInvestigationId: investigation.investigationId,
+        priorRequestSummary: originalRequest,
+        investigationSummary: investigation.report.summary,
+        ...(investigation.report.suggestedFixScope === undefined
+          ? {}
+          : { suggestedFixScope: investigation.report.suggestedFixScope }),
+        pathHints: investigation.report.affectedAreas,
+      }),
+    });
+  }
+
   async function handleFreshPrepare(): Promise<void> {
     if (!workflow || isBusy) return;
     setCompletionSnapshot(undefined);
@@ -213,6 +350,49 @@ export function WorkspaceShell({
           'Previous partial apply requires a fresh prepare from the current filesystem state. Enter a new request when ready.',
       },
     ]);
+  }
+
+  async function handleInvestigateFailure(): Promise<void> {
+    if (!workflow?.investigate || completionSnapshot?.verificationReport === undefined || isBusy) {
+      return;
+    }
+    const investigationRequest = buildVerificationFailureInvestigationRequest({
+      report: completionSnapshot.verificationReport,
+      priorRequestSummary: completionSnapshot.priorRequestSummary ?? request.trim(),
+    });
+    setRequest(investigationRequest);
+    setError(undefined);
+    setPrepared(undefined);
+    setApplyResult(undefined);
+    setVerificationReport(undefined);
+    setApproved(false);
+    setPhase('INVESTIGATING');
+    setActiveTab('INVESTIGATION');
+    setConversation((entries) => [
+      ...entries,
+      { id: nextConversationId(entries), author: 'USER', message: investigationRequest },
+    ]);
+    try {
+      const result = await workflow.investigate(investigationRequest);
+      setInvestigation(result);
+      setLastInvestigationRequest(investigationRequest);
+      setPhase('INVESTIGATION_COMPLETE');
+      setConversation((entries) => [
+        ...entries,
+        {
+          id: nextConversationId(entries),
+          author: 'BUILDER_AI',
+          message: `Investigation complete (${result.report.confidence} confidence). No files were changed.`,
+        },
+      ]);
+    } catch (workflowError: unknown) {
+      stopWorkflow(
+        workflowError instanceof WorkspaceWorkflowError
+          ? `${workflowError.message} No project changes were made.`
+          : 'Investigation could not be completed. No project changes were made.',
+        0,
+      );
+    }
   }
 
   async function handleCorrectionPrepare(): Promise<void> {
@@ -584,11 +764,44 @@ export function WorkspaceShell({
             />
             <div className={styles.formFooter}>
               <span>{request.length.toLocaleString()} / 4,000</span>
-              <button type="submit" disabled={!workflow || request.trim().length === 0 || isBusy}>
-                {phase === 'PROCESSING_REQUEST' ? 'Preparing request…' : 'Prepare change plan'}
-              </button>
+              <div className={styles.formActions}>
+                {supportsInvestigation && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!workflow || request.trim().length === 0 || isBusy}
+                    onClick={() => void handleInvestigate()}
+                  >
+                    {phase === 'INVESTIGATING' ? 'Investigating…' : 'Investigate'}
+                  </button>
+                )}
+                <button type="submit" disabled={!workflow || request.trim().length === 0 || isBusy}>
+                  {phase === 'PROCESSING_REQUEST' ? 'Preparing request…' : 'Prepare change plan'}
+                </button>
+              </div>
             </div>
           </form>
+
+          {phase === 'INVESTIGATION_COMPLETE' && investigation !== undefined && workflow && (
+            <section className={styles.approvalCard} aria-labelledby="investigation-actions-title">
+              <div>
+                <p className={styles.eyebrow}>Investigation complete</p>
+                <h3 id="investigation-actions-title">Next action</h3>
+                <p>
+                  Review the investigation report. When ready, start a normal Gate 2 change plan
+                  from the investigation evidence.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={isBusy}
+                onClick={() => void handlePrepareFixFromInvestigation()}
+              >
+                Prepare fix
+              </button>
+            </section>
+          )}
 
           <section className={styles.progressSection} aria-labelledby="progress-title">
             <div className={styles.sectionHeading}>
@@ -782,6 +995,16 @@ export function WorkspaceShell({
                 >
                   Fix verification failures
                 </button>
+                {workflow?.investigate !== undefined && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!workflow || isBusy}
+                    onClick={() => void handleInvestigateFailure()}
+                  >
+                    Investigate failure
+                  </button>
+                )}
               </section>
             )}
 
@@ -825,9 +1048,26 @@ export function WorkspaceShell({
             responsePackage={prepared?.responsePackage}
             changePlan={prepared?.changePlan}
             gate2Review={prepared?.gate2Review}
+            investigation={investigation}
+            onSaveInvestigationMemory={
+              memorySupported && workflow?.saveInvestigationMemory !== undefined
+                ? () => void handleSaveInvestigationMemory()
+                : undefined
+            }
+            investigationMemorySaveState={investigationMemorySaveState}
             applyResult={applyResult}
             verificationReport={verificationReport}
           />
+
+          {memorySupported && (
+            <div className={styles.activityHistorySection}>
+              <ProjectMemoryPanel
+                memory={projectMemory}
+                loading={memoryLoading && !memoryLoaded}
+                error={memoryError}
+              />
+            </div>
+          )}
 
           {historySupported && (
             <div className={styles.activityHistorySection}>

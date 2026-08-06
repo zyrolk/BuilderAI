@@ -34,6 +34,7 @@ describe('Node verification ports', () => {
     });
     const result = await runner.run('npm-version', ['--version'], {
       failureCode: 'COMMAND_FAILED',
+      commandLabel: 'npm --version',
     });
     expect(result.status).toBe('PASSED');
     expect(result.metadata['exit-code']).toBe(0);

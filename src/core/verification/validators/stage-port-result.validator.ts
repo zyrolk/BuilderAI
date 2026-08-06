@@ -9,9 +9,10 @@ import {
 import {
   addIssue,
   isRecord,
-  validateExactKeys,
   validateMessages,
   validateMetadata,
+  validateOptionalDiagnostic,
+  validateRequiredKeys,
 } from './validation-helpers';
 import { VerificationConfigurationValidator } from './configuration.validator';
 
@@ -32,13 +33,18 @@ export class VerificationStagePortResultValidator {
         { code: 'INVALID_PORT_RESULT', path: '$', message: 'must be an object' },
       ]);
     }
-    validateExactKeys(
+    validateRequiredKeys(
       value,
       ['status', 'warnings', 'errors', 'metadata'],
       '$',
       issues,
       'INVALID_PORT_RESULT',
     );
+    for (const key of Object.keys(value)) {
+      if (!['status', 'warnings', 'errors', 'metadata', 'diagnostic'].includes(key)) {
+        addIssue(issues, 'INVALID_PORT_RESULT', `$.${key}`, 'is not allowed');
+      }
+    }
     if (!VERIFICATION_STAGE_STATUSES.some((status) => status === value.status)) {
       addIssue(issues, 'INVALID_PORT_RESULT', '$.status', 'is unsupported');
     }
@@ -69,6 +75,11 @@ export class VerificationStagePortResultValidator {
       this.configuration.maximumStageMetadataStringCharacters,
       false,
     );
+    validateOptionalDiagnostic(value.diagnostic, '$.diagnostic', issues, 'INVALID_PORT_RESULT', {
+      maximumStdoutCharacters: this.configuration.maximumDiagnosticStdoutCharacters,
+      maximumStderrCharacters: this.configuration.maximumDiagnosticStderrCharacters,
+      maximumCombinedCharacters: this.configuration.maximumDiagnosticCombinedCharacters,
+    });
     if (Array.isArray(value.errors)) {
       if (value.status === 'PASSED' && value.errors.length > 0) {
         addIssue(issues, 'INVALID_PORT_RESULT', '$.status', 'PASSED cannot contain errors');

@@ -24,7 +24,10 @@ export function readWorkspaceRequestSecurityEvidence(
   return {
     bearerToken: readBearerToken(request.headers.get(AUTHORIZATION_HEADER)),
     csrfToken: readOptionalHeader(request.headers.get(CSRF_HEADER)),
-    operatorApproved: action === 'PREPARE' ? true : approved,
+    operatorApproved:
+      action === 'PREPARE' || action === 'INVESTIGATE' || action === 'MEMORY_WRITE'
+        ? true
+        : approved,
     applyAuthorizationToken,
   };
 }

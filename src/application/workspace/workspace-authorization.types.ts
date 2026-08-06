@@ -1,7 +1,12 @@
 export const WORKSPACE_SECURITY_PROFILES = ['TRUSTED_LOCAL', 'PROTECTED'] as const;
 export type WorkspaceSecurityProfile = (typeof WORKSPACE_SECURITY_PROFILES)[number];
 
-export const WORKSPACE_AUTHORIZATION_ACTIONS = ['PREPARE', 'APPLY'] as const;
+export const WORKSPACE_AUTHORIZATION_ACTIONS = [
+  'PREPARE',
+  'APPLY',
+  'INVESTIGATE',
+  'MEMORY_WRITE',
+] as const;
 export type WorkspaceAuthorizationAction = (typeof WORKSPACE_AUTHORIZATION_ACTIONS)[number];
 
 export interface WorkspacePrincipal {

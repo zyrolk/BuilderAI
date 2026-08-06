@@ -1,6 +1,8 @@
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
+import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
 import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
+import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
 import type { ProjectChangePlan } from '../../core/change-planner';
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
@@ -25,6 +27,8 @@ export interface WorkspaceCompletionSnapshot {
 
 export const WORKSPACE_PHASES = [
   'READY',
+  'INVESTIGATING',
+  'INVESTIGATION_COMPLETE',
   'PROCESSING_REQUEST',
   'AWAITING_APPROVAL',
   'APPLYING_CHANGES',
@@ -37,6 +41,7 @@ export const RESULT_PANEL_TABS = [
   'RESPONSE_PACKAGE',
   'CHANGE_PLAN',
   'DIFF',
+  'INVESTIGATION',
   'APPLY_RESULT',
   'VERIFICATION_REPORT',
 ] as const;
@@ -82,11 +87,35 @@ export function supportsGate2Correction(
   );
 }
 
+export interface SaveInvestigationMemoryInput {
+  readonly investigationId: string;
+  readonly requestSummary?: string;
+  readonly summary: string;
+  readonly confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly likelyRootCause?: string;
+  readonly affectedAreas: readonly string[];
+  readonly recommendedNextSteps: readonly string[];
+  readonly suggestedFixScope?: string;
+}
+
+export interface SaveOperatorMemoryInput {
+  readonly category: 'DECISION' | 'FINDING';
+  readonly summary: string;
+  readonly supportingPaths?: readonly string[];
+  readonly tags?: readonly string[];
+}
+
 export interface WorkspaceWorkflowPort {
   prepare(request: string, options?: PrepareWorkspaceOptions): Promise<PreparedWorkspaceChange>;
+  investigate?(request: string): Promise<WorkspaceInvestigation>;
   apply(changePlan: ProjectChangePlan): Promise<FileApplyResult>;
   verify(applyResult: FileApplyResult): Promise<VerificationReport>;
   loadActivityHistory?(): Promise<ActivityHistory>;
+  loadProjectMemory?(): Promise<ExternalTargetProjectMemory>;
+  saveInvestigationMemory?(
+    input: SaveInvestigationMemoryInput,
+  ): Promise<ExternalTargetProjectMemory>;
+  saveOperatorMemory?(input: SaveOperatorMemoryInput): Promise<ExternalTargetProjectMemory>;
 }
 
 export function isCorrectionEligible(snapshot: WorkspaceCompletionSnapshot | undefined): boolean {

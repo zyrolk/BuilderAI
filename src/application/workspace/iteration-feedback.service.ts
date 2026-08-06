@@ -22,12 +22,14 @@ import {
   type IterationFeedbackApply,
   type IterationFeedbackFinding,
   type IterationFeedbackVerification,
+  type IterationFeedbackVerificationDiagnostic,
   type IterationFeedbackVerificationStage,
   type IterationPreservationRejection,
   type IterationPreservationRejectionOperation,
 } from './iteration-feedback.types';
 import type { SurgicalityBasis, SurgicalityClassification } from '../../core/change-planner';
 import type { WorkspaceCompletion } from './workspace-runtime.types';
+import { redactVerificationOutput } from '../../infrastructure/verification/verification-output-sanitize';
 
 const CODE_PATTERN = /^[A-Z0-9_]{1,80}$/u;
 const PREPARATION_ID_PATTERN = /^[A-Za-z0-9-]{8,128}$/u;
@@ -290,6 +292,15 @@ function normalizeVerificationStages(
         stage as VerificationStage,
       ),
       metadata: normalizeStageMetadata(Reflect.get(rawStage, 'metadata')),
+      ...(normalizeVerificationDiagnostic(Reflect.get(rawStage, 'diagnostic'), stageStatus) ===
+      undefined
+        ? {}
+        : {
+            diagnostic: normalizeVerificationDiagnostic(
+              Reflect.get(rawStage, 'diagnostic'),
+              stageStatus,
+            ),
+          }),
     });
   }
 
@@ -320,6 +331,65 @@ function normalizeStageMetadata(value: unknown): ResponseMetadata {
     }
   }
   return metadata;
+}
+
+function normalizeVerificationDiagnostic(
+  value: unknown,
+  stageStatus: unknown,
+): IterationFeedbackVerificationDiagnostic | undefined {
+  if (stageStatus !== 'FAILED') return undefined;
+  if (!isRecord(value)) return undefined;
+  const truncated = Reflect.get(value, 'truncated');
+  if (typeof truncated !== 'boolean') return undefined;
+  const rawCommandLabel = Reflect.get(value, 'commandLabel');
+  const commandLabel = readOptionalBoundedDiagnosticText(
+    typeof rawCommandLabel === 'string' ? rawCommandLabel : undefined,
+    120,
+  );
+  const exitCode = Reflect.get(value, 'exitCode');
+  const stdoutExcerpt = readOptionalBoundedDiagnosticText(
+    redactVerificationOutput(readOptionalDiagnosticStream(Reflect.get(value, 'stdoutExcerpt'))),
+    ITERATION_FEEDBACK_LIMITS.MAX_DIAGNOSTIC_STDOUT,
+  );
+  const stderrExcerpt = readOptionalBoundedDiagnosticText(
+    redactVerificationOutput(readOptionalDiagnosticStream(Reflect.get(value, 'stderrExcerpt'))),
+    ITERATION_FEEDBACK_LIMITS.MAX_DIAGNOSTIC_STDERR,
+  );
+  const combinedLength = (stdoutExcerpt?.length ?? 0) + (stderrExcerpt?.length ?? 0);
+  if (combinedLength > ITERATION_FEEDBACK_LIMITS.MAX_DIAGNOSTIC_COMBINED) {
+    return {
+      ...(commandLabel === undefined ? {} : { commandLabel }),
+      ...(typeof exitCode === 'number' && Number.isFinite(exitCode) ? { exitCode } : {}),
+      truncated: true,
+    };
+  }
+  if (
+    commandLabel === undefined &&
+    stdoutExcerpt === undefined &&
+    stderrExcerpt === undefined &&
+    !(typeof exitCode === 'number' && Number.isFinite(exitCode))
+  ) {
+    return undefined;
+  }
+  return {
+    ...(commandLabel === undefined ? {} : { commandLabel }),
+    ...(typeof exitCode === 'number' && Number.isFinite(exitCode) ? { exitCode } : {}),
+    ...(stdoutExcerpt === undefined ? {} : { stdoutExcerpt }),
+    ...(stderrExcerpt === undefined ? {} : { stderrExcerpt }),
+    truncated,
+  };
+}
+
+function readOptionalDiagnosticStream(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function readOptionalBoundedDiagnosticText(
+  value: string | undefined,
+  maximumCharacters: number,
+): string | undefined {
+  if (value === undefined || value.trim().length === 0) return undefined;
+  return truncateText(value.trim(), maximumCharacters);
 }
 
 function normalizeFindings(

@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
 import { buildIterationFeedbackFromGate2Rejection } from '../../../application/workspace/iteration-feedback.service';
@@ -11,6 +8,7 @@ import {
 } from '../../../application/workspace/test/smoke-031-marginal-churn.fixture';
 import { SMOKE_031_REJECTED_CHANGE_PLAN } from '../../../application/workspace/test/smoke-031-preservation-rejection.fixture';
 import type { ProjectChangePlan } from '../../../core/change-planner';
+import { loadSmokeAtelierGoldenBaseline } from '../../../core/change-planner/test/fixtures/smoke-atelier-golden-fixture';
 import { PrepareScopeService } from '../../update-scope';
 import { MemoryWorkspaceBaselinePort } from '../../update-scope/test/workspace-baseline.fixture';
 import {
@@ -19,10 +17,7 @@ import {
 } from '../internal/preservation-contract-renderer';
 import { renderPreservationRejectionText } from '../internal/preservation-rejection-renderer';
 
-const SMOKE_BASELINE_HTML = readFileSync(
-  path.resolve('D:/projects2/smoke-atelier/index.html'),
-  'utf8',
-);
+const SMOKE_BASELINE_HTML = loadSmokeAtelierGoldenBaseline();
 
 const ACCESSIBILITY_REQUEST =
   'Improve the existing counter page accessibility with the smallest possible change. Add aria-live="polite" to the counter value, add appropriate aria-labelledby relationships to the existing counter and quote sections, and ensure the existing buttons explicitly use type="button". Preserve all existing functionality, DOM IDs, aria-labels, text, quote content, localStorage behavior, script/style references, layout, and styling. Prefer modifying index.html only. Do not redesign or refactor unrelated code.';

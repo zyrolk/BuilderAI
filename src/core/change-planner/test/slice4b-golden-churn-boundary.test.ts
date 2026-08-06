@@ -1,57 +1,17 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
 import { UpdatePreservationAnalysisService } from '../services/update-preservation-analysis.service';
+import { countLogicalLines, splitLogicalLines } from '../validators/text-line-normalization';
+import {
+  buildGoldenAccessibilityHtml,
+  loadSmokeAtelierGoldenBaseline,
+} from './fixtures/smoke-atelier-golden-fixture';
 
-const BASELINE = readFileSync(
-  path.resolve('D:/projects2/smoke-atelier/index.html'),
-  'utf8',
-).replace(/\r\n?/g, '\n');
-
-/** Smallest valid accessibility patch: attribute-only edits on 8 existing lines. */
-function buildGoldenAccessibilityHtml(baseline: string): string {
-  return baseline
-    .replace(
-      '<section class="counter-section">',
-      '<section class="counter-section" aria-labelledby="counter-heading">',
-    )
-    .replace('<h2>Interactive Counter</h2>', '<h2 id="counter-heading">Interactive Counter</h2>')
-    .replace(
-      '<span id="counter-value">0</span>',
-      '<span id="counter-value" aria-live="polite">0</span>',
-    )
-    .replace(
-      '<button id="increment-counter" aria-label="Increment counter">Increment</button>',
-      '<button id="increment-counter" type="button" aria-label="Increment counter">Increment</button>',
-    )
-    .replace(
-      '<button id="reset-counter" aria-label="Reset counter to zero">Reset</button>',
-      '<button id="reset-counter" type="button" aria-label="Reset counter to zero">Reset</button>',
-    )
-    .replace(
-      '<section class="quote-section">',
-      '<section class="quote-section" aria-labelledby="quote-heading">',
-    )
-    .replace('<h2>Inspirational Quote</h2>', '<h2 id="quote-heading">Inspirational Quote</h2>')
-    .replace(
-      '<button id="next-quote" aria-label="Show next quote">Next Quote</button>',
-      '<button id="next-quote" type="button" aria-label="Show next quote">Next Quote</button>',
-    );
-}
-
-function countLines(content: string): number {
-  const lines = content.split('\n');
-  if (lines.at(-1) === '') lines.pop();
-  return lines.length;
-}
+const BASELINE = loadSmokeAtelierGoldenBaseline();
 
 function classifyLineChanges(baseline: string, proposed: string) {
-  const baselineLines = baseline.split('\n');
-  const proposedLines = proposed.split('\n');
-  if (baselineLines.at(-1) === '') baselineLines.pop();
-  if (proposedLines.at(-1) === '') proposedLines.pop();
+  const baselineLines = [...splitLogicalLines(baseline)];
+  const proposedLines = [...splitLogicalLines(proposed)];
 
   const max = Math.max(baselineLines.length, proposedLines.length);
   const changes: Array<{
@@ -122,7 +82,7 @@ describe('ADR-031 Slice 4b golden churn boundary (diagnostic)', () => {
   });
 
   it('ADR-030 LCS churn for minimal golden patch equals 0.4444 on 36-line baseline', async () => {
-    expect(countLines(BASELINE)).toBe(36);
+    expect(countLogicalLines(BASELINE)).toBe(36);
 
     const analysis = await service.analyze({
       logicalPath: 'index.html',
@@ -139,7 +99,7 @@ describe('ADR-031 Slice 4b golden churn boundary (diagnostic)', () => {
 
   it('documents that 8 required line edits cannot score GOOD under current metric', () => {
     const minimumChangedLines = 8;
-    const baselineLineCount = countLines(BASELINE);
+    const baselineLineCount = countLogicalLines(BASELINE);
     const theoreticalMinimumChurn =
       Math.round(((minimumChangedLines * 2) / baselineLineCount) * 10_000) / 10_000;
     expect(theoreticalMinimumChurn).toBe(0.4444);

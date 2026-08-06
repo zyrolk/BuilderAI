@@ -1,6 +1,7 @@
 'use client';
 
 import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
+import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
 import type {
   ProjectChangePlan,
   ProjectChangeWarning,
@@ -8,7 +9,7 @@ import type {
 } from '../../core/change-planner';
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
-import type { VerificationReport } from '../../core/verification';
+import type { VerificationDiagnostic, VerificationReport } from '../../core/verification';
 import type { KeyboardEvent } from 'react';
 import {
   formatPreservationFindingCode,
@@ -30,6 +31,9 @@ import {
   partialApplyHeadline,
   partialApplySafetyNotice,
   summarizePartialApplyOperations,
+  verificationCommandFailureGuidance,
+  verificationInfrastructureGuidance,
+  verificationTimeoutGuidance,
 } from './operator-recovery-guidance';
 import {
   changePlanTouchesLockfile,
@@ -39,6 +43,7 @@ import {
   isPartialApplyOutcome,
 } from './verification-outcome-display';
 import { Gate2DiffView } from './gate2-diff-view';
+import { InvestigationReportView } from './investigation-report-view';
 import styles from './workspace.module.css';
 import { RESULT_PANEL_TABS, type ResultPanelTab } from './workspace.types';
 
@@ -46,6 +51,7 @@ const TAB_LABELS: Readonly<Record<ResultPanelTab, string>> = {
   RESPONSE_PACKAGE: 'Response Package',
   CHANGE_PLAN: 'Change Plan',
   DIFF: 'Diff',
+  INVESTIGATION: 'Investigation',
   APPLY_RESULT: 'Apply Result',
   VERIFICATION_REPORT: 'Verification Report',
 };
@@ -56,6 +62,9 @@ interface ResultPanelProps {
   readonly responsePackage?: ResponsePackage;
   readonly changePlan?: ProjectChangePlan;
   readonly gate2Review?: Gate2ReviewProjection;
+  readonly investigation?: WorkspaceInvestigation;
+  readonly onSaveInvestigationMemory?: () => void;
+  readonly investigationMemorySaveState?: 'idle' | 'saving' | 'saved' | 'error';
   readonly applyResult?: FileApplyResult;
   readonly verificationReport?: VerificationReport;
 }
@@ -66,6 +75,9 @@ export function ResultPanel({
   responsePackage,
   changePlan,
   gate2Review,
+  investigation,
+  onSaveInvestigationMemory,
+  investigationMemorySaveState,
   applyResult,
   verificationReport,
 }: ResultPanelProps) {
@@ -108,6 +120,13 @@ export function ResultPanel({
         )}
         {activeTab === 'CHANGE_PLAN' && <ChangePlanView changePlan={changePlan} />}
         {activeTab === 'DIFF' && <Gate2DiffView gate2Review={gate2Review} />}
+        {activeTab === 'INVESTIGATION' && (
+          <InvestigationReportView
+            investigation={investigation}
+            onSaveToMemory={onSaveInvestigationMemory}
+            memorySaveState={investigationMemorySaveState}
+          />
+        )}
         {activeTab === 'APPLY_RESULT' && (
           <ApplyResultView applyResult={applyResult} changePlan={changePlan} />
         )}
@@ -432,7 +451,9 @@ function VerificationReportView({
               <p>{stage.durationMs} ms</p>
             </div>
             <span className={statusClass(stage.status)}>{formatLabel(stage.status)}</span>
-            <StageMetadata metadata={stage.metadata} />
+            <StageFailureGuidance stage={stage} failureSummary={failureSummary} />
+            <StageMetadata metadata={stage.metadata} compact={stage.status === 'PASSED'} />
+            <StageDiagnostic diagnostic={stage.diagnostic} stageStatus={stage.status} />
             <Findings title="Errors" findings={stage.errors} compact />
             <Findings title="Warnings" findings={stage.warnings} compact />
           </article>
@@ -490,6 +511,35 @@ function PathGroup({
   );
 }
 
+function StageFailureGuidance({
+  stage,
+  failureSummary,
+}: {
+  readonly stage: VerificationReport['stages'][number];
+  readonly failureSummary: ReturnType<typeof summarizeVerificationFailures>;
+}) {
+  if (stage.status !== 'FAILED') return null;
+  const hasTimeout = stage.errors.some(({ code }) => code === 'VERIFICATION_COMMAND_TIMEOUT');
+  const hasInfrastructure = stage.errors.some(({ code }) =>
+    ['STAGE_EXECUTION_FAILED', 'STAGE_CONTRACT_VIOLATION', 'DEPENDENCY_VALIDATION_FAILED'].includes(
+      code,
+    ),
+  );
+  let guidance = verificationCommandFailureGuidance();
+  if (hasTimeout) guidance = verificationTimeoutGuidance();
+  else if (hasInfrastructure) guidance = verificationInfrastructureGuidance();
+  else if (failureSummary.primaryCategory === 'VERIFICATION_COMMAND_TIMEOUT') {
+    guidance = verificationTimeoutGuidance();
+  } else if (failureSummary.primaryCategory === 'VERIFICATION_INFRASTRUCTURE_FAILURE') {
+    guidance = verificationInfrastructureGuidance();
+  }
+  return (
+    <p className={styles.investigationMeta} role="note">
+      {guidance}
+    </p>
+  );
+}
+
 /**
  * Renders the safe, already-bounded scalar stage metadata (e.g. exit code, output byte count,
  * truncation flag) that `VerificationStageResult` already carries. This never contains raw command
@@ -499,10 +549,14 @@ function PathGroup({
  */
 function StageMetadata({
   metadata,
+  compact = false,
 }: {
   readonly metadata: Readonly<Record<string, string | number | boolean>>;
+  readonly compact?: boolean;
 }) {
-  const entries = Object.entries(metadata);
+  const entries = Object.entries(metadata).filter(([key]) =>
+    compact ? !['output-bytes', 'output-truncated'].includes(key) : true,
+  );
   if (entries.length === 0) return null;
   return (
     <dl className={styles.stageMetadata}>
@@ -513,6 +567,54 @@ function StageMetadata({
         </div>
       ))}
     </dl>
+  );
+}
+
+function StageDiagnostic({
+  diagnostic,
+  stageStatus,
+}: {
+  readonly diagnostic?: VerificationDiagnostic;
+  readonly stageStatus: VerificationReport['stages'][number]['status'];
+}) {
+  if (stageStatus !== 'FAILED' || diagnostic === undefined) return null;
+  const stdout = diagnostic.stdoutExcerpt;
+  const stderr = diagnostic.stderrExcerpt;
+  const hasOutput =
+    stdout !== undefined ||
+    stderr !== undefined ||
+    diagnostic.commandLabel !== undefined ||
+    diagnostic.exitCode !== undefined;
+  if (!hasOutput) return null;
+  return (
+    <section className={styles.verificationDiagnostic} aria-label="Verification diagnostics">
+      {diagnostic.commandLabel !== undefined && (
+        <p className={styles.investigationMeta}>Command: {diagnostic.commandLabel}</p>
+      )}
+      {diagnostic.exitCode !== undefined && (
+        <p className={styles.investigationMeta}>Exit code: {diagnostic.exitCode}</p>
+      )}
+      {stdout !== undefined && (
+        <details className={styles.diagnosticDetails}>
+          <summary>Stdout excerpt</summary>
+          <pre className={styles.investigationExcerpt}>{stdout}</pre>
+        </details>
+      )}
+      {stderr !== undefined && (
+        <details className={styles.diagnosticDetails} open={stdout === undefined}>
+          <summary>Stderr excerpt</summary>
+          <pre className={styles.investigationExcerpt}>{stderr}</pre>
+        </details>
+      )}
+      {diagnostic.truncated && (
+        <p className={styles.investigationMeta} role="note">
+          Diagnostic output was truncated
+          {diagnostic.omittedBytes !== undefined
+            ? ` (${diagnostic.omittedBytes} bytes omitted).`
+            : '.'}
+        </p>
+      )}
+    </section>
   );
 }
 

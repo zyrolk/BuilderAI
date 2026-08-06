@@ -1,5 +1,6 @@
 import type { ResponseMetadata } from '../../response-processor';
 import type {
+  VerificationDiagnostic,
   VerificationMessage,
   VerificationValidationCode,
   VerificationValidationIssue,
@@ -32,7 +33,127 @@ export function addIssue(
   issues.push({ code, path, message });
 }
 
-export function validateExactKeys(
+export function validateOptionalDiagnostic(
+  value: unknown,
+  path: string,
+  issues: VerificationValidationIssue[],
+  code: VerificationValidationCode,
+  configuration: {
+    readonly maximumStdoutCharacters: number;
+    readonly maximumStderrCharacters: number;
+    readonly maximumCombinedCharacters: number;
+  },
+): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    addIssue(issues, code, path, 'must be an object');
+    return;
+  }
+  const allowedKeys = [
+    'commandLabel',
+    'exitCode',
+    'stdoutExcerpt',
+    'stderrExcerpt',
+    'truncated',
+    'omittedBytes',
+  ] as const;
+  for (const key of allowedKeys) {
+    if (!(key in value)) continue;
+  }
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.includes(key as (typeof allowedKeys)[number])) {
+      addIssue(issues, code, `${path}.${key}`, 'is not allowed');
+    }
+  }
+  if ('commandLabel' in value && typeof value.commandLabel !== 'string') {
+    addIssue(issues, code, `${path}.commandLabel`, 'must be a string');
+  }
+  if (
+    'commandLabel' in value &&
+    typeof value.commandLabel === 'string' &&
+    value.commandLabel.length > 240
+  ) {
+    addIssue(issues, code, `${path}.commandLabel`, 'must contain at most 240 characters');
+  }
+  if (
+    'exitCode' in value &&
+    value.exitCode !== undefined &&
+    (typeof value.exitCode !== 'number' || !Number.isFinite(value.exitCode))
+  ) {
+    addIssue(issues, code, `${path}.exitCode`, 'must be a finite number');
+  }
+  if ('stdoutExcerpt' in value && typeof value.stdoutExcerpt !== 'string') {
+    addIssue(issues, code, `${path}.stdoutExcerpt`, 'must be a string');
+  }
+  if (
+    'stdoutExcerpt' in value &&
+    typeof value.stdoutExcerpt === 'string' &&
+    value.stdoutExcerpt.length > configuration.maximumStdoutCharacters
+  ) {
+    addIssue(
+      issues,
+      code,
+      `${path}.stdoutExcerpt`,
+      `must contain at most ${configuration.maximumStdoutCharacters} characters`,
+    );
+  }
+  if ('stderrExcerpt' in value && typeof value.stderrExcerpt !== 'string') {
+    addIssue(issues, code, `${path}.stderrExcerpt`, 'must be a string');
+  }
+  if (
+    'stderrExcerpt' in value &&
+    typeof value.stderrExcerpt === 'string' &&
+    value.stderrExcerpt.length > configuration.maximumStderrCharacters
+  ) {
+    addIssue(
+      issues,
+      code,
+      `${path}.stderrExcerpt`,
+      `must contain at most ${configuration.maximumStderrCharacters} characters`,
+    );
+  }
+  if ('truncated' in value && typeof value.truncated !== 'boolean') {
+    addIssue(issues, code, `${path}.truncated`, 'must be a boolean');
+  }
+  if (
+    'omittedBytes' in value &&
+    value.omittedBytes !== undefined &&
+    (!isNonNegativeFiniteNumber(value.omittedBytes) || value.omittedBytes === 0)
+  ) {
+    addIssue(issues, code, `${path}.omittedBytes`, 'must be a positive finite number when present');
+  }
+  if (
+    isRecord(value) &&
+    typeof value.stdoutExcerpt === 'string' &&
+    typeof value.stderrExcerpt === 'string'
+  ) {
+    const combined = value.stdoutExcerpt.length + value.stderrExcerpt.length;
+    if (combined > configuration.maximumCombinedCharacters) {
+      addIssue(
+        issues,
+        code,
+        path,
+        `combined diagnostic excerpts must contain at most ${configuration.maximumCombinedCharacters} characters`,
+      );
+    }
+  }
+}
+
+export function normalizeDiagnostic(
+  diagnostic: VerificationDiagnostic | undefined,
+): VerificationDiagnostic | undefined {
+  if (diagnostic === undefined) return undefined;
+  return {
+    ...(diagnostic.commandLabel === undefined ? {} : { commandLabel: diagnostic.commandLabel }),
+    ...(diagnostic.exitCode === undefined ? {} : { exitCode: diagnostic.exitCode }),
+    ...(diagnostic.stdoutExcerpt === undefined ? {} : { stdoutExcerpt: diagnostic.stdoutExcerpt }),
+    ...(diagnostic.stderrExcerpt === undefined ? {} : { stderrExcerpt: diagnostic.stderrExcerpt }),
+    truncated: diagnostic.truncated,
+    ...(diagnostic.omittedBytes === undefined ? {} : { omittedBytes: diagnostic.omittedBytes }),
+  };
+}
+
+export function validateRequiredKeys(
   value: Record<string, unknown>,
   required: readonly string[],
   path: string,
@@ -42,6 +163,16 @@ export function validateExactKeys(
   for (const key of required) {
     if (!(key in value)) addIssue(issues, code, `${path}.${key}`, 'is required');
   }
+}
+
+export function validateExactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  path: string,
+  issues: VerificationValidationIssue[],
+  code: VerificationValidationCode,
+): void {
+  validateRequiredKeys(value, required, path, issues, code);
   for (const key of Object.keys(value)) {
     if (!required.includes(key)) addIssue(issues, code, `${path}.${key}`, 'is not allowed');
   }

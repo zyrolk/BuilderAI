@@ -5,6 +5,7 @@ import {
   buildIterationFeedbackFromGate2Rejection,
 } from '../../application/workspace/iteration-feedback.service';
 import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
+import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
 import { parseWorkspaceActivity } from '../../application/workspace/activity-history.schemas';
@@ -16,10 +17,13 @@ import {
 } from '../../core/file-apply';
 import { ResponsePackageValidator, type ResponsePackage } from '../../core/response-processor';
 import { VerificationReportValidator, type VerificationReport } from '../../core/verification';
+import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
 import {
   WorkspaceWorkflowError,
   type PrepareWorkspaceOptions,
   type PreparedWorkspaceChange,
+  type SaveInvestigationMemoryInput,
+  type SaveOperatorMemoryInput,
   type WorkspaceCompletionSnapshot,
   type WorkspaceWorkflowPort,
 } from './workspace.types';
@@ -53,6 +57,11 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     return this.lastCompletionSnapshot === undefined
       ? undefined
       : structuredClone(this.lastCompletionSnapshot);
+  }
+
+  async investigate(request: string): Promise<WorkspaceInvestigation> {
+    const value = await post('/api/workspace/investigate', { request });
+    return parseInvestigation(value);
   }
 
   async prepare(
@@ -201,6 +210,33 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     if (!response.ok) throw workspaceError(value);
     return parseActivityHistoryResponse(value);
   }
+
+  async loadProjectMemory(): Promise<ExternalTargetProjectMemory> {
+    const response = await fetch('/api/workspace/memory', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    const value = (await response.json()) as unknown;
+    if (!response.ok) throw workspaceError(value);
+    return parseProjectMemory(value);
+  }
+
+  async saveInvestigationMemory(
+    input: SaveInvestigationMemoryInput,
+  ): Promise<ExternalTargetProjectMemory> {
+    const value = await post('/api/workspace/memory', {
+      category: 'INVESTIGATION',
+      ...input,
+    });
+    return parseProjectMemory(value);
+  }
+
+  async saveOperatorMemory(input: SaveOperatorMemoryInput): Promise<ExternalTargetProjectMemory> {
+    const value = await post('/api/workspace/memory', input);
+    return parseProjectMemory(value);
+  }
 }
 
 function readSourcePreparationFromFeedback(iterationFeedback: unknown): {
@@ -221,6 +257,29 @@ async function post(url: string, body: unknown): Promise<unknown> {
   const value = (await response.json()) as unknown;
   if (!response.ok) throw workspaceError(value);
   return value;
+}
+
+function parseInvestigation(value: unknown): WorkspaceInvestigation {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Invalid investigation response.');
+  }
+  const investigationId = Reflect.get(value, 'investigationId');
+  const report = Reflect.get(value, 'report');
+  const searchResult = Reflect.get(value, 'searchResult');
+  const bounded = Reflect.get(value, 'bounded');
+  const request = Reflect.get(value, 'request');
+  if (
+    typeof investigationId !== 'string' ||
+    typeof report !== 'object' ||
+    report === null ||
+    typeof searchResult !== 'object' ||
+    searchResult === null ||
+    typeof bounded !== 'boolean' ||
+    typeof request !== 'string'
+  ) {
+    throw new Error('Investigation response is invalid.');
+  }
+  return value as WorkspaceInvestigation;
 }
 
 function parsePreparation(value: unknown): PreparationWireResponse {
@@ -316,4 +375,16 @@ function parseActivityHistoryResponse(value: unknown): ActivityHistory {
   }
   const parsedActivities = activities.map((entry) => parseWorkspaceActivity(entry));
   return { schemaVersion: 1, activities: parsedActivities };
+}
+
+function parseProjectMemory(value: unknown): ExternalTargetProjectMemory {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Invalid project memory response.');
+  }
+  const schemaVersion = Reflect.get(value, 'schemaVersion');
+  const projectId = Reflect.get(value, 'projectId');
+  if (schemaVersion !== 1 || typeof projectId !== 'string') {
+    throw new Error('Invalid project memory response.');
+  }
+  return value as ExternalTargetProjectMemory;
 }

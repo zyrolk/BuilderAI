@@ -6,6 +6,10 @@ export interface VerificationConfiguration {
   readonly maximumFindingMessageCharacters: number;
   readonly maximumStageMetadataEntries: number;
   readonly maximumStageMetadataStringCharacters: number;
+  readonly maximumDiagnosticStdoutCharacters: number;
+  readonly maximumDiagnosticStderrCharacters: number;
+  readonly maximumDiagnosticCombinedCharacters: number;
+  readonly maximumReportDiagnosticCharacters: number;
 }
 
 export const DEFAULT_VERIFICATION_CONFIGURATION: VerificationConfiguration = {
@@ -14,4 +18,8 @@ export const DEFAULT_VERIFICATION_CONFIGURATION: VerificationConfiguration = {
   maximumFindingMessageCharacters: 2_000,
   maximumStageMetadataEntries: 32,
   maximumStageMetadataStringCharacters: 2_000,
+  maximumDiagnosticStdoutCharacters: 8_192,
+  maximumDiagnosticStderrCharacters: 8_192,
+  maximumDiagnosticCombinedCharacters: 16_384,
+  maximumReportDiagnosticCharacters: 48_768,
 };

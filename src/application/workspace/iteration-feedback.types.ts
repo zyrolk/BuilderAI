@@ -33,6 +33,9 @@ export const ITERATION_FEEDBACK_LIMITS = {
   MAX_PATH_HINTS: 8,
   MAX_STAGE_METADATA_ENTRIES: 8,
   MAX_STAGE_METADATA_STRING: 240,
+  MAX_DIAGNOSTIC_STDOUT: 400,
+  MAX_DIAGNOSTIC_STDERR: 400,
+  MAX_DIAGNOSTIC_COMBINED: 720,
 } as const;
 
 export interface IterationPreservationRejectionOperation {
@@ -74,12 +77,21 @@ export interface IterationFeedbackApply {
   readonly warnings: readonly IterationFeedbackFinding[];
 }
 
+export interface IterationFeedbackVerificationDiagnostic {
+  readonly commandLabel?: string;
+  readonly exitCode?: number;
+  readonly stdoutExcerpt?: string;
+  readonly stderrExcerpt?: string;
+  readonly truncated: boolean;
+}
+
 export interface IterationFeedbackVerificationStage {
   readonly stage: VerificationStage;
   readonly status: VerificationStageStatus;
   readonly errors: readonly IterationFeedbackFinding[];
   readonly warnings: readonly IterationFeedbackFinding[];
   readonly metadata: ResponseMetadata;
+  readonly diagnostic?: IterationFeedbackVerificationDiagnostic;
 }
 
 export interface IterationFeedbackVerification {

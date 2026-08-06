@@ -1,6 +1,6 @@
 import type { ProjectContextReaderPort } from '../../core/target-project';
 import { ExternalTargetOnboardingError } from '../../core/target-project';
-import type { ChangePlannerService } from '../../core/change-planner';
+import type { ChangePlannerService, ProjectChangePlan } from '../../core/change-planner';
 import type { ProjectChangeOperation } from '../../core/change-planner';
 import type { WorkspaceBaselinePort } from '../../core/change-planner/ports/workspace-baseline.port';
 import type { ContextBuilderService, ProjectFileSource } from '../../core/context-builder';
@@ -54,6 +54,11 @@ import type { FeatureTaskPrepareInput } from './workspace-runtime.types';
 import { InMemoryPreparationStore, MAXIMUM_APPLY_ATTEMPTS } from './in-memory-preparation.store';
 import { Gate2ReviewProjectionService } from './gate2-review';
 import {
+  extractInvestigationHandoffPathHints,
+  isInvestigationHandoffFeedback,
+} from './investigation/investigation-handoff';
+import type { ProjectMemoryService } from './project-memory/project-memory.service';
+import {
   extractIterationPathHints,
   normalizeIterationFeedback,
 } from './iteration-feedback.service';
@@ -91,6 +96,7 @@ interface WorkspaceRuntimeDependencies {
   readonly security?: WorkspaceSecurityConfiguration;
   readonly projectRoot?: string;
   readonly applyLock?: WorkspaceApplyLockService;
+  readonly projectMemory?: ProjectMemoryService;
 }
 
 export class WorkspaceRuntimeService {
@@ -124,14 +130,21 @@ export class WorkspaceRuntimeService {
 
   async prepare(request: string, iterationFeedbackInput?: unknown): Promise<WorkspacePreparation> {
     const normalizedRequest = validateRequest(request);
+    const investigationHandoff = isInvestigationHandoffFeedback(iterationFeedbackInput)
+      ? iterationFeedbackInput
+      : undefined;
     const normalizedFeedback =
-      iterationFeedbackInput === undefined
-        ? undefined
-        : normalizeIterationFeedback(iterationFeedbackInput, {
+      investigationHandoff === undefined && iterationFeedbackInput !== undefined
+        ? normalizeIterationFeedback(iterationFeedbackInput, {
             priorRequestSummary: readOptionalPriorSummary(iterationFeedbackInput),
-          });
+          })
+        : undefined;
     const iterationPathHints =
-      normalizedFeedback === undefined ? [] : extractIterationPathHints(normalizedFeedback);
+      investigationHandoff !== undefined
+        ? extractInvestigationHandoffPathHints(investigationHandoff)
+        : normalizedFeedback === undefined
+          ? []
+          : extractIterationPathHints(normalizedFeedback);
     const correlationId = this.dependencies.ids.generate();
     const startedAt = this.dependencies.clock.now();
     this.log(correlationId, 'PREPARE', 'STARTED');
@@ -149,10 +162,20 @@ export class WorkspaceRuntimeService {
         );
       }
       const requestedAt = startedAt.toISOString();
-      const transientTask = createTransientTask(correlationId, normalizedRequest, requestedAt);
+      const sourcePaths = await this.dependencies.sourceFiles.listSourcePaths();
+      let taskText = normalizedRequest;
+      if (this.dependencies.projectMemory?.isEnabled()) {
+        const augmented = await this.dependencies.projectMemory.augmentRequestWithMemory({
+          request: normalizedRequest,
+          existingSourcePaths: sourcePaths,
+          explicitPathHints: iterationPathHints,
+        });
+        taskText = augmented.request;
+      }
+      const transientTask = createTransientTask(correlationId, taskText, requestedAt);
       const executionBrain = createExecutionBrain(canonicalBrain, [transientTask]);
       const { prompt, scopePlan } = await this.buildScopedPrepareArtifacts({
-        taskText: normalizedRequest,
+        taskText,
         executionBrain,
         readerOutput,
         currentTaskId: transientTask.id,
@@ -532,6 +555,14 @@ export class WorkspaceRuntimeService {
         authorizationOutcome: 'AUTHORIZED',
         applyResult,
       });
+      await this.recordVerifiedCompletedWorkMemory({
+        preparationId,
+        requestSummary: claim.plan.source.executionId,
+        changePlan: claim.plan,
+        applyResult,
+        verificationReport,
+        featureBinding,
+      });
       this.log(preparationId, 'APPLY_AND_VERIFY', 'SUCCEEDED', startedAt);
       return structuredClone(completion);
     } catch (error: unknown) {
@@ -684,6 +715,34 @@ export class WorkspaceRuntimeService {
         : { preservationContract: scopeResolution.preservationContract }),
     });
     return { context, prompt, scopePlan: scopeResolution.scopePlan };
+  }
+
+  private async recordVerifiedCompletedWorkMemory(input: {
+    readonly preparationId: string;
+    readonly requestSummary: string;
+    readonly changePlan: ProjectChangePlan;
+    readonly applyResult: FileApplyResult;
+    readonly verificationReport?: VerificationReport;
+    readonly featureBinding?: FeatureTaskPreparationBinding;
+  }): Promise<void> {
+    const projectMemory = this.dependencies.projectMemory;
+    if (projectMemory === undefined || !projectMemory.isEnabled()) return;
+    if (input.applyResult.status !== 'APPLIED') return;
+    if (input.verificationReport?.status !== 'PASSED') return;
+
+    const planSummary = summarizeChangePlan(input.changePlan);
+    const summary = buildVerifiedCompletedWorkSummary(planSummary);
+    const supportingPaths = planSummary.affectedPaths.slice(0, 12);
+    try {
+      await projectMemory.saveVerifiedCompletedWork({
+        preparationId: input.preparationId,
+        summary,
+        supportingPaths,
+        source: input.featureBinding === undefined ? 'VERIFIED_APPLY' : 'FEATURE_TASK',
+      });
+    } catch {
+      // Memory persistence must not fail apply/verify completion.
+    }
   }
 
   private log(
@@ -856,6 +915,20 @@ function readOptionalPriorSummary(value: unknown): string | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const summary = Reflect.get(value, 'priorRequestSummary');
   return typeof summary === 'string' ? summary : undefined;
+}
+
+function buildVerifiedCompletedWorkSummary(
+  planSummary: ReturnType<typeof summarizeChangePlan>,
+): string {
+  const parts: string[] = [];
+  if (planSummary.createdCount > 0) parts.push(`${planSummary.createdCount} created`);
+  if (planSummary.updatedCount > 0) parts.push(`${planSummary.updatedCount} updated`);
+  if (planSummary.deletedCount > 0) parts.push(`${planSummary.deletedCount} deleted`);
+  const action = parts.length > 0 ? parts.join(', ') : 'Verified change applied';
+  const topPaths = planSummary.affectedPaths.slice(0, 3).join(', ');
+  const summary =
+    topPaths.length > 0 ? `${action}: ${topPaths}` : `${action} with no affected paths recorded.`;
+  return summary.slice(0, 1_000);
 }
 
 function defaultTrustedLocalSecurity(): WorkspaceSecurityConfiguration {

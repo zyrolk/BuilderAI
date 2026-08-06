@@ -59,9 +59,11 @@ describe('external-target verification stages', () => {
 
     expect(run).toHaveBeenCalledWith('lint-validation', ['run', 'lint'], {
       failureCode: 'LINT_FAILED',
+      commandLabel: 'npm run lint',
     });
     expect(run).toHaveBeenCalledWith('typecheck-validation', ['run', 'typecheck'], {
       failureCode: 'TYPECHECK_FAILED',
+      commandLabel: 'npm run typecheck',
     });
 
     const root = mkdtempSync(path.join(tmpdir(), 'builderai-no-lint-'));

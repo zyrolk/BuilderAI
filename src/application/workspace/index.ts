@@ -10,6 +10,8 @@ export * from './feature-plan.service';
 export * from './feature-plan.types';
 export * from './feature-workflow.service';
 export * from './gate2-review';
+export * from './investigation';
+export * from './project-memory';
 export * from './iteration-feedback.service';
 export * from './iteration-feedback.types';
 export * from './preservation-rejection-builder.service';

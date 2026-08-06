@@ -12,25 +12,18 @@ import type {
   UpdatePreservationAnalysisResult,
 } from '../types/update-preservation-analysis';
 import type { HtmlStructuredAnalysis } from '../types/html-structured-analysis';
+import {
+  normalizeTextForLineMetrics,
+  splitLogicalLines,
+} from '../validators/text-line-normalization';
 import { compareText, utf8Size } from '../validators/validation-helpers';
 import { HtmlStructuredDeltaService, isHtmlLogicalPath } from './html-structured-delta.service';
 
 const HTML_ID_PATTERN = /\bid\s*=\s*["']([^"']+)["']/gi;
 const ARIA_ATTRIBUTE_PATTERN = /\baria-[a-zA-Z0-9-]+\b/g;
 
-function normalizeLineEndings(value: string): string {
-  return value.replace(/\r\n?/g, '\n');
-}
-
 function roundRatio(value: number): number {
   return Math.min(1, Math.max(0, Math.round(value * 10_000) / 10_000));
-}
-
-function splitLines(content: string): readonly string[] {
-  if (content.length === 0) return [];
-  const lines = content.split('\n');
-  if (lines.at(-1) === '') lines.pop();
-  return lines;
 }
 
 function lcsLineCounts(
@@ -65,8 +58,8 @@ function lcsLineCounts(
 }
 
 function computeLineMetrics(baselineContent: string, proposedContent: string) {
-  const baselineLines = splitLines(baselineContent);
-  const proposedLines = splitLines(proposedContent);
+  const baselineLines = splitLogicalLines(baselineContent);
+  const proposedLines = splitLogicalLines(proposedContent);
   const { linesUnchanged } = lcsLineCounts(baselineLines, proposedLines);
   const linesDeleted = baselineLines.length - linesUnchanged;
   const linesAdded = proposedLines.length - linesUnchanged;
@@ -189,64 +182,37 @@ export class UpdatePreservationAnalysisService {
   analyzeSynchronously(
     input: UpdatePreservationAnalysisInput & { readonly baselineContentChecksum: ArtifactChecksum },
   ): UpdatePreservationAnalysisResult {
-    const baselineContent = normalizeLineEndings(input.baselineContent);
-    const proposedContent = normalizeLineEndings(input.proposedContent);
-    const lineMetrics = computeLineMetrics(baselineContent, proposedContent);
-    const isHtml = input.logicalPath.toLowerCase().endsWith('.html');
-
-    const baselineHtmlIds = isHtml ? extractHtmlIds(baselineContent) : [];
-    const proposedHtmlIds = isHtml ? extractHtmlIds(proposedContent) : [];
-    const removedHtmlIds = isHtml ? setDifference(baselineHtmlIds, proposedHtmlIds) : [];
-    const addedHtmlIds = isHtml ? setDifference(proposedHtmlIds, baselineHtmlIds) : [];
-
-    const removedAccessibilityAttributes = isHtml
-      ? setDifference(
-          extractAriaAttributeNames(baselineContent),
-          extractAriaAttributeNames(proposedContent),
-        )
-      : [];
-
-    const crossFileReferenceRisks =
-      removedHtmlIds.length > 0 && input.siblingJsContents !== undefined
-        ? detectCrossFileReferenceRisks(removedHtmlIds, input.siblingJsContents)
-        : [];
-
-    const structuredAnalysis = computeStructuredAnalysis(
+    const baselineContent = normalizeTextForLineMetrics(input.baselineContent);
+    const proposedContent = normalizeTextForLineMetrics(input.proposedContent);
+    return this.buildAnalysisResult(
       input,
       baselineContent,
       proposedContent,
-      lineMetrics.churnRatio,
-      this.structuredDeltaService,
+      input.baselineContentChecksum,
     );
-
-    return {
-      logicalPath: input.logicalPath,
-      baselineContentChecksum: input.baselineContentChecksum,
-      baselineBytes: utf8Size(baselineContent),
-      proposedBytes: utf8Size(proposedContent),
-      baselineLines: lineMetrics.baselineLines,
-      proposedLines: lineMetrics.proposedLines,
-      linesAdded: lineMetrics.linesAdded,
-      linesDeleted: lineMetrics.linesDeleted,
-      linesUnchanged: lineMetrics.linesUnchanged,
-      churnRatio: lineMetrics.churnRatio,
-      similarityRatio: lineMetrics.similarityRatio,
-      removedHtmlIds,
-      addedHtmlIds,
-      removedAccessibilityAttributes,
-      crossFileReferenceRisks,
-      largeDeletionSignal: computeLargeDeletionSignal(
-        lineMetrics.baselineLines,
-        lineMetrics.linesAdded,
-        lineMetrics.linesDeleted,
-      ),
-      ...(structuredAnalysis !== undefined ? { structuredAnalysis } : {}),
-    };
   }
 
   async analyze(input: UpdatePreservationAnalysisInput): Promise<UpdatePreservationAnalysisResult> {
-    const baselineContent = normalizeLineEndings(input.baselineContent);
-    const proposedContent = normalizeLineEndings(input.proposedContent);
+    const baselineContent = normalizeTextForLineMetrics(input.baselineContent);
+    const proposedContent = normalizeTextForLineMetrics(input.proposedContent);
+    const baselineContentChecksum = {
+      algorithm: this.checksumPort.algorithm,
+      value: await this.checksumPort.checksum(baselineContent),
+    };
+    return this.buildAnalysisResult(
+      input,
+      baselineContent,
+      proposedContent,
+      baselineContentChecksum,
+    );
+  }
+
+  private buildAnalysisResult(
+    input: UpdatePreservationAnalysisInput,
+    baselineContent: string,
+    proposedContent: string,
+    baselineContentChecksum: ArtifactChecksum,
+  ): UpdatePreservationAnalysisResult {
     const lineMetrics = computeLineMetrics(baselineContent, proposedContent);
     const isHtml = input.logicalPath.toLowerCase().endsWith('.html');
 
@@ -277,10 +243,7 @@ export class UpdatePreservationAnalysisService {
 
     return {
       logicalPath: input.logicalPath,
-      baselineContentChecksum: {
-        algorithm: this.checksumPort.algorithm,
-        value: await this.checksumPort.checksum(baselineContent),
-      },
+      baselineContentChecksum,
       baselineBytes: utf8Size(baselineContent),
       proposedBytes: utf8Size(proposedContent),
       baselineLines: lineMetrics.baselineLines,

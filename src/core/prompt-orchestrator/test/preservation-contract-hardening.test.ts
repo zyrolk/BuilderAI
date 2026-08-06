@@ -1,10 +1,8 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
 import { ContextBuilderService } from '../../context-builder';
 import { createContextInput } from '../../context-builder/test/context-builder.fixture';
+import { loadSmokeAtelierGoldenBaseline } from '../../change-planner/test/fixtures/smoke-atelier-golden-fixture';
 import {
   PRESERVATION_CONTRACT_INSTRUCTIONS,
   renderPreservationContractText,
@@ -14,10 +12,7 @@ import { PrepareScopeService } from '../../update-scope';
 import { MemoryWorkspaceBaselinePort } from '../../update-scope/test/workspace-baseline.fixture';
 import { PromptOrchestratorService } from '../services/prompt-orchestrator.service';
 
-const SMOKE_BASELINE_HTML = readFileSync(
-  path.resolve('D:/projects2/smoke-atelier/index.html'),
-  'utf8',
-);
+const SMOKE_BASELINE_HTML = loadSmokeAtelierGoldenBaseline();
 
 const ACCESSIBILITY_REQUEST =
   'Improve the existing counter page accessibility with the smallest possible change. Add aria-live="polite" to the counter value, add appropriate aria-labelledby relationships to the existing counter and quote sections, and ensure the existing buttons explicitly use type="button". Preserve all existing functionality, DOM IDs, aria-labels, text, quote content, localStorage behavior, script/style references, layout, and styling. Prefer modifying index.html only. Do not redesign or refactor unrelated code.';

@@ -21,7 +21,11 @@ import {
   VerificationStagePortResultValidator,
 } from '../validators';
 import { deriveStatus, flatten } from '../validators/verification-report.validator';
-import { normalizeMessages, normalizeMetadata } from '../validators/validation-helpers';
+import {
+  normalizeDiagnostic,
+  normalizeMessages,
+  normalizeMetadata,
+} from '../validators/validation-helpers';
 import { SystemVerificationClockService } from './system-verification-clock.service';
 
 export class VerificationEngineService {
@@ -160,6 +164,9 @@ export class VerificationEngineService {
       errors: normalizeMessages(result.errors),
       durationMs: duration(startedAt, this.clock.now()),
       metadata: normalizeMetadata(result.metadata),
+      ...(normalizeDiagnostic(result.diagnostic) === undefined
+        ? {}
+        : { diagnostic: normalizeDiagnostic(result.diagnostic) }),
     };
   }
 }

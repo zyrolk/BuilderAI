@@ -33,6 +33,18 @@ export function verificationFailureCorrectionHint(): string {
   return 'You may request a bounded correction. The corrected plan returns to Gate 2 and requires explicit approval before apply.';
 }
 
+export function verificationTimeoutGuidance(): string {
+  return 'Verification command exceeded the configured time limit. Review the stage diagnostics and retry after addressing slow or hanging commands.';
+}
+
+export function verificationInfrastructureGuidance(): string {
+  return 'BuilderAI could not execute the verification stage reliably. This is not a normal code/test assertion failure.';
+}
+
+export function verificationCommandFailureGuidance(): string {
+  return 'The verification command ran and reported a failure. Review bounded stdout/stderr excerpts below before requesting correction or investigation.';
+}
+
 export function freshPrepareRequiredNotice(): string {
   return 'Fresh prepare required from current filesystem state.';
 }

@@ -80,6 +80,37 @@ describe('IterationFeedback normalization', () => {
     );
   });
 
+  it('scenario 10 — includes bounded redacted failed-stage diagnostics in correction feedback', () => {
+    const feedback = buildIterationFeedbackFromCompletion({
+      applyResult: APPLIED_RESULT,
+      verificationReport: {
+        ...FAILED_VERIFICATION,
+        stages: [
+          {
+            stage: 'BUILD_VALIDATION',
+            status: 'FAILED',
+            warnings: [],
+            errors: [{ code: 'BUILD_FAILED', message: 'TypeScript compilation failed.' }],
+            durationMs: 2,
+            metadata: { 'exit-code': 1 },
+            diagnostic: {
+              commandLabel: 'npm run build',
+              exitCode: 1,
+              stderrExcerpt:
+                'error TS2322: Type mismatch.\nAuthorization: Bearer sk-live-abcdefghijklmnopqrstuvwxyz',
+              truncated: false,
+            },
+          },
+          ...FAILED_VERIFICATION.stages.slice(1),
+        ],
+      },
+    });
+    const stage = feedback.verification?.stages.find(({ stage }) => stage === 'BUILD_VALIDATION');
+    expect(stage?.diagnostic?.stderrExcerpt).toContain('TS2322');
+    expect(stage?.diagnostic?.stderrExcerpt).not.toContain('sk-live');
+    expect(stage?.diagnostic?.stderrExcerpt).toContain('[REDACTED]');
+  });
+
   it('distinguishes successful paths from skipped paths for PARTIALLY_APPLIED', () => {
     const feedback = buildIterationFeedbackFromCompletion({ applyResult: PARTIALLY_APPLIED });
 

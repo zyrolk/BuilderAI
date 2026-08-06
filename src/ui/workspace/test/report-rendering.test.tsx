@@ -48,9 +48,7 @@ describe('Workspace report rendering', () => {
     expect(screen.getAllByText('Exit Code').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Package Manager')).toBeInTheDocument();
     expect(screen.getByText('npm')).toBeInTheDocument();
-    expect(screen.getByText('Output Bytes')).toBeInTheDocument();
-    expect(screen.getByText('482')).toBeInTheDocument();
-    expect(screen.getByText('Output Truncated')).toBeInTheDocument();
-    expect(screen.getByText('No')).toBeInTheDocument();
+    expect(screen.queryByText('Output Bytes')).not.toBeInTheDocument();
+    expect(screen.queryByText('Output Truncated')).not.toBeInTheDocument();
   }, 15_000);
 });
