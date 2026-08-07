@@ -2,7 +2,7 @@ import { normalizeProjectPath } from './path';
 import { isScopeEligiblePath } from '../../update-scope/internal/protected-scope-paths';
 
 const LOGICAL_PATH_PATTERN =
-  /\b(?:[\w.-]+\/)*[\w.-]+\.(?:html?|css|(?:c|m)?js|jsx|tsx?|json|md)\b/giu;
+  /\b(?:[\w.-]+\/)*[\w.-]+\.(?:html?|css|(?:c|m)?js|jsx|tsx?|json|md|rules)\b/giu;
 
 function comparePath(left: string, right: string): number {
   return left.localeCompare(right);

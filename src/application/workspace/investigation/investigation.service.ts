@@ -1,4 +1,9 @@
 import type { ProjectFileSource } from '../../../core/context-builder';
+import type { WorkspacePathProtectionPolicy } from '../../../core/target-project/workspace-path-protection';
+import { DEFAULT_WORKSPACE_PATH_PROTECTION } from '../../../core/target-project/workspace-path-protection';
+import type { WorkspaceProjectProfile } from '../../../core/target-project/workspace-project-profile.types';
+import { assertExternalTargetWorkflowAllowed } from '../external-target-readiness';
+import type { ExternalTargetReadiness } from '../external-target-readiness';
 import type { ProjectMemoryService } from '../project-memory/project-memory.service';
 import type {
   WorkspaceRuntimeClock,
@@ -30,6 +35,9 @@ export interface InvestigationServiceDependencies {
   readonly configuration?: InvestigationConfiguration;
   readonly providerTimeoutMs?: number;
   readonly projectMemory?: ProjectMemoryService;
+  readonly pathProtection?: WorkspacePathProtectionPolicy;
+  readonly projectProfile?: WorkspaceProjectProfile;
+  readonly evaluateExternalTargetReadiness?: () => Promise<ExternalTargetReadiness | undefined>;
 }
 
 export class InvestigationService {
@@ -40,12 +48,23 @@ export class InvestigationService {
 
   constructor(private readonly dependencies: InvestigationServiceDependencies) {
     this.configuration = dependencies.configuration ?? DEFAULT_INVESTIGATION_CONFIGURATION;
-    this.repositorySearch = new RepositorySearchService(this.configuration);
-    this.evidenceExpansion = new EvidenceExpansionService(this.configuration);
+    const pathProtection = dependencies.pathProtection ?? DEFAULT_WORKSPACE_PATH_PROTECTION;
+    this.repositorySearch = new RepositorySearchService(this.configuration, pathProtection);
+    this.evidenceExpansion = new EvidenceExpansionService(this.configuration, pathProtection);
     this.reportValidator = new InvestigationReportValidator(this.configuration);
   }
 
   async investigate(request: string): Promise<WorkspaceInvestigation> {
+    if (this.dependencies.projectProfile === 'EXTERNAL_TARGET') {
+      const readiness = this.dependencies.evaluateExternalTargetReadiness
+        ? await this.dependencies.evaluateExternalTargetReadiness()
+        : undefined;
+      assertExternalTargetWorkflowAllowed(
+        this.dependencies.projectProfile,
+        readiness,
+        'INVESTIGATE',
+      );
+    }
     const normalizedRequest = request.trim();
     if (normalizedRequest.length === 0 || normalizedRequest.length > 4_000) {
       throw new WorkspaceRuntimeError('INVALID_REQUEST', 'Investigation request is invalid.');

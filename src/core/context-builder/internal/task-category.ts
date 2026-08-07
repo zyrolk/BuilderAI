@@ -5,7 +5,17 @@ export const TASK_CATEGORIES = ['DATABASE', 'API', 'AUTH_ADMIN', 'SHARED', 'TEST
 export type TaskCategory = (typeof TASK_CATEGORIES)[number];
 
 const CATEGORY_KEYWORDS: Readonly<Record<TaskCategory, readonly string[]>> = {
-  DATABASE: ['database', 'schema', 'migration', 'model', 'prisma', 'drizzle', 'sql'],
+  DATABASE: [
+    'database',
+    'schema',
+    'migration',
+    'model',
+    'prisma',
+    'drizzle',
+    'sql',
+    'firebase',
+    'firestore',
+  ],
   API: ['api', 'endpoint', 'route', 'server', 'backend', 'service', 'controller'],
   AUTH_ADMIN: ['auth', 'admin', 'session', 'customer', 'permission', 'moderation', 'middleware'],
   SHARED: ['shared', 'common', 'types', 'contract', 'contracts', 'util', 'utils'],
@@ -129,7 +139,9 @@ export function sourcePathCategory(sourcePath: string): TaskCategory | undefined
   if (
     normalized.includes('prisma') ||
     normalized.includes('drizzle') ||
-    normalized.includes('schema')
+    normalized.includes('schema') ||
+    normalized.includes('firebase') ||
+    normalized.includes('firestore')
   ) {
     return 'DATABASE';
   }

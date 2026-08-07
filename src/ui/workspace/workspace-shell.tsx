@@ -13,7 +13,10 @@ import type { WorkspaceInvestigation } from '../../application/workspace/investi
 import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
 import type { WorkspaceActivity } from '../../application/workspace/activity-history.types';
 import type { FeaturePlan, FeatureTask } from '../../application/workspace/feature-plan.types';
+import type { ExternalTargetReadiness } from '../../application/workspace/external-target-readiness';
+import type { WorkspaceProjectProfile } from '../../core/target-project/workspace-project-profile.types';
 import { ActivityHistoryPanel } from './activity-history-panel';
+import { ProjectReadinessPanel } from './project-readiness-panel';
 import { ProjectMemoryPanel } from './project-memory-panel';
 import { FeatureWorkflowPanel } from './feature-workflow-panel';
 import { HttpFeatureWorkflow } from './http-feature-workflow';
@@ -70,6 +73,8 @@ interface WorkspaceShellProps {
   readonly project: WorkspaceProjectView;
   readonly workflow?: WorkspaceWorkflowPort;
   readonly runtimeAvailable?: boolean;
+  readonly projectProfile?: WorkspaceProjectProfile;
+  readonly readiness?: ExternalTargetReadiness;
 }
 
 interface PreparationTrace {
@@ -82,7 +87,10 @@ export function WorkspaceShell({
   project,
   workflow: injectedWorkflow,
   runtimeAvailable = false,
+  projectProfile = 'BUILDERAI_SELF',
+  readiness,
 }: WorkspaceShellProps) {
+  const workflowBlocked = readiness?.status === 'BLOCKED';
   const runtimeWorkflow = useMemo(
     () => (runtimeAvailable ? new HttpWorkspaceWorkflow() : undefined),
     [runtimeAvailable],
@@ -264,7 +272,7 @@ export function WorkspaceShell({
   }
 
   async function handleInvestigate(): Promise<void> {
-    if (!workflow?.investigate || request.trim().length === 0 || isBusy) return;
+    if (!workflow?.investigate || request.trim().length === 0 || isBusy || workflowBlocked) return;
     const normalizedRequest = request.trim();
     setError(undefined);
     setPrepared(undefined);
@@ -419,7 +427,7 @@ export function WorkspaceShell({
     correctionSnapshot?: WorkspaceCompletionSnapshot,
     featureOptions: PrepareWorkspaceOptions = {},
   ): Promise<void> {
-    if (!workflow || normalizedRequest.length === 0 || isBusy) return;
+    if (!workflow || normalizedRequest.length === 0 || isBusy || workflowBlocked) return;
 
     setError(undefined);
     setPrepared(undefined);
@@ -677,7 +685,11 @@ export function WorkspaceShell({
         </div>
         <span className={workflow ? styles.runtimeReady : styles.runtimeOffline}>
           <span aria-hidden="true" />
-          {workflow ? 'Runtime connected' : 'Review mode'}
+          {workflow
+            ? projectProfile === 'EXTERNAL_TARGET'
+              ? 'External target connected'
+              : 'Runtime connected'
+            : 'Review mode'}
         </span>
       </header>
 
@@ -716,6 +728,8 @@ export function WorkspaceShell({
               {PHASE_LABELS[phase]}
             </p>
           </div>
+
+          {readiness !== undefined ? <ProjectReadinessPanel readiness={readiness} /> : null}
         </aside>
 
         <section className={styles.centerPanel} aria-labelledby="request-title">
@@ -733,6 +747,16 @@ export function WorkspaceShell({
               <p>
                 Runtime execution is disabled. Configure the documented local-only server runtime
                 before this interface can prepare or apply a project change.
+              </p>
+            </div>
+          )}
+
+          {workflow && workflowBlocked && (
+            <div className={styles.readinessBlockedNotice} role="alert">
+              <strong>External target blocked</strong>
+              <p>
+                Investigate, prepare, and apply are disabled until onboarding blockers are resolved.
+                Review the connected project diagnostics in the sidebar.
               </p>
             </div>
           )}
@@ -769,13 +793,16 @@ export function WorkspaceShell({
                   <button
                     type="button"
                     className={styles.secondaryButton}
-                    disabled={!workflow || request.trim().length === 0 || isBusy}
+                    disabled={!workflow || request.trim().length === 0 || isBusy || workflowBlocked}
                     onClick={() => void handleInvestigate()}
                   >
                     {phase === 'INVESTIGATING' ? 'Investigating…' : 'Investigate'}
                   </button>
                 )}
-                <button type="submit" disabled={!workflow || request.trim().length === 0 || isBusy}>
+                <button
+                  type="submit"
+                  disabled={!workflow || request.trim().length === 0 || isBusy || workflowBlocked}
+                >
                   {phase === 'PROCESSING_REQUEST' ? 'Preparing request…' : 'Prepare change plan'}
                 </button>
               </div>

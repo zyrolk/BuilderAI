@@ -5,6 +5,10 @@ import {
 import { normalizeProjectPath } from '../../../core/context-builder/internal/path';
 import { isScopeEligiblePath } from '../../../core/update-scope/internal/protected-scope-paths';
 import {
+  DEFAULT_WORKSPACE_PATH_PROTECTION,
+  type WorkspacePathProtectionPolicy,
+} from '../../../core/target-project/workspace-path-protection';
+import {
   DEFAULT_INVESTIGATION_CONFIGURATION,
   type InvestigationConfiguration,
 } from './investigation-configuration';
@@ -24,7 +28,11 @@ function directory(path: string): string {
   return parts.join('/');
 }
 
-function relatedPaths(hitPath: string, sourcePaths: readonly string[]): readonly string[] {
+function relatedPaths(
+  hitPath: string,
+  sourcePaths: readonly string[],
+  pathProtection: WorkspacePathProtectionPolicy,
+): readonly string[] {
   const normalizedHit = normalizeProjectPath(hitPath);
   const hitDir = directory(normalizedHit);
   const hitBase = basename(normalizedHit);
@@ -32,7 +40,7 @@ function relatedPaths(hitPath: string, sourcePaths: readonly string[]): readonly
   const related = new Set<string>([normalizedHit]);
 
   for (const candidate of sourcePaths) {
-    if (!isScopeEligiblePath(candidate)) continue;
+    if (!isScopeEligiblePath(candidate, pathProtection)) continue;
     const normalized = normalizeProjectPath(candidate);
     if (normalized === normalizedHit) continue;
     if (
@@ -55,6 +63,7 @@ function relatedPaths(hitPath: string, sourcePaths: readonly string[]): readonly
 export class EvidenceExpansionService {
   constructor(
     private readonly configuration: InvestigationConfiguration = DEFAULT_INVESTIGATION_CONFIGURATION,
+    private readonly pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
   ) {}
 
   expandFromMatches(
@@ -81,7 +90,7 @@ export class EvidenceExpansionService {
 
     for (const match of matches) {
       if (evidence.length >= this.configuration.maximumEvidenceFiles) break;
-      for (const relatedPath of relatedPaths(match.logicalPath, sourcePaths)) {
+      for (const relatedPath of relatedPaths(match.logicalPath, sourcePaths, this.pathProtection)) {
         if (evidence.length >= this.configuration.maximumEvidenceFiles) break;
         if (seen.has(relatedPath)) continue;
         const content = fileContents[relatedPath];

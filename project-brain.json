@@ -790,6 +790,24 @@
         "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP9_1: cross-platform change-planner line/churn normalization — canonical logical-line semantics with CRLF/LF parity, pinned 36-line smoke-atelier golden fixture replacing mutable external path, LF/CRLF/trailing-newline regression coverage, and full CI green.",
         "taskIds": [],
         "completedAt": "2026-08-06T03:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp10",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP10: Firebase protection and indexing — shared server-authoritative workspace path protection policy from validated external-target manifest protectedAreas, Firebase config/rules indexing, Gate 2 never-expose vs mutation-protected classification, investigation and project-memory path safety, Zyro-style fixture extension, and 18+ deterministic regression scenarios with full CI green.",
+        "taskIds": [],
+        "completedAt": "2026-08-06T16:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp11",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP11: external-target onboarding hardening — server-authoritative ExternalTargetReadiness projection with fail-closed diagnostics, workspace Connected Project readiness UI, CP10 protected-area visibility, server-side workflow gating for BLOCKED targets (INVESTIGATE/PREPARE/APPLY), BUILDERAI_SELF regression safety, fresh-on-request readiness derivation, and 26 deterministic regression scenarios with full CI green.",
+        "taskIds": [],
+        "completedAt": "2026-08-06T18:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp12",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP12: live investigation prompt-contract fix — investigation PromptPackage now satisfies canonical Execution Engine validation (SYSTEM/ARCHITECTURE/TASK/RULES/OUTPUT_CONTRACT/SAFETY plus budget and CONTEXT omission records), ProviderInvestigationAnalyzer reaches Gemini on real Zyro external target with validated InvestigationReport (HTTP 200, gemini-3.5-flash, 3001 input / 327 output tokens), zero Zyro filesystem mutation, read-only guarantees preserved; Prepare Fix handoff attempted but PREPARE blocked by transient Gemini upstream 503 during live proof.",
+        "taskIds": [],
+        "completedAt": "2026-08-07T03:30:00.000Z"
       }
     ],
     "pendingWork": [

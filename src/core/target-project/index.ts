@@ -9,5 +9,7 @@ export * from './project-context-reader.port';
 export * from './synthetic-project-brain.service';
 export * from './target-project-manifest.types';
 export * from './target-project-manifest.validator';
+export * from './manifest-protected-areas';
+export * from './workspace-path-protection';
 export * from './workspace-project-brain.loader';
 export * from './workspace-project-profile.types';

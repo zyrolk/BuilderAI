@@ -6,6 +6,7 @@ import {
   parseManifestSourceRoots,
   parseManifestStaticSourceRoots,
 } from './target-project-source-layout';
+import { parseManifestProtectedAreas } from './manifest-protected-areas';
 
 export class TargetProjectManifestValidationError extends Error {
   constructor(readonly issues: readonly { readonly path: string; readonly message: string }[]) {
@@ -61,6 +62,19 @@ export function parseTargetProjectManifest(value: unknown): TargetProjectManifes
   }
   if (issues.length > 0) throw new TargetProjectManifestValidationError(issues);
 
+  const protectedAreas = readOptionalStringArray(value, 'protectedAreas', issues);
+  if (protectedAreas !== undefined) {
+    try {
+      parseManifestProtectedAreas(protectedAreas, '$.protectedAreas');
+    } catch (error: unknown) {
+      issues.push({
+        path: '$.protectedAreas',
+        message: error instanceof Error ? error.message : 'protected area paths are invalid',
+      });
+    }
+  }
+  if (issues.length > 0) throw new TargetProjectManifestValidationError(issues);
+
   return {
     schemaVersion: TARGET_PROJECT_MANIFEST_SCHEMA_VERSION,
     projectId: projectId!,
@@ -70,9 +84,7 @@ export function parseTargetProjectManifest(value: unknown): TargetProjectManifes
     ...(readOptionalArray(value, 'constraints', validateConstraint, issues) === undefined
       ? {}
       : { constraints: readOptionalArray(value, 'constraints', validateConstraint, issues)! }),
-    ...(readOptionalStringArray(value, 'protectedAreas', issues) === undefined
-      ? {}
-      : { protectedAreas: readOptionalStringArray(value, 'protectedAreas', issues)! }),
+    ...(protectedAreas === undefined ? {} : { protectedAreas }),
     ...(readOptionalArray(value, 'folderOwnership', validateFolderOwnership, issues) === undefined
       ? {}
       : {

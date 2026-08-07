@@ -1366,3 +1366,115 @@
   color: rgba(120, 190, 255, 0.95);
   font-weight: 600;
 }
+
+.readinessTitle {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+}
+
+.readinessMeta {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.5rem 0 0;
+  color: #8f97a8;
+  font-size: 0.72rem;
+}
+
+.readinessReady,
+.readinessWarningStatus,
+.readinessBlocked {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.readinessReady {
+  color: #52d19b;
+}
+
+.readinessWarningStatus {
+  color: #f1c66d;
+}
+
+.readinessBlocked {
+  color: #ff8f8f;
+}
+
+.readinessSection {
+  margin-top: 0.85rem;
+}
+
+.readinessList,
+.readinessChecks {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  color: #c5cad6;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.readinessList li,
+.readinessChecks li {
+  margin-bottom: 0.2rem;
+}
+
+.readinessTag {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  background: #232836;
+  color: #b8c0d4;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.readinessIssues {
+  margin-top: 0.85rem;
+}
+
+.readinessWarning,
+.readinessBlocker {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.readinessWarning {
+  border: 1px solid #4b412a;
+  background: #1b1811;
+  color: #d8c39a;
+}
+
+.readinessBlocker {
+  border: 1px solid #5a2f2f;
+  background: #1a1010;
+  color: #efb0b0;
+}
+
+.readinessRemediation {
+  margin: 0.25rem 0 0;
+  color: #9aa3b5;
+}
+
+.readinessBlockedNotice {
+  max-width: 54rem;
+  margin: 0 auto 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #5a2f2f;
+  border-radius: 0.8rem;
+  background: #1a1010;
+}
+
+.readinessBlockedNotice strong {
+  color: #ff9f9f;
+  font-size: 0.78rem;
+}
+
+.readinessBlockedNotice p {
+  margin: 0.35rem 0 0;
+  color: #d9b0b0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}

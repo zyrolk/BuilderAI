@@ -1,5 +1,6 @@
 import { normalizeProjectPath } from '../../../core/context-builder/internal/path';
-import { isScopeEligiblePath } from '../../../core/update-scope/internal/protected-scope-paths';
+import type { WorkspacePathProtectionPolicy } from '../../../core/target-project/workspace-path-protection';
+import { DEFAULT_WORKSPACE_PATH_PROTECTION } from '../../../core/target-project/workspace-path-protection';
 
 const FORBIDDEN_KEY_SUBSTRINGS = [
   'token',
@@ -61,13 +62,14 @@ export function sanitizeMemoryTags(
 export function sanitizeMemoryPaths(
   paths: readonly string[],
   maximumPaths: number,
+  pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
 ): readonly string[] {
   const sanitized: string[] = [];
   for (const raw of paths) {
     const normalized = normalizeProjectPath(raw.trim());
     if (normalized.length === 0) continue;
     if (normalized.startsWith('..') || normalized.includes('\\')) continue;
-    if (!isScopeEligiblePath(normalized)) continue;
+    if (!pathProtection.isContentEligible(normalized)) continue;
     if (containsSecretLikeContent(normalized)) continue;
     sanitized.push(normalized);
     if (sanitized.length >= maximumPaths) break;

@@ -1,5 +1,9 @@
 import { isScopeEligiblePath } from '../../../core/update-scope/internal/protected-scope-paths';
 import {
+  DEFAULT_WORKSPACE_PATH_PROTECTION,
+  type WorkspacePathProtectionPolicy,
+} from '../../../core/target-project/workspace-path-protection';
+import {
   DEFAULT_INVESTIGATION_CONFIGURATION,
   INVESTIGATION_BOUNDED_MESSAGE,
   INVESTIGATION_PROTECTED_SKIPPED_MESSAGE,
@@ -23,6 +27,7 @@ const TEXTUAL_EXTENSIONS = new Set([
   '.yml',
   '.sql',
   '.graphql',
+  '.rules',
   '.vue',
   '.svelte',
 ]);
@@ -58,6 +63,7 @@ function lineMatchesQuery(line: string, query: string): boolean {
 export class RepositorySearchService {
   constructor(
     private readonly configuration: InvestigationConfiguration = DEFAULT_INVESTIGATION_CONFIGURATION,
+    private readonly pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
   ) {}
 
   async search(
@@ -67,7 +73,7 @@ export class RepositorySearchService {
   ): Promise<RepositorySearchResult> {
     const limitationMessages: string[] = [];
     const eligiblePaths = sourcePaths
-      .filter((path) => isScopeEligiblePath(path) && isTextualSourcePath(path))
+      .filter((path) => isScopeEligiblePath(path, this.pathProtection) && isTextualSourcePath(path))
       .sort((left, right) => left.localeCompare(right));
 
     if (eligiblePaths.length < sourcePaths.length) {

@@ -7,6 +7,10 @@ export function mapWorkspaceRuntimeErrorStatus(
   error: WorkspaceRuntimeErrorType,
 ): number | undefined {
   switch (error.code) {
+    case 'EXTERNAL_TARGET_ONBOARDING_REQUIRED':
+    case 'EXTERNAL_TARGET_READINESS_BLOCKED':
+    case 'PROJECT_CONTEXT_INVALID':
+      return 422;
     case 'INVALID_REQUEST':
     case 'INVALID_ITERATION_FEEDBACK':
     case 'INVALID_FEATURE_PLAN':

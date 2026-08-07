@@ -1,5 +1,12 @@
 import type { ProjectContextReaderPort } from '../../core/target-project';
-import { ExternalTargetOnboardingError } from '../../core/target-project';
+import {
+  ExternalTargetOnboardingError,
+  type WorkspacePathProtectionPolicy,
+} from '../../core/target-project';
+import type { WorkspaceProjectProfile } from '../../core/target-project/workspace-project-profile.types';
+import { DEFAULT_WORKSPACE_PATH_PROTECTION } from '../../core/target-project/workspace-path-protection';
+import { assertExternalTargetWorkflowAllowed } from './external-target-readiness';
+import type { ExternalTargetReadiness } from './external-target-readiness';
 import type { ChangePlannerService, ProjectChangePlan } from '../../core/change-planner';
 import type { ProjectChangeOperation } from '../../core/change-planner';
 import type { WorkspaceBaselinePort } from '../../core/change-planner/ports/workspace-baseline.port';
@@ -97,12 +104,15 @@ interface WorkspaceRuntimeDependencies {
   readonly projectRoot?: string;
   readonly applyLock?: WorkspaceApplyLockService;
   readonly projectMemory?: ProjectMemoryService;
+  readonly pathProtection?: WorkspacePathProtectionPolicy;
+  readonly projectProfile?: WorkspaceProjectProfile;
+  readonly evaluateExternalTargetReadiness?: () => Promise<ExternalTargetReadiness | undefined>;
 }
 
 export class WorkspaceRuntimeService {
   private readonly configuration: WorkspaceRuntimeConfiguration;
   private readonly store: InMemoryPreparationStore;
-  private readonly gate2ReviewProjection = new Gate2ReviewProjectionService();
+  private readonly gate2ReviewProjection: Gate2ReviewProjectionService;
   private readonly prepareScope: PrepareScopeService;
   private readonly security: WorkspaceSecurityConfiguration;
   private readonly authorization: WorkspaceAuthorizationService;
@@ -113,6 +123,10 @@ export class WorkspaceRuntimeService {
   constructor(private readonly dependencies: WorkspaceRuntimeDependencies) {
     this.configuration = dependencies.configuration ?? DEFAULT_WORKSPACE_RUNTIME_CONFIGURATION;
     validateConfiguration(this.configuration);
+    this.gate2ReviewProjection = new Gate2ReviewProjectionService(
+      undefined,
+      dependencies.pathProtection ?? DEFAULT_WORKSPACE_PATH_PROTECTION,
+    );
     this.store = new InMemoryPreparationStore(
       dependencies.clock,
       this.configuration.maximumPreparations,
@@ -129,6 +143,7 @@ export class WorkspaceRuntimeService {
   }
 
   async prepare(request: string, iterationFeedbackInput?: unknown): Promise<WorkspacePreparation> {
+    await this.assertExternalTargetWorkflowAllowed('PREPARE');
     const normalizedRequest = validateRequest(request);
     const investigationHandoff = isInvestigationHandoffFeedback(iterationFeedbackInput)
       ? iterationFeedbackInput
@@ -232,6 +247,7 @@ export class WorkspaceRuntimeService {
   }
 
   async prepareFeatureTask(input: FeatureTaskPrepareInput): Promise<WorkspacePreparation> {
+    await this.assertExternalTargetWorkflowAllowed('PREPARE');
     const taskRequest =
       input.request.trim().length > 0 ? input.request.trim() : buildFeatureTaskRequest(input.task);
     const normalizedRequest = validateRequest(taskRequest);
@@ -372,6 +388,7 @@ export class WorkspaceRuntimeService {
     approved: boolean,
     evidence?: WorkspaceRequestSecurityEvidence,
   ): Promise<WorkspaceCompletion> {
+    await this.assertExternalTargetWorkflowAllowed('APPLY');
     const requestEvidence = evidence ?? { operatorApproved: approved };
     const authorizationContext = createWorkspaceAuthorizationContext({
       configuration: this.security,
@@ -587,6 +604,16 @@ export class WorkspaceRuntimeService {
   private issueApplyAuthorizationToken(): string | undefined {
     if (this.security.profile !== 'PROTECTED') return undefined;
     return this.dependencies.ids.generate();
+  }
+
+  private async assertExternalTargetWorkflowAllowed(
+    action: 'INVESTIGATE' | 'PREPARE' | 'APPLY',
+  ): Promise<void> {
+    if (this.dependencies.projectProfile !== 'EXTERNAL_TARGET') return;
+    const readiness = this.dependencies.evaluateExternalTargetReadiness
+      ? await this.dependencies.evaluateExternalTargetReadiness()
+      : undefined;
+    assertExternalTargetWorkflowAllowed(this.dependencies.projectProfile, readiness, action);
   }
 
   private readProjectBrainOrThrow(): ProjectBrain {

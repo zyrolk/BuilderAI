@@ -1,7 +1,9 @@
 import type { ProjectChangeOperation, ProjectChangePlan } from '../../../core/change-planner';
 import type { WorkspaceBaselinePort } from '../../../core/change-planner/ports/workspace-baseline.port';
-import { DEFAULT_FILE_APPLY_CONFIGURATION } from '../../../core/file-apply/config/file-apply-configuration';
-import { ProtectedPathPolicyService } from '../../../core/file-apply/services/protected-path-policy.service';
+import {
+  DEFAULT_WORKSPACE_PATH_PROTECTION,
+  type WorkspacePathProtectionPolicy,
+} from '../../../core/target-project/workspace-path-protection';
 import { sha256ChecksumOfNormalizedText } from '../../../infrastructure/workspace/text-baseline-content';
 import {
   DEFAULT_GATE2_REVIEW_CONFIGURATION,
@@ -27,12 +29,9 @@ import {
 } from './unified-diff';
 
 export class Gate2ReviewProjectionService {
-  private readonly protectedPaths = new ProtectedPathPolicyService(
-    DEFAULT_FILE_APPLY_CONFIGURATION,
-  );
-
   constructor(
     private readonly configuration: Gate2ReviewConfiguration = DEFAULT_GATE2_REVIEW_CONFIGURATION,
+    private readonly pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
   ) {}
 
   project(
@@ -73,8 +72,7 @@ export class Gate2ReviewProjectionService {
     baselinePort: WorkspaceBaselinePort,
     remainingTotalBudget: number,
   ): Gate2OperationDiff {
-    const protectedMatch = this.protectedPaths.match(operation.logicalPath);
-    if (protectedMatch !== null) {
+    if (this.pathProtection.isNeverExpose(operation.logicalPath)) {
       return {
         operationId: operation.operationId,
         kind: operation.kind,

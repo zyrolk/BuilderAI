@@ -2,6 +2,8 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 
+import { ExternalTargetReadinessService } from '../../application/workspace/external-target-readiness';
+import type { ExternalTargetReadiness } from '../../application/workspace/external-target-readiness/external-target-readiness.types';
 import type { WorkspaceSecurityConfiguration } from '../../application/workspace/workspace-authorization.types';
 import type { InvestigationService } from '../../application/workspace';
 import {
@@ -22,6 +24,7 @@ import {
   loadWorkspaceProjectBrain,
   readWorkspaceProjectId,
 } from '../../core/target-project';
+import { loadWorkspacePathProtectionPolicy } from '../../core/target-project/workspace-path-protection.loader';
 import { ChangePlannerService } from '../../core/change-planner';
 import { ContextBuilderService } from '../../core/context-builder';
 import { FileApplyEngineService } from '../../core/file-apply';
@@ -39,6 +42,7 @@ import { NodeProjectFileSource } from '../project';
 import { createNodeVerificationRunners, NodeProjectValidator } from '../verification';
 import { loadLocalWorkspaceRuntimeConfiguration } from './local-runtime-configuration';
 import { StructuredRuntimeLogger } from './structured-runtime-logger';
+import type { WorkspacePathProtectionPolicy } from '../../core/target-project/workspace-path-protection';
 
 type LocalWorkspaceServices = {
   readonly runtime: WorkspaceRuntimeService;
@@ -80,6 +84,18 @@ export function getLocalWorkspaceSecurityConfiguration(): WorkspaceSecurityConfi
   return getLocalWorkspaceServices().security;
 }
 
+export async function getLocalExternalTargetReadiness(): Promise<
+  ExternalTargetReadiness | undefined
+> {
+  const configuration = loadLocalWorkspaceRuntimeConfiguration();
+  if (configuration.projectProfile !== 'EXTERNAL_TARGET') return undefined;
+  return new ExternalTargetReadinessService().project({
+    projectRoot: configuration.projectRoot,
+    extraSourceScanRoots: configuration.extraSourceScanRoots,
+    runtimeConnected: true,
+  });
+}
+
 function getLocalWorkspaceServices(): LocalWorkspaceServices {
   singleton ??= createLocalWorkspaceServices();
   return singleton;
@@ -94,6 +110,10 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
       configuration.projectProfile,
     ),
   };
+  const pathProtection = loadWorkspacePathProtectionPolicy(
+    configuration.projectRoot,
+    configuration.projectProfile,
+  );
   const documentSource = new NodeFileSystemDocumentSource(configuration.projectRoot);
   const blueprintReader = createProjectContextReader({
     profile: configuration.projectProfile,
@@ -164,9 +184,11 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
   const projectMemory = createProjectMemoryService(
     configuration.projectRoot,
     configuration.projectProfile,
+    pathProtection,
   );
   const workspaceBaseline = new NodeWorkspaceBaseline(configuration.projectRoot);
   const sourceFiles = new NodeProjectFileSource(configuration.projectRoot, sourceIndexOptions);
+  const evaluateExternalTargetReadiness = () => getLocalExternalTargetReadiness();
   const runtime = new WorkspaceRuntimeService({
     loadProjectBrain: () =>
       loadWorkspaceProjectBrain(configuration.projectRoot, configuration.projectProfile),
@@ -182,7 +204,10 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
       new NodeWorkspaceVisibility(configuration.projectRoot),
       workspaceBaseline,
     ),
-    fileApply: new FileApplyEngineService(new NodeProjectFileSystem(configuration.projectRoot)),
+    fileApply: new FileApplyEngineService(
+      new NodeProjectFileSystem(configuration.projectRoot),
+      pathProtection.toFileApplyConfiguration(),
+    ),
     verification: new VerificationEngineService({
       projectValidator,
       dependencyValidator: verificationRunners.dependencyValidator,
@@ -199,6 +224,9 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     security: configuration.security,
     projectRoot: configuration.projectRoot,
     projectMemory,
+    pathProtection,
+    projectProfile: configuration.projectProfile,
+    evaluateExternalTargetReadiness,
   });
   const investigation = createDefaultInvestigationService({
     sourceFiles,
@@ -208,6 +236,9 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     providerTimeoutMs: configuration.workspace.providerTimeoutMs,
     analyzer: new ProviderInvestigationAnalyzer(providerExecution),
     projectMemory,
+    pathProtection,
+    projectProfile: configuration.projectProfile,
+    evaluateExternalTargetReadiness,
   });
   const persistence = new FeaturePlanPersistence(configuration.projectRoot);
   const featureWorkflow = new FeatureWorkflowService({
@@ -241,6 +272,7 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
 function createProjectMemoryService(
   projectRoot: string,
   profile: ReturnType<typeof loadLocalWorkspaceRuntimeConfiguration>['projectProfile'],
+  pathProtection: WorkspacePathProtectionPolicy,
 ): ProjectMemoryService | undefined {
   if (profile !== 'EXTERNAL_TARGET') return undefined;
   try {
@@ -249,6 +281,7 @@ function createProjectMemoryService(
       projectRoot,
       projectId,
       profile,
+      pathProtection,
       clock: () => new Date(),
       ids: { generate: randomUUID },
     });

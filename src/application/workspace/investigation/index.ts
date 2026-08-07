@@ -4,6 +4,7 @@ export * from './search-query-extraction';
 export * from './repository-search.service';
 export * from './evidence-expansion.service';
 export * from './investigation-report.validator';
+export * from './investigation-output-contract';
 export * from './investigation-prompt.builder';
 export * from './investigation-prompt-package';
 export * from './investigation-analysis.service';

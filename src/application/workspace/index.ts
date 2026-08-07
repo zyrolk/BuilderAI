@@ -16,6 +16,7 @@ export * from './iteration-feedback.service';
 export * from './iteration-feedback.types';
 export * from './preservation-rejection-builder.service';
 export * from './workspace-runtime.service';
+export * from './external-target-readiness';
 export * from './workspace-http-errors';
 export * from './workspace-runtime.types';
 export * from './workspace-authorization.types';

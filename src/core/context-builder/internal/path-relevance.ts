@@ -18,6 +18,8 @@ const ROLE_SEGMENTS: Readonly<Record<TaskCategory, readonly string[]>> = {
   UI: ['components', 'component', 'pages', 'page', 'hooks', 'hook', 'ui', 'features', 'client'],
 };
 
+const FIREBASE_CONFIG_PATTERN =
+  /(?:^|\/)(?:firebase\.json|firestore\.rules|storage\.rules|firestore\.indexes\.json|database\.rules\.json)$/u;
 const TEST_FILE_PATTERN = /\.(spec|test)\.(cjs|js|jsx|mjs|ts|tsx)$/u;
 const SCHEMA_FILE_PATTERN = /(?:^|\/)schema\.prisma$/u;
 
@@ -81,6 +83,7 @@ function specialFileBoost(
   if (
     categories.has('DATABASE') &&
     (SCHEMA_FILE_PATTERN.test(sourcePath) ||
+      FIREBASE_CONFIG_PATTERN.test(sourcePath) ||
       sourcePath.includes('/drizzle/') ||
       (sourcePath.includes('/migrations/') && sourcePath.endsWith('.sql')))
   ) {

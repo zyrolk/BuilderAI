@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 
+import type { WorkspacePathProtectionPolicy } from '../../../core/target-project/workspace-path-protection';
+import { DEFAULT_WORKSPACE_PATH_PROTECTION } from '../../../core/target-project/workspace-path-protection';
 import {
   DEFAULT_PROJECT_MEMORY_CONFIGURATION,
   PROJECT_MEMORY_FILE_PATH,
@@ -17,6 +19,7 @@ export class ProjectMemoryPersistence {
   constructor(
     private readonly projectRoot: string,
     private readonly configuration: ProjectMemoryConfiguration = DEFAULT_PROJECT_MEMORY_CONFIGURATION,
+    private readonly pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
   ) {}
 
   getMemoryFilePath(): string {
@@ -32,7 +35,11 @@ export class ProjectMemoryPersistence {
         return emptyMemory(expectedProjectId);
       }
       const parsed = JSON.parse(raw) as unknown;
-      const normalized = normalizeProjectMemoryDocument(parsed, expectedProjectId);
+      const normalized = normalizeProjectMemoryDocument(
+        parsed,
+        expectedProjectId,
+        this.pathProtection,
+      );
       if (normalized.projectId !== expectedProjectId) {
         throw new ProjectMemoryPersistenceError(
           'PROJECT_MISMATCH',
@@ -55,7 +62,11 @@ export class ProjectMemoryPersistence {
   }
 
   async write(memory: ExternalTargetProjectMemory): Promise<ExternalTargetProjectMemory> {
-    const normalized = normalizeProjectMemoryDocument(memory, memory.projectId);
+    const normalized = normalizeProjectMemoryDocument(
+      memory,
+      memory.projectId,
+      this.pathProtection,
+    );
     const payload = `${JSON.stringify(normalized, null, 2)}\n`;
     if (Buffer.byteLength(payload, 'utf8') > this.configuration.maximumSerializedBytes) {
       throw new ProjectMemoryPersistenceError(

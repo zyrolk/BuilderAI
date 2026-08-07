@@ -10,6 +10,7 @@ export const DEFAULT_SCAN_ROOTS: readonly string[] = [
   'pages',
   'components',
   'features',
+  'functions',
   'lib',
   'shared',
   'client',
@@ -68,6 +69,7 @@ export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
   '.jsx',
   '.mjs',
   '.prisma',
+  '.rules',
   '.sql',
   '.ts',
   '.tsx',
@@ -184,6 +186,10 @@ export function hasIndexableSourceExtension(fileName: string, staticRoot: boolea
 export function isRootConfigFile(fileName: string): boolean {
   if (isExcludedFileName(fileName)) return false;
   if (fileName === 'package.json' || fileName === 'components.json') return true;
+  if (fileName === 'firebase.json') return true;
+  if (fileName === 'firestore.indexes.json') return true;
+  if (fileName === 'database.rules.json') return true;
+  if (fileName === 'firestore.rules' || fileName === 'storage.rules') return true;
   if (fileName === 'tsconfig.json' || /^tsconfig\.[^/\\]+\.json$/u.test(fileName)) return true;
   if (/^next\.config\.(cjs|js|mjs|ts)$/u.test(fileName)) return true;
   if (/^vite\.config\.(cjs|js|mjs|ts)$/u.test(fileName)) return true;

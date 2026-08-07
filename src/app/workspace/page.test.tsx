@@ -6,16 +6,16 @@ import WorkspacePage from './page';
 describe('WorkspacePage', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('loads canonical project information when the live runtime is disabled', () => {
+  it('loads canonical project information when the live runtime is disabled', async () => {
     vi.stubEnv('BUILDERAI_LIVE_WORKFLOW_ENABLED', 'false');
-    render(<WorkspacePage />);
+    render(await WorkspacePage());
 
     expect(screen.getByRole('heading', { level: 1, name: 'BuilderAI' })).toBeInTheDocument();
     expect(screen.getByText('Core boundaries validated')).toBeInTheDocument();
     expect(screen.getByText('Interface review mode')).toBeInTheDocument();
   });
 
-  it('loads external-target project information when the live runtime is enabled', () => {
+  it('loads external-target project information when the live runtime is enabled', async () => {
     vi.stubEnv('BUILDERAI_LIVE_WORKFLOW_ENABLED', 'true');
     vi.stubEnv('BUILDERAI_AI_PROVIDER', 'openai');
     vi.stubEnv('OPENAI_API_KEY', 'test-secret');
@@ -23,12 +23,13 @@ describe('WorkspacePage', () => {
     vi.stubEnv('BUILDERAI_PROJECT_ROOT', ZYRO_STYLE_FIXTURE_ROOT);
     vi.stubEnv('BUILDERAI_WORKSPACE_PROJECT_PROFILE', 'external-target');
 
-    render(<WorkspacePage />);
+    render(await WorkspacePage());
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'Zyro Style Fixture' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('zyro-style-fixture')).toBeInTheDocument();
-    expect(screen.getByText('Runtime connected')).toBeInTheDocument();
+    expect(screen.getAllByText('zyro-style-fixture').length).toBeGreaterThan(0);
+    expect(screen.getByText('External target connected')).toBeInTheDocument();
+    expect(screen.getByText('Connected project')).toBeInTheDocument();
   });
 });

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 import type { WorkspaceProjectProfile } from '../../../core/target-project';
+import type { WorkspacePathProtectionPolicy } from '../../../core/target-project/workspace-path-protection';
+import { DEFAULT_WORKSPACE_PATH_PROTECTION } from '../../../core/target-project/workspace-path-protection';
 import type { InvestigationReport } from '../investigation/investigation.types';
 import {
   DEFAULT_PROJECT_MEMORY_CONFIGURATION,
@@ -31,6 +33,7 @@ export interface ProjectMemoryServiceOptions {
   readonly projectId: string;
   readonly profile: WorkspaceProjectProfile;
   readonly configuration?: ProjectMemoryConfiguration;
+  readonly pathProtection?: WorkspacePathProtectionPolicy;
   readonly clock?: () => Date;
   readonly ids?: { generate(): string };
 }
@@ -67,12 +70,18 @@ export class ProjectMemoryService {
   private readonly persistence: ProjectMemoryPersistence;
   private readonly relevance: ProjectMemoryRelevanceService;
   private readonly configuration: ProjectMemoryConfiguration;
+  private readonly pathProtection: WorkspacePathProtectionPolicy;
   private readonly clock: () => Date;
   private readonly ids: { generate(): string };
 
   constructor(private readonly options: ProjectMemoryServiceOptions) {
     this.configuration = options.configuration ?? DEFAULT_PROJECT_MEMORY_CONFIGURATION;
-    this.persistence = new ProjectMemoryPersistence(options.projectRoot, this.configuration);
+    this.pathProtection = options.pathProtection ?? DEFAULT_WORKSPACE_PATH_PROTECTION;
+    this.persistence = new ProjectMemoryPersistence(
+      options.projectRoot,
+      this.configuration,
+      this.pathProtection,
+    );
     this.relevance = new ProjectMemoryRelevanceService(this.configuration);
     this.clock = options.clock ?? (() => new Date());
     this.ids = options.ids ?? { generate: () => randomUUID() };
@@ -100,6 +109,7 @@ export class ProjectMemoryService {
       },
       input.category,
       this.configuration,
+      this.pathProtection,
     );
     return this.appendRecord({
       ...record,
@@ -120,6 +130,7 @@ export class ProjectMemoryService {
           .filter(Boolean),
       ),
       this.configuration.maximumSupportingPathsPerRecord,
+      this.pathProtection,
     );
     const record = validateProjectMemoryRecordInput(
       {
@@ -139,6 +150,7 @@ export class ProjectMemoryService {
       },
       'INVESTIGATION',
       this.configuration,
+      this.pathProtection,
     );
     return this.appendRecord({
       ...record,
@@ -170,6 +182,7 @@ export class ProjectMemoryService {
       },
       'COMPLETED_WORK',
       this.configuration,
+      this.pathProtection,
     );
     return this.appendRecord({
       ...record,

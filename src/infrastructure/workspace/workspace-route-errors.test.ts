@@ -26,9 +26,28 @@ describe('workspace route errors', () => {
     ).toBe(409);
   });
 
-  it('returns undefined for workflow errors handled by existing route semantics', () => {
+  it('maps onboarding and readiness failures to HTTP 422', () => {
     expect(
       mapWorkspaceRuntimeErrorStatus(new WorkspaceRuntimeError('PROJECT_CONTEXT_INVALID', 'x')),
+    ).toBe(422);
+    expect(
+      mapWorkspaceRuntimeErrorStatus(
+        new WorkspaceRuntimeError('EXTERNAL_TARGET_READINESS_BLOCKED', 'x'),
+      ),
+    ).toBe(422);
+    expect(
+      mapWorkspaceRuntimeErrorStatus(
+        new WorkspaceRuntimeError('EXTERNAL_TARGET_ONBOARDING_REQUIRED', 'x'),
+      ),
+    ).toBe(422);
+  });
+
+  it('returns undefined for workflow errors handled by existing route semantics', () => {
+    expect(
+      mapWorkspaceRuntimeErrorStatus(new WorkspaceRuntimeError('PREPARATION_NOT_FOUND', 'x')),
+    ).toBe(409);
+    expect(
+      mapWorkspaceRuntimeErrorStatus(new WorkspaceRuntimeError('WORKFLOW_FAILED', 'x')),
     ).toBeUndefined();
   });
 

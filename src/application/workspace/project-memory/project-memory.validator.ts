@@ -1,3 +1,5 @@
+import type { WorkspacePathProtectionPolicy } from '../../../core/target-project/workspace-path-protection';
+import { DEFAULT_WORKSPACE_PATH_PROTECTION } from '../../../core/target-project/workspace-path-protection';
 import { INVESTIGATION_CONFIDENCE_LEVELS } from '../investigation/investigation.types';
 import {
   DEFAULT_PROJECT_MEMORY_CONFIGURATION,
@@ -27,6 +29,7 @@ const ID_PATTERN = /^[a-z0-9-]{8,128}$/iu;
 export function normalizeProjectMemoryDocument(
   value: unknown,
   expectedProjectId: string,
+  pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
 ): ExternalTargetProjectMemory {
   if (typeof value !== 'object' || value === null) {
     throw new ProjectMemoryValidationError([
@@ -58,10 +61,10 @@ export function normalizeProjectMemoryDocument(
     schemaVersion: 1,
     projectId,
     updatedAt,
-    decisions: readCategoryRecords(value, 'decisions', 'DECISION'),
-    completedWork: readCategoryRecords(value, 'completedWork', 'COMPLETED_WORK'),
-    investigations: readCategoryRecords(value, 'investigations', 'INVESTIGATION'),
-    findings: readCategoryRecords(value, 'findings', 'FINDING'),
+    decisions: readCategoryRecords(value, 'decisions', 'DECISION', pathProtection),
+    completedWork: readCategoryRecords(value, 'completedWork', 'COMPLETED_WORK', pathProtection),
+    investigations: readCategoryRecords(value, 'investigations', 'INVESTIGATION', pathProtection),
+    findings: readCategoryRecords(value, 'findings', 'FINDING', pathProtection),
   };
 }
 
@@ -69,6 +72,7 @@ export function validateProjectMemoryRecordInput(
   input: unknown,
   category: ProjectMemoryRecordCategory,
   configuration: ProjectMemoryConfiguration = DEFAULT_PROJECT_MEMORY_CONFIGURATION,
+  pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
 ): ProjectMemoryRecord {
   if (typeof input !== 'object' || input === null) {
     throw new ProjectMemoryValidationError([
@@ -87,6 +91,7 @@ export function validateProjectMemoryRecordInput(
   const supportingPaths = sanitizeMemoryPaths(
     readStringArray(input, 'supportingPaths'),
     configuration.maximumSupportingPathsPerRecord,
+    pathProtection,
   );
   const tags = sanitizeMemoryTags(
     readOptionalStringArray(input, 'tags'),
@@ -145,6 +150,7 @@ export function validateProjectMemoryRecordInput(
       const affectedAreas = sanitizeMemoryPaths(
         readStringArray(input, 'affectedAreas'),
         configuration.maximumSupportingPathsPerRecord,
+        pathProtection,
       );
       const recommendedNextStepSummary = readOptionalBoundedText(
         input,
@@ -194,13 +200,19 @@ function readCategoryRecords<T extends ProjectMemoryRecord>(
   value: object,
   field: string,
   category: ProjectMemoryRecordCategory,
+  pathProtection: WorkspacePathProtectionPolicy = DEFAULT_WORKSPACE_PATH_PROTECTION,
 ): readonly T[] {
   const entries = Reflect.get(value, field);
   if (!Array.isArray(entries)) return [];
   const records: T[] = [];
   for (const [index, entry] of entries.entries()) {
     try {
-      const record = validateProjectMemoryRecordInput(entry, category);
+      const record = validateProjectMemoryRecordInput(
+        entry,
+        category,
+        DEFAULT_PROJECT_MEMORY_CONFIGURATION,
+        pathProtection,
+      );
       if (record.category !== category) continue;
       records.push(record as T);
     } catch {

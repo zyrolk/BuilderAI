@@ -1,7 +1,6 @@
 import type { InvestigationEvidence, RepositorySearchResult } from './investigation.types';
 
-export function buildInvestigationPrompt(
-  request: string,
+export function buildInvestigationEvidenceNarrative(
   searchResult: RepositorySearchResult,
   evidence: readonly InvestigationEvidence[],
 ): string {
@@ -19,6 +18,25 @@ export function buildInvestigationPrompt(
           })
           .join('\n');
 
+  return [
+    `Search queries: ${searchResult.queries.join(', ') || '(none)'}`,
+    searchResult.truncated ? 'Search results were truncated by configured bounds.' : '',
+    searchResult.limitationMessages.length > 0
+      ? `Search limitations: ${searchResult.limitationMessages.join(' ')}`
+      : '',
+    '',
+    `Repository evidence:\n${evidenceSection}`,
+  ]
+    .filter((line) => line.length > 0)
+    .join('\n');
+}
+
+/** @deprecated Use buildInvestigationPromptPackage section builders instead. */
+export function buildInvestigationPrompt(
+  request: string,
+  searchResult: RepositorySearchResult,
+  evidence: readonly InvestigationEvidence[],
+): string {
   return [
     'You are performing a read-only repository investigation.',
     'Do not propose file mutations or a change plan.',
@@ -41,8 +59,6 @@ export function buildInvestigationPrompt(
     '',
     `Operator request:\n${request.trim()}`,
     '',
-    `Search queries:\n${searchResult.queries.join(', ') || '(none)'}`,
-    '',
-    `Repository evidence:\n${evidenceSection}`,
+    buildInvestigationEvidenceNarrative(searchResult, evidence),
   ].join('\n');
 }

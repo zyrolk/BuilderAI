@@ -6,6 +6,7 @@ export const WORKSPACE_AUTHORIZATION_ACTIONS = [
   'APPLY',
   'INVESTIGATE',
   'MEMORY_WRITE',
+  'READINESS',
 ] as const;
 export type WorkspaceAuthorizationAction = (typeof WORKSPACE_AUTHORIZATION_ACTIONS)[number];
 
