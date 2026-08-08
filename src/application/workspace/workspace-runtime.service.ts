@@ -170,7 +170,7 @@ export class WorkspaceRuntimeService {
     const externalPreparePlan =
       investigationHandoff !== undefined && this.dependencies.projectProfile === 'EXTERNAL_TARGET'
         ? buildExternalTargetInvestigationPreparePlan({
-            originalRequest: investigationHandoff.priorRequestSummary,
+            prepareRequest: normalizedRequest,
             handoff: investigationHandoff,
           })
         : undefined;

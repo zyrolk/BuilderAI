@@ -1,6 +1,9 @@
 import { normalizeProjectPath } from '../../../core/context-builder/internal/path';
 import type { PromptIterationContent } from '../../../core/prompt-orchestrator';
-import type { InvestigationHandoffFeedback } from '../investigation/investigation-handoff';
+import {
+  buildInvestigationPrepareIntentBlock,
+  type InvestigationHandoffFeedback,
+} from '../investigation/investigation-handoff';
 import {
   EXTERNAL_TARGET_INVESTIGATION_PREPARE_COMPACT_BUDGET,
   EXTERNAL_TARGET_INVESTIGATION_PREPARE_NORMAL_BUDGET,
@@ -24,19 +27,25 @@ function uniquePaths(paths: readonly string[]): readonly string[] {
 }
 
 export function buildCompactInvestigationPrepareTaskText(
-  originalRequest: string,
+  prepareRequest: string,
   handoff: InvestigationHandoffFeedback,
 ): string {
   const lines = [
-    originalRequest.trim(),
+    prepareRequest.trim(),
     '',
-    'Investigation handoff (read-only provenance):',
+    buildInvestigationPrepareIntentBlock(handoff),
+    '',
+    'Operator prepare request is authoritative for this turn.',
+    '- Implement the TASK above. Do not treat the investigation as already applied.',
+    '- When the TASK explicitly asks to UPDATE an existing evidence path and that path appears in existingPathHints, emit UPDATE_FILE for that path.',
+    '- Return an empty operations list only when the TASK cannot be satisfied safely from cited evidence.',
+    '',
+    'Investigation handoff (read-only provenance; no prior ChangePlan was applied):',
     `- investigationId: ${handoff.sourceInvestigationId}`,
     `- summary: ${handoff.investigationSummary}`,
     ...(handoff.suggestedFixScope === undefined
       ? []
       : [`- suggestedFixScope: ${handoff.suggestedFixScope}`]),
-    '- Prepare the smallest safe fix supported by cited evidence only.',
   ];
   return lines.join('\n');
 }
@@ -57,24 +66,34 @@ export function buildInvestigationHandoffIterationContent(
   return {
     schemaVersion: 1,
     kind: 'CORRECTION',
-    priorRequestSummary: [handoff.priorRequestSummary.slice(0, 360), pathIntent]
+    priorRequestSummary: [
+      `Investigation handoff ${handoff.sourceInvestigationId}.`,
+      handoff.investigationSummary.slice(0, 280),
+      pathIntent,
+    ]
       .filter((line) => line.length > 0)
       .join(' ')
       .slice(0, 500),
     apply: {
-      status: 'APPLIED',
-      createdPaths: [...handoff.candidatePathHints],
-      updatedPaths: [...handoff.existingPathHints],
+      status: 'FAILED',
+      createdPaths: [],
+      updatedPaths: [],
       deletedPaths: [],
       skippedPaths: [],
-      errors: [],
+      errors: [
+        {
+          code: 'INVESTIGATION_HANDOFF',
+          message:
+            'Read-only investigation handoff only. No prior ChangePlan was applied; implement the TASK request.',
+        },
+      ],
       warnings: [],
     },
   };
 }
 
 export function buildExternalTargetInvestigationPreparePlan(input: {
-  readonly originalRequest: string;
+  readonly prepareRequest: string;
   readonly handoff: InvestigationHandoffFeedback;
 }): ExternalTargetInvestigationPreparePlan {
   const protectedPaths = uniquePaths(input.handoff.existingPathHints).slice(
@@ -103,7 +122,7 @@ export function buildExternalTargetInvestigationPreparePlan(input: {
   };
 
   return {
-    taskText: buildCompactInvestigationPrepareTaskText(input.originalRequest, input.handoff),
+    taskText: buildCompactInvestigationPrepareTaskText(input.prepareRequest, input.handoff),
     iterationPathHints: [...input.handoff.pathHints],
     iterationFeedback: buildInvestigationHandoffIterationContent(input.handoff),
     normalBudget: EXTERNAL_TARGET_INVESTIGATION_PREPARE_NORMAL_BUDGET,

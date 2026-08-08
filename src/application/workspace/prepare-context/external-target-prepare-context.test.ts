@@ -33,32 +33,37 @@ const supplierSyncFixtureFiles = [
   },
 ] as const;
 
+const PREPARE_REQUEST =
+  'Improve regression coverage for supplier sync settings. Only modify tests/supplierSyncSettings.test.ts. Add a small regression assertion around PRICE_CHANGED when sync flags remain enabled.';
+
+const supplierSyncHandoff = buildInvestigationHandoffFeedback({
+  sourceInvestigationId: 'inv-cp14',
+  priorRequestSummary:
+    'Investigate supplier PRICE_CHANGED comparisons involving Cost Price when supplier sync settings are enabled.',
+  investigationSummary: 'Evidence points to supplier sync settings implementation and tests.',
+  sourcePaths: ['tests/supplierSyncSettings.test.ts', 'src/services/supplierSyncSettings.ts'],
+  requestText: 'Investigate supplier PRICE_CHANGED Cost Price supplierSyncSettings.',
+  queries: ['PRICE_CHANGED', 'supplierSyncSettings'],
+  evidence: [
+    {
+      logicalPath: 'tests/supplierSyncSettings.test.ts',
+      reason: 'Repository search matched query "supplierSyncSettings".',
+      excerpt: 'supplierSyncSettings',
+      claimKind: 'FACT',
+    },
+  ],
+  searchMatches: [],
+  hypotheses: [],
+  affectedAreas: ['src/services/supplierSyncSettings.ts'],
+});
+
 describe('CP14 external-target prepare context', () => {
-  const handoff = buildInvestigationHandoffFeedback({
-    sourceInvestigationId: 'inv-cp14',
-    priorRequestSummary:
-      'Investigate supplier PRICE_CHANGED comparisons involving Cost Price when supplier sync settings are enabled.',
-    investigationSummary: 'Evidence points to supplier sync settings implementation and tests.',
-    sourcePaths: ['tests/supplierSyncSettings.test.ts', 'src/services/supplierSyncSettings.ts'],
-    requestText: 'Investigate supplier PRICE_CHANGED Cost Price supplierSyncSettings.',
-    queries: ['PRICE_CHANGED', 'supplierSyncSettings'],
-    evidence: [
-      {
-        logicalPath: 'tests/supplierSyncSettings.test.ts',
-        reason: 'Repository search matched query "supplierSyncSettings".',
-        excerpt: 'supplierSyncSettings',
-        claimKind: 'FACT',
-      },
-    ],
-    searchMatches: [],
-    hypotheses: [],
-    affectedAreas: ['src/services/supplierSyncSettings.ts'],
-  });
+  const handoff = supplierSyncHandoff;
 
   it('scenario 1 — large external-target context stays under CP14 budget', async () => {
     const plan = buildExternalTargetInvestigationPreparePlan({
-      originalRequest: handoff.priorRequestSummary,
-      handoff,
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
     });
     const input = await createContextInput(undefined, [...supplierSyncFixtureFiles]);
     const context = await new ContextBuilderService().build(
@@ -89,8 +94,8 @@ describe('CP14 external-target prepare context', () => {
 
   it('scenario 2 — top FACT/handoff path remains in selected context', async () => {
     const plan = buildExternalTargetInvestigationPreparePlan({
-      originalRequest: handoff.priorRequestSummary,
-      handoff,
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
     });
     const input = await createContextInput(undefined, [...supplierSyncFixtureFiles]);
     const context = await new ContextBuilderService().build(
@@ -111,8 +116,8 @@ describe('CP14 external-target prepare context', () => {
 
   it('scenario 4 — weak generated paths are omitted before protected evidence paths', async () => {
     const plan = buildExternalTargetInvestigationPreparePlan({
-      originalRequest: handoff.priorRequestSummary,
-      handoff,
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
     });
     const generatedFiles = Array.from({ length: 24 }, (_, index) => ({
       path: `src/features/generated/module-${String(index).padStart(2, '0')}.ts`,
@@ -153,15 +158,18 @@ describe('CP14 external-target prepare context', () => {
 
   it('scenario 6 — investigation handoff appears once via iteration feedback', () => {
     const iteration = buildInvestigationHandoffIterationContent(handoff);
-    expect(iteration.apply.updatedPaths).toContain('tests/supplierSyncSettings.test.ts');
+    expect(iteration.apply.status).toBe('FAILED');
+    expect(iteration.apply.errors?.[0]?.code).toBe('INVESTIGATION_HANDOFF');
+    expect(iteration.apply.updatedPaths).toEqual([]);
     expect(iteration.priorRequestSummary).toMatch(/UPDATE existing paths only/i);
-    expect(iteration.priorRequestSummary).not.toContain(handoff.investigationSummary);
+    expect(iteration.priorRequestSummary).toContain('Evidence points to supplier sync');
   });
 
   it('scenario 7 — existing-path UPDATE intent preserved in iteration feedback', () => {
     const iteration = buildInvestigationHandoffIterationContent(handoff);
     expect(iteration.priorRequestSummary).toMatch(/UPDATE existing paths only/i);
-    expect(iteration.apply.updatedPaths).toEqual(handoff.existingPathHints);
+    expect(iteration.apply.updatedPaths).toEqual([]);
+    expect(iteration.apply.createdPaths).toEqual([]);
   });
 
   it('scenario 8 — candidate new-file metadata preserved without global CREATE prohibition', () => {
@@ -184,14 +192,14 @@ describe('CP14 external-target prepare context', () => {
       affectedAreas: ['src/features/supplier-sync/diagnostics.ts'],
     });
     const iteration = buildInvestigationHandoffIterationContent(candidateHandoff);
-    expect(iteration.apply.createdPaths).toContain('src/features/supplier-sync/diagnostics.ts');
+    expect(iteration.apply.createdPaths).toEqual([]);
     expect(iteration.priorRequestSummary).toMatch(/CREATE only if required/i);
   });
 
   it('scenario 12 — compact retry budget is strictly smaller than normal budget', () => {
     const plan = buildExternalTargetInvestigationPreparePlan({
-      originalRequest: handoff.priorRequestSummary,
-      handoff,
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
     });
     expect(plan.compactBudget.contextLimits.maxCharacters).toBeLessThan(
       plan.normalBudget.contextLimits.maxCharacters,
@@ -336,7 +344,7 @@ describe('CP14 external-target prepare context', () => {
       affectedAreas: [],
     });
     const plan = buildExternalTargetInvestigationPreparePlan({
-      originalRequest: explicitHandoff.priorRequestSummary,
+      prepareRequest: PREPARE_REQUEST,
       handoff: explicitHandoff,
     });
     expect(explicitHandoff.existingPathHints).toContain('src/services/supplierSyncSettings.ts');
@@ -349,16 +357,19 @@ describe('CP14 external-target prepare context', () => {
   });
 
   it('handoff compaction includes suggested fix scope once in task text', () => {
-    const compactTask = buildCompactInvestigationPrepareTaskText('Prepare the fix.', {
+    const compactTask = buildCompactInvestigationPrepareTaskText(PREPARE_REQUEST, {
       ...handoff,
       suggestedFixScope: 'Update supplier sync comparison only.',
     });
+    expect(compactTask).toMatch(/Only modify tests\/supplierSyncSettings\.test\.ts/);
     expect(compactTask).toMatch(/suggestedFixScope: Update supplier sync comparison only/);
+    expect(compactTask).toMatch(/UPDATE_FILE/);
     expect(compactTask.split('investigationId:').length).toBe(2);
   });
 
   it('compact task text omits suggestedFixScope when absent', () => {
-    const compactTask = buildCompactInvestigationPrepareTaskText('Prepare the fix.', handoff);
+    const compactTask = buildCompactInvestigationPrepareTaskText(PREPARE_REQUEST, handoff);
+    expect(compactTask).toMatch(/Only modify tests\/supplierSyncSettings\.test\.ts/);
     expect(compactTask).not.toMatch(/suggestedFixScope:/);
   });
 
@@ -382,7 +393,7 @@ describe('CP14 external-target prepare context', () => {
       affectedAreas: ['src/features/supplier-sync/diagnostics.ts'],
     });
     const iteration = buildInvestigationHandoffIterationContent(candidateOnly);
-    expect(iteration.apply.createdPaths.length).toBeGreaterThan(0);
+    expect(iteration.apply.createdPaths).toEqual([]);
     expect(iteration.apply.updatedPaths).toEqual([]);
     expect(iteration.priorRequestSummary).toMatch(/CREATE only if required/i);
   });
@@ -402,7 +413,7 @@ describe('CP14 external-target prepare context', () => {
       ],
     };
     const plan = buildExternalTargetInvestigationPreparePlan({
-      originalRequest: duplicatedHandoff.priorRequestSummary,
+      prepareRequest: PREPARE_REQUEST,
       handoff: duplicatedHandoff,
     });
     expect(plan.sourceContextPolicy(false).protectedPaths).toEqual([
@@ -463,5 +474,37 @@ describe('CP14 external-target prepare context', () => {
   it('applySourceContextPresentation is a no-op without policy', () => {
     const files = [{ path: 'a.ts', content: 'x', priority: 'RELATED_SOURCE_FILES' as const }];
     expect(applySourceContextPresentation(files, undefined)).toBe(files);
+  });
+});
+
+describe('CP16 external-target investigation prepare ChangePlan prompt fix', () => {
+  it('uses the explicit PREPARE request as task text instead of investigation-only summary', () => {
+    const plan = buildExternalTargetInvestigationPreparePlan({
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
+    });
+    expect(plan.taskText).toContain('Only modify tests/supplierSyncSettings.test.ts');
+    expect(plan.taskText).not.toMatch(/^Investigate why supplier PRICE_CHANGED/i);
+    expect(plan.taskText).toMatch(/UPDATE_FILE/);
+    expect(plan.taskText).toMatch(/Operator prepare request is authoritative/i);
+  });
+
+  it('does not claim prior apply success in investigation handoff iteration feedback', () => {
+    const plan = buildExternalTargetInvestigationPreparePlan({
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
+    });
+    expect(plan.iterationFeedback.apply.status).toBe('FAILED');
+    expect(plan.iterationFeedback.apply.updatedPaths).toEqual([]);
+    expect(plan.iterationFeedback.apply.errors?.[0]?.code).toBe('INVESTIGATION_HANDOFF');
+  });
+
+  it('preserves HARD-scope path signal in prepare intent block for explicit test-only request', () => {
+    const plan = buildExternalTargetInvestigationPreparePlan({
+      prepareRequest: PREPARE_REQUEST,
+      handoff: supplierSyncHandoff,
+    });
+    expect(plan.taskText).toMatch(/Do not use CREATE_FILE for any path listed above/i);
+    expect(plan.taskText).toContain('tests/supplierSyncSettings.test.ts');
   });
 });
