@@ -7,7 +7,10 @@ import type { FormEvent } from 'react';
 import { isVerificationEligibleFileApplyResult, type FileApplyResult } from '../../core/file-apply';
 import type { VerificationReport } from '../../core/verification';
 import { buildIterationFeedbackFromCompletion } from '../../application/workspace/iteration-feedback.service';
-import { buildInvestigationHandoffFeedback } from '../../application/workspace/investigation/investigation-handoff';
+import {
+  buildInvestigationHandoffFeedback,
+  isInvestigationHandoffFeedback,
+} from '../../application/workspace/investigation/investigation-handoff';
 import { buildVerificationFailureInvestigationRequest } from '../../application/workspace/verification-failure-investigation';
 import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
 import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
@@ -333,7 +336,16 @@ export function WorkspaceShell({
         ...(investigation.report.suggestedFixScope === undefined
           ? {}
           : { suggestedFixScope: investigation.report.suggestedFixScope }),
-        pathHints: investigation.report.affectedAreas,
+        ...(investigation.report.likelyRootCause === undefined
+          ? {}
+          : { likelyRootCause: investigation.report.likelyRootCause }),
+        sourcePaths: investigation.repositorySourcePaths,
+        requestText: originalRequest,
+        queries: investigation.searchResult.queries,
+        evidence: investigation.report.evidence,
+        searchMatches: investigation.searchResult.matches,
+        hypotheses: investigation.report.hypotheses,
+        affectedAreas: investigation.report.affectedAreas,
       }),
     });
   }
@@ -499,7 +511,12 @@ export function WorkspaceShell({
         {
           id: nextConversationId(entries),
           author: 'BUILDER_AI',
-          message: `Prepared ${nextPrepared.changePlan.summary.totalOperations} operation${nextPrepared.changePlan.summary.totalOperations === 1 ? '' : 's'} for review. No files have been changed.`,
+          message:
+            nextPrepared.changePlan.summary.totalOperations === 0 &&
+            featureOptions.iterationFeedback !== undefined &&
+            isInvestigationHandoffFeedback(featureOptions.iterationFeedback)
+              ? 'No safe filesystem changes were proposed from the investigation evidence. Refine the investigation or provide clearer reproduction details before preparing again. No files have been changed.'
+              : `Prepared ${nextPrepared.changePlan.summary.totalOperations} operation${nextPrepared.changePlan.summary.totalOperations === 1 ? '' : 's'} for review. No files have been changed.`,
         },
       ]);
       void refreshActivityHistory();

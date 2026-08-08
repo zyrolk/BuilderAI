@@ -328,14 +328,34 @@ describe('CP12 investigation prompt package contract', () => {
       priorRequestSummary: 'Investigate supplier sync settings.',
       investigationSummary: 'Evidence points to supplier sync settings tests.',
       suggestedFixScope: 'tests/supplierSyncSettings.test.ts',
-      pathHints: ['tests/supplierSyncSettings.test.ts', 'src/features/supplier-sync/settings.ts'],
+      sourcePaths: ['tests/supplierSyncSettings.test.ts', 'src/features/supplier-sync/settings.ts'],
+      requestText: 'Investigate supplierSyncSettings PRICE_CHANGED.',
+      queries: ['supplierSyncSettings', 'PRICE_CHANGED'],
+      evidence: [
+        {
+          logicalPath: 'tests/supplierSyncSettings.test.ts',
+          reason: 'Repository search matched query "supplierSyncSettings".',
+          excerpt: "describe('supplierSyncSettings', () => {",
+          claimKind: 'FACT',
+        },
+      ],
+      searchMatches: [
+        {
+          logicalPath: 'tests/supplierSyncSettings.test.ts',
+          lineNumber: 8,
+          lineText: "describe('supplierSyncSettings', () => {",
+          query: 'supplierSyncSettings',
+          excerpt: "describe('supplierSyncSettings', () => {",
+        },
+      ],
+      hypotheses: [],
+      affectedAreas: ['src/features/supplier-sync/settings.ts'],
     });
 
     expect(handoff.kind).toBe('INVESTIGATION_HANDOFF');
-    expect(extractInvestigationHandoffPathHints(handoff)).toEqual([
-      'src/features/supplier-sync/settings.ts',
+    expect(extractInvestigationHandoffPathHints(handoff)[0]).toBe(
       'tests/supplierSyncSettings.test.ts',
-    ]);
+    );
   });
 
   it('scenario 11 — normal PREPARE prompt-package behavior is unchanged', async () => {
@@ -378,6 +398,7 @@ describe('CP12 investigation prompt package bounds', () => {
       maximumSearchQueries: 4,
       maximumFilesScanned: 5,
       maximumMatches: 2,
+      maximumMatchesPerFile: 2,
       maximumExcerptCharacters: 80,
       maximumEvidenceFiles: 2,
       maximumTotalContextCharacters: 64_000,

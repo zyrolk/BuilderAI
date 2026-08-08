@@ -194,12 +194,20 @@ export class ProjectMemoryService {
     readonly request: string;
     readonly existingSourcePaths: readonly string[];
     readonly explicitPathHints?: readonly string[];
+    readonly memoryBudget?: Pick<
+      ProjectMemoryConfiguration,
+      'maximumContextCharacters' | 'maximumRelevantRecords'
+    >;
   }): Promise<ProjectMemoryContextSelection> {
     if (!this.isEnabled()) {
       return Promise.resolve({ records: [], renderedText: '', truncated: false });
     }
+    const configuration =
+      input.memoryBudget === undefined
+        ? this.configuration
+        : { ...this.configuration, ...input.memoryBudget };
     return this.read().then((memory) =>
-      this.relevance.selectRelevant({
+      new ProjectMemoryRelevanceService(configuration).selectRelevant({
         request: input.request,
         memory,
         existingSourcePaths: input.existingSourcePaths,
@@ -213,6 +221,10 @@ export class ProjectMemoryService {
     readonly request: string;
     readonly existingSourcePaths: readonly string[];
     readonly explicitPathHints?: readonly string[];
+    readonly memoryBudget?: Pick<
+      ProjectMemoryConfiguration,
+      'maximumContextCharacters' | 'maximumRelevantRecords'
+    >;
   }): Promise<{ readonly request: string; readonly memoryContext: ProjectMemoryContextSelection }> {
     const memoryContext = await this.selectRelevantContext(input);
     return {

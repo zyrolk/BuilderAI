@@ -242,6 +242,7 @@ export function createWorkflow(
       investigationId: 'investigation-fixture-001',
       request,
       bounded: false,
+      repositorySourcePaths: [],
       searchResult: {
         queries: ['fixture'],
         matches: [],

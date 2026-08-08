@@ -20,14 +20,15 @@ import {
   type FileApplyResult,
 } from '../../core/file-apply';
 import { parseProjectBrain, type ProjectBrain, type ProjectTask } from '../../core/project-brain';
-import type {
-  PromptIterationContent,
-  PromptOrchestratorService,
-  PromptPackage,
+import {
+  DEFAULT_PROMPT_ORCHESTRATOR_CONFIGURATION,
+  type PromptIterationContent,
+  type PromptOrchestratorService,
+  type PromptPackage,
 } from '../../core/prompt-orchestrator';
 import type { ResponseProcessorService } from '../../core/response-processor';
 import { PrepareScopeService, type UpdateScopePlan } from '../../core/update-scope';
-import type { ContextPackage } from '../../core/context-builder';
+import type { ContextPackage, SourceContextPolicy } from '../../core/context-builder';
 import type { VerificationEngineService, VerificationReport } from '../../core/verification';
 import type { ActivityHistoryService } from './activity-history.service';
 import type { WorkspaceActivity } from './activity-history.types';
@@ -60,6 +61,12 @@ import {
 import type { FeatureTaskPrepareInput } from './workspace-runtime.types';
 import { InMemoryPreparationStore, MAXIMUM_APPLY_ATTEMPTS } from './in-memory-preparation.store';
 import { Gate2ReviewProjectionService } from './gate2-review';
+import {
+  buildExternalTargetInvestigationPreparePlan,
+  buildPrepareContextSelectionDiagnostics,
+  type ExternalTargetPrepareContextBudget,
+  type PrepareContextSelectionDiagnostics,
+} from './prepare-context';
 import {
   extractInvestigationHandoffPathHints,
   isInvestigationHandoffFeedback,
@@ -160,6 +167,13 @@ export class WorkspaceRuntimeService {
         : normalizedFeedback === undefined
           ? []
           : extractIterationPathHints(normalizedFeedback);
+    const externalPreparePlan =
+      investigationHandoff !== undefined && this.dependencies.projectProfile === 'EXTERNAL_TARGET'
+        ? buildExternalTargetInvestigationPreparePlan({
+            originalRequest: investigationHandoff.priorRequestSummary,
+            handoff: investigationHandoff,
+          })
+        : undefined;
     const correlationId = this.dependencies.ids.generate();
     const startedAt = this.dependencies.clock.now();
     this.log(correlationId, 'PREPARE', 'STARTED');
@@ -178,68 +192,140 @@ export class WorkspaceRuntimeService {
       }
       const requestedAt = startedAt.toISOString();
       const sourcePaths = await this.dependencies.sourceFiles.listSourcePaths();
-      let taskText = normalizedRequest;
-      if (this.dependencies.projectMemory?.isEnabled()) {
-        const augmented = await this.dependencies.projectMemory.augmentRequestWithMemory({
-          request: normalizedRequest,
-          existingSourcePaths: sourcePaths,
-          explicitPathHints: iterationPathHints,
-        });
-        taskText = augmented.request;
+      const prepareAttempts: readonly boolean[] =
+        externalPreparePlan === undefined ? [false] : [false, true];
+      let lastError: unknown;
+      let preparedArtifacts:
+        | {
+            readonly prompt: PromptPackage;
+            readonly scopePlan: UpdateScopePlan;
+            readonly context: ContextPackage;
+            readonly memoryContextCharacters: number;
+            readonly prepareContextSelection?: PrepareContextSelectionDiagnostics;
+          }
+        | undefined;
+
+      for (const compactRetry of prepareAttempts) {
+        const activeBudget =
+          externalPreparePlan === undefined
+            ? undefined
+            : compactRetry
+              ? externalPreparePlan.compactBudget
+              : externalPreparePlan.normalBudget;
+        let taskText =
+          externalPreparePlan === undefined ? normalizedRequest : externalPreparePlan.taskText;
+        let memoryContextCharacters = 0;
+        if (this.dependencies.projectMemory?.isEnabled()) {
+          const augmented = await this.dependencies.projectMemory.augmentRequestWithMemory({
+            request: taskText,
+            existingSourcePaths: sourcePaths,
+            explicitPathHints: iterationPathHints,
+            ...(activeBudget === undefined
+              ? {}
+              : {
+                  memoryBudget: {
+                    maximumContextCharacters: activeBudget.memoryContextCharacters,
+                    maximumRelevantRecords: activeBudget.memoryRelevantRecords,
+                  },
+                }),
+          });
+          taskText = augmented.request;
+          memoryContextCharacters = augmented.memoryContext.renderedText.length;
+        }
+        const transientTask = createTransientTask(correlationId, taskText, requestedAt);
+        const executionBrain = createExecutionBrain(canonicalBrain, [transientTask]);
+        try {
+          preparedArtifacts = {
+            ...(await this.buildScopedPrepareArtifacts({
+              taskText,
+              executionBrain,
+              readerOutput,
+              currentTaskId: transientTask.id,
+              iterationPathHints:
+                externalPreparePlan === undefined
+                  ? iterationPathHints
+                  : externalPreparePlan.iterationPathHints,
+              correlationId,
+              metadata: {
+                'correlation-id': correlationId,
+                source: 'workspace',
+                ...(externalPreparePlan === undefined
+                  ? {}
+                  : { 'prepare-context-profile': 'EXTERNAL_TARGET_INVESTIGATION_PREPARE' }),
+              },
+              iterationFeedback:
+                externalPreparePlan === undefined
+                  ? (normalizedFeedback as PromptIterationContent | undefined)
+                  : externalPreparePlan.iterationFeedback,
+              ...(externalPreparePlan === undefined
+                ? {}
+                : {
+                    sourceContextPolicy: externalPreparePlan.sourceContextPolicy(compactRetry),
+                    contextBudget: activeBudget,
+                  }),
+              memoryContextCharacters,
+              compactRetryUsed: compactRetry,
+            })),
+            memoryContextCharacters,
+          };
+          const executionRequest = createExecutionRequest(
+            correlationId,
+            preparedArtifacts.prompt,
+            requestedAt,
+            this.configuration.providerTimeoutMs,
+          );
+          const providerOutput =
+            await this.dependencies.providerExecution.execute(executionRequest);
+          const responsePackage = await this.dependencies.responseProcessor.process({
+            providerResponse: providerOutput.providerResponse,
+            executionResult: providerOutput.executionResult,
+            metadata: { 'correlation-id': correlationId },
+          });
+          const changePlan = this.dependencies.changePlanner.plan(
+            responsePackage,
+            undefined,
+            undefined,
+            preparedArtifacts.scopePlan,
+          );
+          const gate2Review = this.gate2ReviewProjection.project(
+            changePlan,
+            this.dependencies.workspaceBaseline,
+          );
+          const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
+          const applyAuthorizationToken = this.issueApplyAuthorizationToken();
+          this.store.save(
+            correlationId,
+            changePlan,
+            gate2Review,
+            expiresAt,
+            undefined,
+            applyAuthorizationToken,
+          );
+          this.log(correlationId, 'PREPARE', 'SUCCEEDED', startedAt);
+          return {
+            preparationId: correlationId,
+            expiresAt: expiresAt.toISOString(),
+            responsePackage,
+            changePlan,
+            gate2Review,
+            ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
+            ...(preparedArtifacts.prepareContextSelection === undefined
+              ? {}
+              : { prepareContextSelection: preparedArtifacts.prepareContextSelection }),
+          };
+        } catch (error: unknown) {
+          lastError = error;
+          if (
+            externalPreparePlan !== undefined &&
+            !compactRetry &&
+            isOutputTruncatedFailure(error)
+          ) {
+            continue;
+          }
+          throw error;
+        }
       }
-      const transientTask = createTransientTask(correlationId, taskText, requestedAt);
-      const executionBrain = createExecutionBrain(canonicalBrain, [transientTask]);
-      const { prompt, scopePlan } = await this.buildScopedPrepareArtifacts({
-        taskText,
-        executionBrain,
-        readerOutput,
-        currentTaskId: transientTask.id,
-        iterationPathHints,
-        correlationId,
-        metadata: { 'correlation-id': correlationId, source: 'workspace' },
-        iterationFeedback: normalizedFeedback as PromptIterationContent | undefined,
-      });
-      const executionRequest = createExecutionRequest(
-        correlationId,
-        prompt,
-        requestedAt,
-        this.configuration.providerTimeoutMs,
-      );
-      const providerOutput = await this.dependencies.providerExecution.execute(executionRequest);
-      const responsePackage = await this.dependencies.responseProcessor.process({
-        providerResponse: providerOutput.providerResponse,
-        executionResult: providerOutput.executionResult,
-        metadata: { 'correlation-id': correlationId },
-      });
-      const changePlan = this.dependencies.changePlanner.plan(
-        responsePackage,
-        undefined,
-        undefined,
-        scopePlan,
-      );
-      const gate2Review = this.gate2ReviewProjection.project(
-        changePlan,
-        this.dependencies.workspaceBaseline,
-      );
-      const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
-      const applyAuthorizationToken = this.issueApplyAuthorizationToken();
-      this.store.save(
-        correlationId,
-        changePlan,
-        gate2Review,
-        expiresAt,
-        undefined,
-        applyAuthorizationToken,
-      );
-      this.log(correlationId, 'PREPARE', 'SUCCEEDED', startedAt);
-      return {
-        preparationId: correlationId,
-        expiresAt: expiresAt.toISOString(),
-        responsePackage,
-        changePlan,
-        gate2Review,
-        ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
-      };
+      throw lastError instanceof Error ? lastError : new Error('Prepare failed.');
     } catch (error: unknown) {
       this.log(correlationId, 'PREPARE', 'FAILED', startedAt, safeCode(error));
       throw error;
@@ -705,10 +791,15 @@ export class WorkspaceRuntimeService {
     readonly correlationId: string;
     readonly metadata: Record<string, string>;
     readonly iterationFeedback?: PromptIterationContent;
+    readonly sourceContextPolicy?: SourceContextPolicy;
+    readonly contextBudget?: ExternalTargetPrepareContextBudget;
+    readonly memoryContextCharacters?: number;
+    readonly compactRetryUsed?: boolean;
   }): Promise<{
     readonly context: ContextPackage;
     readonly prompt: PromptPackage;
     readonly scopePlan: UpdateScopePlan;
+    readonly prepareContextSelection?: PrepareContextSelectionDiagnostics;
   }> {
     const sourcePaths = await this.dependencies.sourceFiles.listSourcePaths();
     const scopeResolution = this.prepareScope.resolve({
@@ -719,28 +810,79 @@ export class WorkspaceRuntimeService {
         : { iterationPathHints: input.iterationPathHints }),
       baselinePort: this.dependencies.workspaceBaseline,
     });
-    const context = await this.dependencies.contextBuilder.build({
-      projectBrain: input.executionBrain,
-      blueprintReaderOutput: input.readerOutput,
-      currentTaskId: input.currentTaskId,
-      sourceFileSource: this.dependencies.sourceFiles,
-      ...(input.iterationPathHints.length === 0
-        ? {}
-        : { iterationPathHints: input.iterationPathHints }),
-      ...(scopeResolution.pinnedBaselineFiles.length === 0
-        ? {}
-        : { pinnedBaselineFiles: scopeResolution.pinnedBaselineFiles }),
-    });
-    const prompt = await this.dependencies.promptOrchestrator.build({
-      context,
-      metadata: input.metadata,
-      ...(input.iterationFeedback === undefined
-        ? {}
-        : { iterationFeedback: input.iterationFeedback }),
-      ...(scopeResolution.preservationContract === undefined
-        ? {}
-        : { preservationContract: scopeResolution.preservationContract }),
-    });
+    const context = await this.dependencies.contextBuilder.build(
+      {
+        projectBrain: input.executionBrain,
+        blueprintReaderOutput: input.readerOutput,
+        currentTaskId: input.currentTaskId,
+        sourceFileSource: this.dependencies.sourceFiles,
+        ...(input.iterationPathHints.length === 0
+          ? {}
+          : { iterationPathHints: input.iterationPathHints }),
+        ...(scopeResolution.pinnedBaselineFiles.length === 0
+          ? {}
+          : { pinnedBaselineFiles: scopeResolution.pinnedBaselineFiles }),
+        ...(input.sourceContextPolicy === undefined
+          ? {}
+          : { sourceContextPolicy: input.sourceContextPolicy }),
+      },
+      {
+        ...(input.contextBudget === undefined
+          ? {}
+          : {
+              limitOverrides: input.contextBudget.contextLimits,
+              admissionQuotas: input.contextBudget.admissionQuotas,
+            }),
+      },
+    );
+    const promptConfiguration =
+      input.contextBudget === undefined
+        ? DEFAULT_PROMPT_ORCHESTRATOR_CONFIGURATION
+        : {
+            ...DEFAULT_PROMPT_ORCHESTRATOR_CONFIGURATION,
+            maximumCharacters: input.contextBudget.promptMaximumCharacters,
+          };
+    const prompt = await this.dependencies.promptOrchestrator.build(
+      {
+        context,
+        metadata: input.metadata,
+        ...(input.iterationFeedback === undefined
+          ? {}
+          : { iterationFeedback: input.iterationFeedback }),
+        ...(scopeResolution.preservationContract === undefined
+          ? {}
+          : { preservationContract: scopeResolution.preservationContract }),
+      },
+      promptConfiguration,
+    );
+    if (input.contextBudget !== undefined) {
+      const diagnostics = buildPrepareContextSelectionDiagnostics({
+        compactRetryUsed: input.compactRetryUsed ?? false,
+        contextPackageCharacters: context.size.characters,
+        promptPackageCharacters: JSON.stringify(prompt).length,
+        memoryContextCharacters: input.memoryContextCharacters ?? 0,
+        relevantFiles: context.relevantFiles.map((file) => ({
+          path: file.path,
+          content: file.content,
+          ...(file.contentPresentation === undefined
+            ? {}
+            : { contentPresentation: file.contentPresentation }),
+        })),
+        omissions: context.size.omissions,
+      });
+      this.dependencies.logger.record({
+        correlationId: input.correlationId,
+        stage: 'PREPARE_CONTEXT_SELECTION',
+        outcome: 'SUCCEEDED',
+        code: JSON.stringify(diagnostics),
+      });
+      return {
+        context,
+        prompt,
+        scopePlan: scopeResolution.scopePlan,
+        prepareContextSelection: diagnostics,
+      };
+    }
     return { context, prompt, scopePlan: scopeResolution.scopePlan };
   }
 
@@ -908,6 +1050,13 @@ function mapExternalTargetOnboardingError(error: unknown): unknown {
     return new WorkspaceRuntimeError('EXTERNAL_TARGET_ONBOARDING_REQUIRED', error.message);
   }
   return error;
+}
+
+function isOutputTruncatedFailure(error: unknown): boolean {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    return Reflect.get(error, 'code') === 'OUTPUT_TRUNCATED';
+  }
+  return false;
 }
 
 function safeCode(error: unknown): string {

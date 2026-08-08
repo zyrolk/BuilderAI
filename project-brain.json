@@ -808,6 +808,30 @@
         "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP12: live investigation prompt-contract fix — investigation PromptPackage now satisfies canonical Execution Engine validation (SYSTEM/ARCHITECTURE/TASK/RULES/OUTPUT_CONTRACT/SAFETY plus budget and CONTEXT omission records), ProviderInvestigationAnalyzer reaches Gemini on real Zyro external target with validated InvestigationReport (HTTP 200, gemini-3.5-flash, 3001 input / 327 output tokens), zero Zyro filesystem mutation, read-only guarantees preserved; Prepare Fix handoff attempted but PREPARE blocked by transient Gemini upstream 503 during live proof.",
         "taskIds": [],
         "completedAt": "2026-08-07T03:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp13",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP13: daily-driver reliability hardening — deterministic search relevance ranking with per-file match diversity (maximumMatchesPerFile=3), evidence FACT-over-INFERENCE ranking, relevance-ranked investigation handoff with existingPathHints/candidatePathHints, server-side Prepare Fix intent (UPDATE existing paths, no speculative CREATE), empty ChangePlan operator guidance; live Zyro acceptance proved READINESS + INVESTIGATE + ranked handoff (tests/supplierSyncSettings.test.ts first without filename in request) with zero mutation; PREPARE reached provider but failed OUTPUT_TRUNCATED/MAX_TOKENS on large external-target context (26817 input tokens) — environmental, not handoff regression.",
+        "taskIds": [],
+        "completedAt": "2026-08-07T11:00:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp14",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP14: external-target investigation PREPARE context bounding — deterministic EXTERNAL_TARGET_INVESTIGATION_PREPARE budget (42k context / 58k prompt normal; 28k / 42k compact retry), CP13 evidence-based file priority with protected primary paths and partial excerpts for secondary files, canonical compact investigation handoff (task text + ITERATION feedback without duplication), bounded project memory, OUTPUT_TRUNCATED workspace compact-retry loop, prepareContextSelection diagnostics on API response, search stop-word tightening; live Zyro proof: PREPARE completed without OUTPUT_TRUNCATED (11857 input tokens vs CP13 26817; 6 selected files 4 full/2 partial/8 omitted; prompt 44149 chars) with zero Zyro mutation; provider returned empty ChangePlan for LOW-confidence inconclusive investigation (no unsafe CREATE). Remaining: richer investigation evidence may still yield empty plans; further stop-word cleanup for search queries.",
+        "taskIds": [],
+        "completedAt": "2026-08-08T02:30:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp14-1",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP14.1: production dependency audit remediation — nanoid@3.3.16 (GHSA-2v37-7h3g-55p8) traced to next@16.2.12 → postcss@8.5.25 → nanoid; resolved with minimal package.json override nanoid@3.3.17 (no major upgrades); npm audit --omit=dev --audit-level=high now reports 0 vulnerabilities; full CI green.",
+        "taskIds": [],
+        "completedAt": "2026-08-08T09:00:00.000Z"
+      },
+      {
+        "id": "builderai-zyrolk-daily-driver-cp15",
+        "summary": "BUILDERAI_ZYROLK_DAILY_DRIVER_CP15: investigation evidence expansion — deterministic test→implementation counterpart discovery, direct import dependency resolution, bounded related-path expansion with protected-path exclusion, repository-evidence merge preserving FACT authority over provider-trimmed INFERENCE, per-path evidence dedupe and test-counterpart ranking boosts; live Zyro: search ranks tests/supplierSyncSettings.test.ts + src/services/supplierSyncSettings.ts without filename hint, PREPARE bounded (no OUTPUT_TRUNCATED) but provider still returns empty ChangePlan on LOW-confidence inconclusive summary — documented limitation, zero Zyro mutation.",
+        "taskIds": [],
+        "completedAt": "2026-08-08T09:45:00.000Z"
       }
     ],
     "pendingWork": [

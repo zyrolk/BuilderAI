@@ -11,11 +11,18 @@ import type {
   ContextOmission,
   ContextPackage,
   ContextSourceFile,
+  SourceFileAdmissionQuotas,
 } from '../types';
 import { admitSourceFilesByMeasuredBudget } from '../internal/source-file-admission';
+import { applySourceContextPresentation } from '../internal/source-context-presentation';
 import { ContextInputValidator, ContextPackageValidator } from '../validators';
 import { ContextSelectionService } from './context-selection.service';
 import { ContextSizeService, type ContextPackageDraft } from './context-size.service';
+
+export interface ContextBuildOptions {
+  readonly limitOverrides?: Partial<ContextLimits>;
+  readonly admissionQuotas?: SourceFileAdmissionQuotas;
+}
 
 export class ContextBuilderService {
   constructor(
@@ -27,9 +34,9 @@ export class ContextBuilderService {
 
   async build(
     input: ContextBuildInput,
-    limitOverrides: Partial<ContextLimits> = {},
+    options: ContextBuildOptions = {},
   ): Promise<ContextPackage> {
-    const limits: ContextLimits = { ...DEFAULT_CONTEXT_LIMITS, ...limitOverrides };
+    const limits: ContextLimits = { ...DEFAULT_CONTEXT_LIMITS, ...options.limitOverrides };
     let sourcePaths: readonly string[];
     try {
       sourcePaths = await input.sourceFileSource.listSourcePaths();
@@ -90,9 +97,13 @@ export class ContextBuilderService {
       Math.max(0, limits.maxFiles - pinnedBaselineFiles.length),
       targetMaxCharacters,
       (files, omissions) => measureFiles([...pinnedBaselineFiles, ...files], omissions),
-      DEFAULT_SOURCE_FILE_ADMISSION_QUOTAS,
+      options.admissionQuotas ?? DEFAULT_SOURCE_FILE_ADMISSION_QUOTAS,
     );
-    const mergedFiles = [...pinnedBaselineFiles, ...admitted];
+    const presentedFiles = applySourceContextPresentation(
+      [...pinnedBaselineFiles, ...admitted],
+      validated.sourceContextPolicy,
+    );
+    const mergedFiles = presentedFiles;
     const draft: ContextPackageDraft = {
       ...draftWithoutFiles,
       relevantFiles: mergedFiles,

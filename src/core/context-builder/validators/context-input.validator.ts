@@ -214,6 +214,9 @@ export class ContextInputValidator {
       sourceFileSource: input.sourceFileSource,
       sourcePaths,
       iterationPathHints: validateIterationPathHints(input.iterationPathHints, issues),
+      ...(input.sourceContextPolicy === undefined
+        ? {}
+        : { sourceContextPolicy: input.sourceContextPolicy }),
     };
   }
 }

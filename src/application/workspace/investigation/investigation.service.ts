@@ -16,6 +16,10 @@ import {
   type InvestigationAnalysisPort,
 } from './investigation-analysis.service';
 import {
+  buildInvestigationRankingContext,
+  mergeRepositoryEvidence,
+} from './investigation-path-ranking';
+import {
   DEFAULT_INVESTIGATION_CONFIGURATION,
   type InvestigationConfiguration,
 } from './investigation-configuration';
@@ -90,7 +94,12 @@ export class InvestigationService {
       );
       const readFile = (logicalPath: string) =>
         this.dependencies.sourceFiles.readSourceFile(logicalPath);
-      const searchResult = await this.repositorySearch.search(sourcePaths, queries, readFile);
+      const searchResult = await this.repositorySearch.search(
+        sourcePaths,
+        queries,
+        readFile,
+        requestForAnalysis,
+      );
 
       const matchedPaths = [...new Set(searchResult.matches.map(({ logicalPath }) => logicalPath))];
       const fileContents: Record<string, string> = {};
@@ -102,12 +111,33 @@ export class InvestigationService {
         }
       }
 
+      const expansionCandidates = this.evidenceExpansion.collectCandidatePaths(
+        searchResult.matches,
+        sourcePaths,
+        fileContents,
+        queries,
+      );
+      for (const logicalPath of expansionCandidates) {
+        if (fileContents[logicalPath] !== undefined) continue;
+        try {
+          fileContents[logicalPath] = await readFile(logicalPath);
+        } catch {
+          continue;
+        }
+      }
+
       const evidence = this.evidenceExpansion.expandFromMatches(
         searchResult.matches,
         sourcePaths,
         fileContents,
+        requestForAnalysis,
+        queries,
       );
 
+      const rankingContext = buildInvestigationRankingContext({
+        requestText: requestForAnalysis,
+        queries,
+      });
       const analyzed = await this.dependencies.analyzer.analyze({
         investigationId,
         request: requestForAnalysis,
@@ -117,7 +147,19 @@ export class InvestigationService {
         requestedAt: startedAt.toISOString(),
         timeoutMs: this.dependencies.providerTimeoutMs ?? 120_000,
       });
-      const report = this.reportValidator.validate(analyzed, investigationId);
+      const report = this.reportValidator.validate(
+        {
+          ...analyzed,
+          evidence: mergeRepositoryEvidence(
+            analyzed.evidence,
+            evidence,
+            rankingContext,
+            searchResult.matches,
+            this.configuration.maximumEvidenceFiles,
+          ),
+        },
+        investigationId,
+      );
 
       this.log(investigationId, 'INVESTIGATE', 'SUCCEEDED', startedAt);
       return {
@@ -125,6 +167,7 @@ export class InvestigationService {
         request: normalizedRequest,
         report,
         searchResult,
+        repositorySourcePaths: sourcePaths,
         bounded: searchResult.truncated,
       };
     } catch (error: unknown) {

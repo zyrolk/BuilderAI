@@ -53,7 +53,7 @@ describe('ContextBuilder pinned baseline admission', () => {
           },
         ],
       },
-      { maxFiles: 4, maxCharacters: 95_000 },
+      { limitOverrides: { maxFiles: 4, maxCharacters: 95_000 } },
     );
 
     expect(

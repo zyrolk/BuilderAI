@@ -10,3 +10,4 @@ export * from './investigation-prompt-package';
 export * from './investigation-analysis.service';
 export * from './investigation.service';
 export * from './investigation-handoff';
+export * from './investigation-path-ranking';

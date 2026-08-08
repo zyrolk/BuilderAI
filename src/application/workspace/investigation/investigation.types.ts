@@ -59,6 +59,7 @@ export interface WorkspaceInvestigation {
   readonly request: string;
   readonly report: InvestigationReport;
   readonly searchResult: RepositorySearchResult;
+  readonly repositorySourcePaths: readonly string[];
   readonly bounded: boolean;
 }
 

@@ -9,6 +9,7 @@ import {
   INVESTIGATION_PROTECTED_SKIPPED_MESSAGE,
   type InvestigationConfiguration,
 } from './investigation-configuration';
+import { buildInvestigationRankingContext, rankSearchMatches } from './investigation-path-ranking';
 import type { RepositorySearchMatch, RepositorySearchResult } from './investigation.types';
 
 const TEXTUAL_EXTENSIONS = new Set([
@@ -70,6 +71,7 @@ export class RepositorySearchService {
     sourcePaths: readonly string[],
     queries: readonly string[],
     readFile: (logicalPath: string) => Promise<string>,
+    requestText = '',
   ): Promise<RepositorySearchResult> {
     const limitationMessages: string[] = [];
     const eligiblePaths = sourcePaths
@@ -82,13 +84,11 @@ export class RepositorySearchService {
 
     const pathsToScan = eligiblePaths.slice(0, this.configuration.maximumFilesScanned);
     let truncated = eligiblePaths.length > pathsToScan.length;
-    const matches: RepositorySearchMatch[] = [];
+    const candidateMatches: RepositorySearchMatch[] = [];
+    const rankingContext = buildInvestigationRankingContext({ requestText, queries });
 
     for (const logicalPath of pathsToScan) {
-      if (matches.length >= this.configuration.maximumMatches) {
-        truncated = true;
-        break;
-      }
+      let fileMatchCount = 0;
       let content: string;
       try {
         content = await readFile(logicalPath);
@@ -99,14 +99,14 @@ export class RepositorySearchService {
 
       const lines = content.replace(/\r\n?/g, '\n').split('\n');
       for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-        if (matches.length >= this.configuration.maximumMatches) {
+        if (fileMatchCount >= this.configuration.maximumMatchesPerFile) {
           truncated = true;
           break;
         }
         const lineText = lines[lineIndex] ?? '';
         for (const query of queries) {
           if (!lineMatchesQuery(lineText, query)) continue;
-          matches.push({
+          candidateMatches.push({
             logicalPath,
             lineNumber: lineIndex + 1,
             lineText,
@@ -118,20 +118,23 @@ export class RepositorySearchService {
               this.configuration.maximumExcerptCharacters,
             ),
           });
+          fileMatchCount += 1;
           break;
         }
       }
     }
 
+    const rankedMatches = rankSearchMatches(
+      candidateMatches,
+      rankingContext,
+      this.configuration.maximumMatches,
+    );
+    if (candidateMatches.length > rankedMatches.length) truncated = true;
     if (truncated) limitationMessages.push(INVESTIGATION_BOUNDED_MESSAGE);
 
     return {
       queries,
-      matches: matches.sort((left, right) =>
-        left.logicalPath === right.logicalPath
-          ? left.lineNumber - right.lineNumber
-          : left.logicalPath.localeCompare(right.logicalPath),
-      ),
+      matches: rankedMatches,
       filesScanned: pathsToScan.length,
       truncated,
       limitationMessages,

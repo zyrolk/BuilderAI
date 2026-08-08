@@ -113,6 +113,7 @@ export class ContextSelectionService {
       reader.analysis.modules,
       limits.maxSourceReads,
       input.iterationPathHints,
+      input.sourceContextPolicy,
     );
     omissions.push(...fileResolution.omissions);
     const files = deduplicateFiles(fileResolution.files, omissions);

@@ -100,19 +100,20 @@ export const DEFAULT_PROMPT_OUTPUT_CONTRACT: PromptOutputContract = {
   fields: [
     {
       name: 'summary',
-      description: 'Concise outcome summary.',
+      description: 'One concise sentence describing the outcome. No prose outside schema fields.',
       type: 'STRING',
       required: true,
     },
     {
       name: 'artifacts',
-      description: 'Structured artifacts produced for the task.',
+      description:
+        'Only ChangePlan operations required by the task. Do not emit unchanged contextual files or explanatory artifacts.',
       type: 'ARRAY',
       required: true,
     },
     {
       name: 'diagnostics',
-      description: 'Structured diagnostics and limitations.',
+      description: 'At most one short diagnostic entry when limitations exist.',
       type: 'ARRAY',
       required: true,
     },

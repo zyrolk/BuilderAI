@@ -35,6 +35,7 @@ import type {
   ContextSelectionEvidence,
   ContextSourceFile,
   ProjectSourceFile,
+  SourceContextPolicy,
 } from '../types';
 import { ContextBuilderValidationError } from '../types';
 
@@ -172,6 +173,7 @@ export class DependencyResolutionService {
     allModules: readonly ModuleAnalysis[],
     maxReads: number,
     iterationPathHints: readonly string[] = [],
+    sourceContextPolicy?: SourceContextPolicy,
   ): Promise<FileResolution> {
     const normalizedPaths = sourcePaths.map(normalizeProjectPath);
     const availablePaths = new Set(normalizedPaths);
@@ -180,7 +182,11 @@ export class DependencyResolutionService {
     const testPrimary = isTestPrimaryTask(taskCorpus, categories);
     const scoredModulePaths = new Set(relevantModules.map(({ path }) => path));
     const explicitPaths = extractExplicitPathMentions(taskCorpus, normalizedPaths);
-    const pathHints = new Set([...iterationPathHints, ...explicitPaths]);
+    const pathHints = new Set([
+      ...iterationPathHints,
+      ...explicitPaths,
+      ...(sourceContextPolicy?.priorityPaths ?? []),
+    ]);
     const rankedPaths = rankCandidatePaths(
       normalizedPaths,
       queryVariants,
@@ -201,7 +207,7 @@ export class DependencyResolutionService {
         CONTEXT_RETRIEVAL_SCORING.READ_SHORTLIST_CAPACITY,
         taskCorpus,
       ),
-      explicitPaths,
+      [...explicitPaths, ...(sourceContextPolicy?.priorityPaths ?? [])],
       CONTEXT_RETRIEVAL_SCORING.READ_SHORTLIST_CAPACITY,
     );
 
@@ -275,6 +281,19 @@ export class DependencyResolutionService {
 
     for (const sourcePath of shortlist) {
       await readFile(sourcePath, pathScoreByPath.get(sourcePath) ?? 0, 0);
+    }
+
+    for (const priorityPath of sourceContextPolicy?.priorityPaths ?? []) {
+      if (!availablePaths.has(priorityPath) || scoredFiles.has(priorityPath)) continue;
+      await readFile(
+        priorityPath,
+        Math.max(
+          pathScoreByPath.get(priorityPath) ?? 0,
+          CONTEXT_RETRIEVAL_SCORING.EXPLICIT_PATH_BOOST,
+        ),
+        CONTEXT_RETRIEVAL_SCORING.EXPLICIT_PATH_BOOST,
+        appendEvidence([], 'EXPLICIT_PATH', priorityPath),
+      );
     }
 
     const rerankedParents = [...scoredFiles.values()].sort((left, right) =>

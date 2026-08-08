@@ -147,8 +147,10 @@ describe('ContextBuilderService', () => {
     const input = await createContextInput(createContextBrain(), files);
 
     const packageValue = await service.build(input, {
-      maxCharacters: mandatorySize + 700,
-      maxFiles: 2,
+      limitOverrides: {
+        maxCharacters: mandatorySize + 700,
+        maxFiles: 2,
+      },
     });
 
     expect(packageValue.size.characters).toBeLessThanOrEqual(mandatorySize + 700);
@@ -160,9 +162,9 @@ describe('ContextBuilderService', () => {
 
   it('rejects a character limit too small for mandatory context', async () => {
     const input = await createContextInput(createContextBrain(), []);
-    await expect(service.build(input, { maxCharacters: 100 })).rejects.toBeInstanceOf(
-      ContextBuilderValidationError,
-    );
+    await expect(
+      service.build(input, { limitOverrides: { maxCharacters: 100 } }),
+    ).rejects.toBeInstanceOf(ContextBuilderValidationError);
   });
 
   it('reports blockers from the current task and its dependencies', async () => {
@@ -224,7 +226,7 @@ describe('ContextBuilderService', () => {
     };
 
     try {
-      await service.build(invalid, { maxDocuments: 1 });
+      await service.build(invalid, { limitOverrides: { maxDocuments: 1 } });
       expect.unreachable('Expected validation to fail.');
     } catch (error: unknown) {
       expect(issueCodes(error)).toEqual(
@@ -313,7 +315,7 @@ describe('ContextBuilderService', () => {
     const source = new MemoryProjectFileSource(createSourceFiles());
     const packageValue = await service.build(
       { ...input, sourceFileSource: source },
-      { maxSourceReads: 1 },
+      { limitOverrides: { maxSourceReads: 1 } },
     );
 
     expect(source.readPaths).toHaveLength(1);
@@ -325,7 +327,9 @@ describe('ContextBuilderService', () => {
       packageValue.size.omissions.filter(({ reason }) => reason === 'FILE_LIMIT'),
     ).toHaveLength(1);
 
-    await expect(service.build(input, { maxSourcePaths: 1 })).rejects.toMatchObject({
+    await expect(
+      service.build(input, { limitOverrides: { maxSourcePaths: 1 } }),
+    ).rejects.toMatchObject({
       issues: expect.arrayContaining([expect.objectContaining({ code: 'CONTEXT_SIZE_EXCEEDED' })]),
     });
   });

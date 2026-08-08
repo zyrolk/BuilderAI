@@ -24,7 +24,7 @@ export interface InvestigationAnalysisPort {
 export class DeterministicInvestigationAnalyzer implements InvestigationAnalysisPort {
   async analyze(input: InvestigationAnalysisInput): Promise<InvestigationReport> {
     const factEvidence = input.evidence.filter(({ claimKind }) => claimKind === 'FACT');
-    const affectedAreas = [...new Set(input.evidence.map(({ logicalPath }) => logicalPath))].sort();
+    const affectedAreas = [...new Set(input.evidence.map(({ logicalPath }) => logicalPath))];
     const hasStrongEvidence = factEvidence.length >= 2;
     const limitations = [...input.searchResult.limitationMessages];
 

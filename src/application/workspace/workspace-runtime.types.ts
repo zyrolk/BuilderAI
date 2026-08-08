@@ -8,6 +8,7 @@ import type { VerificationReport } from '../../core/verification';
 import type { FeaturePlan, FeatureTask } from './feature-plan.types';
 import type { Gate2ReviewProjection } from './gate2-review';
 import type { IterationFeedback } from './iteration-feedback.types';
+import type { PrepareContextSelectionDiagnostics } from './prepare-context';
 
 export interface ProviderExecutionOutput {
   readonly providerResponse: AIProviderResponse;
@@ -26,6 +27,8 @@ export interface WorkspacePreparation {
   readonly gate2Review: Gate2ReviewProjection;
   /** Server-issued apply authorization; required for protected-profile apply requests. */
   readonly applyAuthorizationToken?: string;
+  /** Bounded prepare context selection metrics for external-target investigation flows. */
+  readonly prepareContextSelection?: PrepareContextSelectionDiagnostics;
 }
 
 export interface WorkspaceCompletion {

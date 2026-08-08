@@ -109,6 +109,7 @@ describe('CP7 investigation scenarios', () => {
       maximumSearchQueries: 4,
       maximumFilesScanned: 5,
       maximumMatches: 2,
+      maximumMatchesPerFile: 2,
       maximumExcerptCharacters: 80,
       maximumEvidenceFiles: 2,
       maximumTotalContextCharacters: 1_000,
@@ -146,19 +147,50 @@ describe('CP7 investigation scenarios', () => {
     expect(store.claim('prep-test').kind).toBe('CLAIMED');
   });
 
-  it('scenario 9 — Prepare Fix handoff exposes bounded path hints for normal prepare', () => {
+  it('scenario 9 — Prepare Fix handoff exposes bounded relevance-ranked path hints', () => {
     const handoff = buildInvestigationHandoffFeedback({
       sourceInvestigationId: 'inv-001',
       priorRequestSummary: 'Investigate supplier cancellation bug.',
       investigationSummary: 'Evidence points to cancellation handler and client.',
       suggestedFixScope: 'server/services/order-cancellation.service.ts',
-      pathHints: [
+      sourcePaths: [
         'server/services/order-cancellation.service.ts',
         'src/features/supplier-orders/supplier-order-client.ts',
       ],
+      requestText: 'Investigate cancelSupplierOrder supplier cancellation bug.',
+      queries: ['cancelSupplierOrder'],
+      evidence: [
+        {
+          logicalPath: 'server/services/order-cancellation.service.ts',
+          reason: 'Repository search matched query "cancelSupplierOrder".',
+          excerpt: 'cancelSupplierOrder',
+          claimKind: 'FACT',
+        },
+        {
+          logicalPath: 'src/features/supplier-orders/supplier-order-client.ts',
+          reason: 'Related evidence near search hit.',
+          excerpt: 'cancelSupplierOrder',
+          claimKind: 'INFERENCE',
+        },
+      ],
+      searchMatches: [
+        {
+          logicalPath: 'server/services/order-cancellation.service.ts',
+          lineNumber: 4,
+          lineText: 'export async function cancelSupplierOrder() {}',
+          query: 'cancelSupplierOrder',
+          excerpt: 'export async function cancelSupplierOrder() {}',
+        },
+      ],
+      hypotheses: [],
+      affectedAreas: ['server/services/order-cancellation.service.ts'],
     });
 
     expect(extractInvestigationHandoffPathHints(handoff)).toEqual([
+      'server/services/order-cancellation.service.ts',
+      'src/features/supplier-orders/supplier-order-client.ts',
+    ]);
+    expect(handoff.existingPathHints).toEqual([
       'server/services/order-cancellation.service.ts',
       'src/features/supplier-orders/supplier-order-client.ts',
     ]);

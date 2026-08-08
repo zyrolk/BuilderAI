@@ -66,6 +66,13 @@ export interface SourceFileAdmissionQuotas {
   readonly config: number;
 }
 
+export interface SourceContextPolicy {
+  readonly protectedPaths: readonly string[];
+  readonly priorityPaths: readonly string[];
+  readonly fullContentPaths: readonly string[];
+  readonly partialContentCharacterLimit: number;
+}
+
 /** Separate bounded quotas so tests and shared contracts can coexist with implementation files. */
 export const DEFAULT_SOURCE_FILE_ADMISSION_QUOTAS: SourceFileAdmissionQuotas = {
   implementation: 11,
@@ -88,6 +95,7 @@ export interface ContextBuildInput {
   readonly sourceFileSource: ProjectFileSource;
   readonly iterationPathHints?: readonly string[];
   readonly pinnedBaselineFiles?: readonly ContextSourceFile[];
+  readonly sourceContextPolicy?: SourceContextPolicy;
 }
 
 export interface ProjectIdentityContext {
@@ -124,6 +132,8 @@ export interface ContextSourceFile extends ProjectSourceFile {
   readonly priority: ContextSourceFilePriority;
   readonly modulePath?: string;
   readonly selectionEvidence?: readonly ContextSelectionEvidence[];
+  readonly contentPresentation?: 'FULL' | 'PARTIAL_EXCERPT';
+  readonly protectedFromEviction?: boolean;
 }
 
 export interface CodingStandardContext {
@@ -234,6 +244,7 @@ export interface ValidatedContextInput {
   readonly sourceFileSource: ProjectFileSource;
   readonly sourcePaths: readonly string[];
   readonly iterationPathHints: readonly string[];
+  readonly sourceContextPolicy?: SourceContextPolicy;
 }
 
 export function diagnosticRiskId(diagnostic: DocumentDiagnostic): string {

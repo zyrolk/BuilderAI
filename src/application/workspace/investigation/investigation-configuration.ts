@@ -2,6 +2,7 @@ export interface InvestigationConfiguration {
   readonly maximumSearchQueries: number;
   readonly maximumFilesScanned: number;
   readonly maximumMatches: number;
+  readonly maximumMatchesPerFile: number;
   readonly maximumExcerptCharacters: number;
   readonly maximumEvidenceFiles: number;
   readonly maximumTotalContextCharacters: number;
@@ -14,6 +15,7 @@ export const DEFAULT_INVESTIGATION_CONFIGURATION: InvestigationConfiguration = {
   maximumSearchQueries: 12,
   maximumFilesScanned: 400,
   maximumMatches: 48,
+  maximumMatchesPerFile: 3,
   maximumExcerptCharacters: 240,
   maximumEvidenceFiles: 16,
   maximumTotalContextCharacters: 64_000,

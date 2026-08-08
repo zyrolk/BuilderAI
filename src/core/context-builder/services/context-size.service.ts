@@ -62,7 +62,7 @@ function buildPackage(
 function removeLowestPriority(context: MutableOptionalContext): ContextOmission | undefined {
   for (let index = context.relevantFiles.length - 1; index >= 0; index -= 1) {
     const file = context.relevantFiles[index];
-    if (file?.priority === 'PINNED_BASELINE') continue;
+    if (file?.priority === 'PINNED_BASELINE' || file?.protectedFromEviction === true) continue;
     context.relevantFiles.splice(index, 1);
     return { kind: 'FILE', identifier: file!.path, reason: 'SIZE_LIMIT' };
   }
