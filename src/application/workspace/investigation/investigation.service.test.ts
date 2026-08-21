@@ -21,6 +21,8 @@ import {
   createLargeInvestigationFixtureSource,
   createZyroStyleInvestigationSource,
 } from './investigation.fixture';
+import { InMemoryInvestigationHandoffStore } from './investigation-continuity';
+import { InvestigationService } from './investigation.service';
 
 describe('CP7 investigation scenarios', () => {
   it('scenario 1 — known identifier search finds defining and using files', async () => {
@@ -108,6 +110,7 @@ describe('CP7 investigation scenarios', () => {
     const configuration = {
       maximumSearchQueries: 4,
       maximumFilesScanned: 5,
+      maximumCandidatePaths: 15_000,
       maximumMatches: 2,
       maximumMatchesPerFile: 2,
       maximumExcerptCharacters: 80,
@@ -195,6 +198,29 @@ describe('CP7 investigation scenarios', () => {
       'src/features/supplier-orders/supplier-order-client.ts',
     ]);
     expect(handoff.kind).toBe('INVESTIGATION_HANDOFF');
+  });
+
+  it('retains the authoritative CP13-ranked handoff for server-side Prepare Fix resolution', async () => {
+    const store = new InMemoryInvestigationHandoffStore({
+      now: () => new Date('2026-08-05T12:00:00.000Z'),
+    });
+    const service = new InvestigationService({
+      sourceFiles: createZyroStyleInvestigationSource(),
+      analyzer: new DeterministicInvestigationAnalyzer(),
+      clock: { now: () => new Date('2026-08-05T12:00:00.000Z') },
+      ids: { generate: () => 'investigation-server-authority' },
+      logger: { record: () => undefined },
+      handoffStore: store,
+    });
+
+    const result = await service.investigate('Investigate cancelSupplierOrder behavior.');
+    const handoff = service.resolveInvestigationHandoff(result.investigationId);
+
+    expect(handoff).toBeDefined();
+    expect(handoff?.sourceInvestigationId).toBe(result.investigationId);
+    expect(handoff?.pathHints.length).toBeGreaterThan(0);
+    expect(handoff?.existingPathHints.length).toBeGreaterThan(0);
+    expect(handoff?.candidatePathHints).toBeDefined();
   });
 
   it('scenario 11 — malformed provider report fails closed', () => {

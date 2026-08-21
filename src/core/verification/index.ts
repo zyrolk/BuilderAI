@@ -1,3 +1,4 @@
+export * from './policy';
 export * from './config';
 export * from './ports';
 export * from './services';

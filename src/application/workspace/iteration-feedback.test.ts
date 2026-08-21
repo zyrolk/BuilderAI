@@ -94,7 +94,7 @@ describe('IterationFeedback normalization', () => {
             durationMs: 2,
             metadata: { 'exit-code': 1 },
             diagnostic: {
-              commandLabel: 'npm run build',
+              commandDescriptorId: 'npm-run-build',
               exitCode: 1,
               stderrExcerpt:
                 'error TS2322: Type mismatch.\nAuthorization: Bearer sk-live-abcdefghijklmnopqrstuvwxyz',

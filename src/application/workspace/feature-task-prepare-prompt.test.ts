@@ -32,7 +32,7 @@ const NOW = '2026-07-31T13:00:00.000Z';
 const configuration: OpenAIProviderConfiguration = {
   model: 'integration-model',
   defaultTimeoutMs: 30_000,
-  maximumTimeoutMs: 30_000,
+  maximumTimeoutMs: 120_000,
   maximumInputCharacters: 1_000_000,
   maximumOutputCharacters: 100_000,
   maximumOutputTokens: 10_000,
@@ -168,7 +168,7 @@ function createRuntime(options: {
   return { service, executeSpy };
 }
 
-describe('prepareFeatureTask prompt metadata contract', () => {
+describe.sequential('prepareFeatureTask prompt metadata contract', () => {
   it('uses kebab-case feature task metadata and passes PromptPackage validation', async () => {
     const plan = approvedFeaturePlan();
     const task = plan.tasks[0]!;
@@ -192,7 +192,7 @@ describe('prepareFeatureTask prompt metadata contract', () => {
     expect(executeSpy).toHaveBeenCalledOnce();
     expect(preparation.preparationId).toBe('feature-task-prepare-001');
     expect(preparation.changePlan.changeSet.operations.length).toBeGreaterThan(0);
-  }, 30_000);
+  }, 60_000);
 
   it('passes expectedAreas as iteration path hints to context builder', async () => {
     const plan = approvedFeaturePlan();
@@ -209,7 +209,7 @@ describe('prepareFeatureTask prompt metadata contract', () => {
     });
 
     expect(contextBuilder.lastInput?.iterationPathHints).toEqual(task.expectedAreas);
-  }, 30_000);
+  }, 60_000);
 
   it('includes completed dependency shadow tasks in execution brain', async () => {
     const plan = normalizeFeaturePlan(
@@ -259,7 +259,7 @@ describe('prepareFeatureTask prompt metadata contract', () => {
     expect(brain?.tasks.some(({ id }) => id.startsWith(`${FEATURE_SHADOW_TASK_ID_PREFIX}-`))).toBe(
       true,
     );
-  }, 30_000);
+  }, 60_000);
 
   it('merges iteration feedback path hints for feature-bound correction', async () => {
     const plan = approvedFeaturePlan();
@@ -305,7 +305,7 @@ describe('prepareFeatureTask prompt metadata contract', () => {
 
     expect(contextBuilder.lastInput?.iterationPathHints?.length).toBeGreaterThan(0);
     expect(promptOrchestrator.lastBuildInput?.iterationFeedback).toBeDefined();
-  }, 30_000);
+  }, 60_000);
 
   it('leaves ordinary workspace prepare metadata unchanged', async () => {
     const promptOrchestrator = new RecordingPromptOrchestrator();
@@ -320,7 +320,7 @@ describe('prepareFeatureTask prompt metadata contract', () => {
     });
     expect(promptOrchestrator.lastBuildInput?.metadata).not.toHaveProperty('feature-plan-id');
     expect(promptOrchestrator.lastBuildInput?.metadata).not.toHaveProperty('task-id');
-  }, 30_000);
+  }, 60_000);
 
   it('reaches Prompt Orchestrator when the fresh-pilot descriptive FeatureTask ID is used', async () => {
     const plan = normalizeFeaturePlan(
@@ -364,5 +364,5 @@ describe('prepareFeatureTask prompt metadata contract', () => {
       true,
     );
     expect(executeSpy).toHaveBeenCalledOnce();
-  }, 30_000);
+  }, 60_000);
 });

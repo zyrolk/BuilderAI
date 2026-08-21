@@ -136,6 +136,27 @@ export class InMemoryPreparationStore {
     record.state = 'RECLAIMABLE';
   }
 
+  readForApprovalValidation(id: string):
+    | {
+        readonly plan: ProjectChangePlan;
+        readonly gate2Review: Gate2ReviewProjection;
+        readonly expiresAt: number;
+      }
+    | undefined {
+    const record = this.records.get(id);
+    if (record === undefined) return undefined;
+    if (record.state === 'APPLYING' || record.state === 'COMPLETED') return undefined;
+    if (record.expiresAt <= this.clock.now().getTime()) {
+      this.records.delete(id);
+      return undefined;
+    }
+    return {
+      plan: structuredClone(record.plan),
+      gate2Review: structuredClone(record.gate2Review),
+      expiresAt: record.expiresAt,
+    };
+  }
+
   fail(id: string): void {
     this.records.delete(id);
   }

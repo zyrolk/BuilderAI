@@ -1,3 +1,5 @@
+import type { CorrectionLoopSession } from '../../application/workspace/correction-loop';
+import type { IterationFeedback } from '../../application/workspace/iteration-feedback.types';
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
 import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
@@ -6,18 +8,23 @@ import type { WorkspaceInvestigation } from '../../application/workspace/investi
 import type { ProjectChangePlan } from '../../core/change-planner';
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
+import type { RuntimeBrowserVerificationReport } from '../../core/runtime-verification';
 import type { VerificationReport } from '../../core/verification';
+import { isCorrectionEligibleCompletion } from '../../application/workspace/correction-loop';
 
 export interface PrepareWorkspaceOptions {
   readonly iterationFeedback?: unknown;
+  readonly investigationId?: string;
   readonly featurePlanId?: string;
   readonly taskId?: string;
   readonly dependencyOverrides?: readonly string[];
+  readonly correctionWorkflowId?: string;
 }
 
 export interface WorkspaceCompletionSnapshot {
   readonly applyResult: FileApplyResult;
   readonly verificationReport?: VerificationReport;
+  readonly runtimeBrowserVerificationReport?: RuntimeBrowserVerificationReport;
   readonly sourcePreparationId?: string;
   readonly priorRequestSummary?: string;
   readonly featurePlanId?: string;
@@ -35,6 +42,19 @@ export const WORKSPACE_PHASES = [
   'VERIFYING_PROJECT',
   'COMPLETED',
   'FAILED',
+  'PROVIDER_RATE_LIMITED',
+  'PROVIDER_UNAVAILABLE',
+  'PROVIDER_TIMEOUT',
+  'PROVIDER_CANCELLED',
+  'OUTPUT_TRUNCATED',
+  'INVALID_PROVIDER_RESPONSE',
+  'INSUFFICIENT_EVIDENCE',
+  'NO_CHANGE',
+  'RECOVERY_REQUIRED',
+  'BASELINE_CHANGED',
+  'RESUMING_WORKFLOW',
+  'WAITING_FOR_APPROVAL',
+  'WORKFLOW_CANCELLED',
 ] as const;
 
 export const RESULT_PANEL_TABS = [
@@ -110,6 +130,29 @@ export interface WorkspaceWorkflowPort {
   investigate?(request: string): Promise<WorkspaceInvestigation>;
   apply(changePlan: ProjectChangePlan): Promise<FileApplyResult>;
   verify(applyResult: FileApplyResult): Promise<VerificationReport>;
+  getCompletionSnapshot?(): WorkspaceCompletionSnapshot | undefined;
+  startCorrection?(
+    snapshot: WorkspaceCompletionSnapshot,
+    workflowId: string,
+    originalTaskSummary?: string,
+  ): Promise<{
+    readonly session: CorrectionLoopSession;
+    readonly correctionRequest: string;
+    readonly canPrepare: boolean;
+    readonly iterationFeedback?: IterationFeedback;
+  }>;
+  rejectCorrection?(workflowId: string): Promise<CorrectionLoopSession>;
+  recordCorrectionPrepared?(
+    workflowId: string,
+    preparationId: string,
+    changePlan: ProjectChangePlan,
+  ): Promise<CorrectionLoopSession>;
+  recordCorrectionApplying?(workflowId: string): Promise<CorrectionLoopSession>;
+  recordCorrectionVerified?(
+    workflowId: string,
+    snapshot: WorkspaceCompletionSnapshot,
+  ): Promise<CorrectionLoopSession>;
+  abortInFlight?(): void;
   loadActivityHistory?(): Promise<ActivityHistory>;
   loadProjectMemory?(): Promise<ExternalTargetProjectMemory>;
   saveInvestigationMemory?(
@@ -120,17 +163,15 @@ export interface WorkspaceWorkflowPort {
 
 export function isCorrectionEligible(snapshot: WorkspaceCompletionSnapshot | undefined): boolean {
   if (snapshot === undefined) return false;
-  const { applyResult, verificationReport } = snapshot;
-  if (applyResult.status === 'PARTIALLY_APPLIED') return false;
-  if (applyResult.status === 'APPLIED' && verificationReport !== undefined) {
-    return (
-      verificationReport.status === 'FAILED' || verificationReport.status === 'PARTIALLY_PASSED'
-    );
-  }
-  if (applyResult.status === 'FAILED' || applyResult.status === 'REJECTED') {
-    return applyResult.errors.some(({ code }) => code !== 'BASELINE_CONTENT_DRIFT');
-  }
-  return false;
+  return isCorrectionEligibleCompletion({
+    applyResult: snapshot.applyResult,
+    ...(snapshot.verificationReport === undefined
+      ? {}
+      : { verificationReport: snapshot.verificationReport }),
+    ...(snapshot.runtimeBrowserVerificationReport === undefined
+      ? {}
+      : { runtimeBrowserVerificationReport: snapshot.runtimeBrowserVerificationReport }),
+  });
 }
 
 export function isPartialApplyRecovery(snapshot: WorkspaceCompletionSnapshot | undefined): boolean {

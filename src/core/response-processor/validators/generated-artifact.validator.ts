@@ -114,6 +114,8 @@ export class GeneratedArtifactValidator {
   }
 }
 
+const SAFE_PATH_DEVICE_NAME_PATTERN = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/iu;
+
 export function isSafeLogicalPath(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 512) return false;
   if (value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value)) return false;
@@ -128,6 +130,8 @@ export function isSafeLogicalPath(value: unknown): value is string {
         segment !== '..' &&
         segment.trim().length > 0 &&
         !segment.endsWith('.') &&
-        !segment.endsWith(' '),
+        !segment.endsWith(' ') &&
+        !segment.includes(':') &&
+        !SAFE_PATH_DEVICE_NAME_PATTERN.test(segment),
     );
 }

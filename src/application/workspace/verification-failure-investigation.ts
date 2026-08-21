@@ -7,7 +7,13 @@ export function buildVerificationFailureInvestigationRequest(input: {
   readonly report: VerificationReport;
   readonly priorRequestSummary?: string;
 }): string {
-  const failedStages = input.report.stages.filter(({ status }) => status === 'FAILED');
+  const failedStages = input.report.stages.filter(
+    ({ status }) =>
+      status === 'FAILED' ||
+      status === 'TIMEOUT' ||
+      status === 'PROCESS_FAILED' ||
+      status === 'OUTPUT_LIMIT_EXCEEDED',
+  );
   const lines = [
     'Investigate this verification failure using bounded command diagnostics as hints only.',
     'Current repository source evidence has higher authority than these diagnostics.',
@@ -33,8 +39,8 @@ function formatStageDiagnostic(
 ): string {
   if (diagnostic === undefined) return '';
   const parts: string[] = [];
-  if (diagnostic.commandLabel !== undefined) {
-    parts.push(`Command: ${diagnostic.commandLabel}`);
+  if (diagnostic.commandDescriptorId !== undefined) {
+    parts.push(`Command descriptor: ${diagnostic.commandDescriptorId}`);
   }
   if (diagnostic.exitCode !== undefined) {
     parts.push(`Exit code: ${diagnostic.exitCode}`);

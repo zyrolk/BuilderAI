@@ -100,10 +100,18 @@ function mapVerificationStage(
 ): VerificationCompletedActivity['payload']['stages'][number] {
   return {
     name: mapVerificationStageName(stage.stage),
-    status: stage.status,
+    status: mapVerificationStageStatus(stage.status),
     durationMs: stage.durationMs,
     findingCount: stage.errors.length + stage.warnings.length,
   };
+}
+
+function mapVerificationStageStatus(
+  status: VerificationStageResult['status'],
+): VerificationCompletedActivity['payload']['stages'][number]['status'] {
+  if (status === 'PASSED') return 'PASSED';
+  if (status === 'SKIPPED') return 'SKIPPED';
+  return 'FAILED';
 }
 
 function mapVerificationStageName(
@@ -122,6 +130,8 @@ function mapVerificationStageName(
       return 'LINT';
     case 'TYPECHECK_VALIDATION':
       return 'TYPECHECK';
+    case 'FORMAT_VALIDATION':
+      return 'FORMAT';
   }
 }
 

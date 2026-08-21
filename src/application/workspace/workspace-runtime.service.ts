@@ -30,6 +30,7 @@ import type { ResponseProcessorService } from '../../core/response-processor';
 import { PrepareScopeService, type UpdateScopePlan } from '../../core/update-scope';
 import type { ContextPackage, SourceContextPolicy } from '../../core/context-builder';
 import type { VerificationEngineService, VerificationReport } from '../../core/verification';
+import type { RuntimeBrowserVerificationReport } from '../../core/runtime-verification';
 import type { ActivityHistoryService } from './activity-history.service';
 import type { WorkspaceActivity } from './activity-history.types';
 import { WorkspaceApplyAuditService } from './workspace-apply-audit.service';
@@ -64,6 +65,7 @@ import { Gate2ReviewProjectionService } from './gate2-review';
 import {
   buildExternalTargetInvestigationPreparePlan,
   buildPrepareContextSelectionDiagnostics,
+  PrepareConfidentialityBoundary,
   type ExternalTargetPrepareContextBudget,
   type PrepareContextSelectionDiagnostics,
 } from './prepare-context';
@@ -88,6 +90,10 @@ import {
   type WorkspaceRuntimeIdGenerator,
   type WorkspaceRuntimeLogger,
 } from './workspace-runtime.types';
+import type { PrepareOutcome } from './prepare-outcome';
+import type { RuntimeBrowserVerificationPort } from './runtime-browser-verification.port';
+import type { WorkflowLedgerOrchestrationService } from './workflow-ledger';
+import { digestChangePlanOperations } from '../../core/workflow-ledger';
 
 interface WorkspaceRuntimeDependencies {
   readonly loadProjectBrain: () => ProjectBrain;
@@ -100,7 +106,13 @@ interface WorkspaceRuntimeDependencies {
   readonly responseProcessor: ResponseProcessorService;
   readonly changePlanner: ChangePlannerService;
   readonly fileApply: FileApplyEngineService;
+  readonly fileApplyCheckpoint?: {
+    bindWorkflow?(workflowId: string): void | Promise<void>;
+    finish?(status: 'COMPLETED' | 'FAILED'): void | Promise<void>;
+  };
   readonly verification: VerificationEngineService;
+  readonly runtimeBrowserVerification?: RuntimeBrowserVerificationPort;
+  readonly builderAiRoot?: string;
   readonly clock: WorkspaceRuntimeClock;
   readonly ids: WorkspaceRuntimeIdGenerator;
   readonly logger: WorkspaceRuntimeLogger;
@@ -114,6 +126,8 @@ interface WorkspaceRuntimeDependencies {
   readonly pathProtection?: WorkspacePathProtectionPolicy;
   readonly projectProfile?: WorkspaceProjectProfile;
   readonly evaluateExternalTargetReadiness?: () => Promise<ExternalTargetReadiness | undefined>;
+  readonly workflowLedger?: WorkflowLedgerOrchestrationService;
+  readonly projectId?: string;
 }
 
 export class WorkspaceRuntimeService {
@@ -126,6 +140,7 @@ export class WorkspaceRuntimeService {
   private readonly applyLock: WorkspaceApplyLockService;
   private readonly applyPolicy: WorkspaceApplyPolicyService;
   private readonly applyAudit?: WorkspaceApplyAuditService;
+  private readonly prepareConfidentiality: PrepareConfidentialityBoundary;
 
   constructor(private readonly dependencies: WorkspaceRuntimeDependencies) {
     this.configuration = dependencies.configuration ?? DEFAULT_WORKSPACE_RUNTIME_CONFIGURATION;
@@ -139,6 +154,12 @@ export class WorkspaceRuntimeService {
       this.configuration.maximumPreparations,
     );
     this.prepareScope = dependencies.prepareScope ?? new PrepareScopeService();
+    this.prepareConfidentiality = new PrepareConfidentialityBoundary(
+      dependencies.projectProfile ?? 'BUILDERAI_SELF',
+      dependencies.sourceFiles,
+      dependencies.workspaceBaseline,
+      dependencies.pathProtection,
+    );
     this.security = dependencies.security ?? defaultTrustedLocalSecurity();
     this.authorization = new WorkspaceAuthorizationService(this.security);
     this.applyLock = dependencies.applyLock ?? new WorkspaceApplyLockService();
@@ -149,11 +170,15 @@ export class WorkspaceRuntimeService {
         : new WorkspaceApplyAuditService({ projectRoot: dependencies.projectRoot });
   }
 
-  async prepare(request: string, iterationFeedbackInput?: unknown): Promise<WorkspacePreparation> {
+  async prepare(
+    request: string,
+    iterationFeedbackInput?: unknown,
+    cancellation?: ExecutionCancellationToken,
+  ): Promise<WorkspacePreparation> {
     await this.assertExternalTargetWorkflowAllowed('PREPARE');
     const normalizedRequest = validateRequest(request);
     const investigationHandoff = isInvestigationHandoffFeedback(iterationFeedbackInput)
-      ? iterationFeedbackInput
+      ? this.prepareConfidentiality.filterInvestigationHandoff(iterationFeedbackInput)
       : undefined;
     const normalizedFeedback =
       investigationHandoff === undefined && iterationFeedbackInput !== undefined
@@ -161,12 +186,13 @@ export class WorkspaceRuntimeService {
             priorRequestSummary: readOptionalPriorSummary(iterationFeedbackInput),
           })
         : undefined;
-    const iterationPathHints =
+    const iterationPathHints = this.prepareConfidentiality.filterPaths(
       investigationHandoff !== undefined
         ? extractInvestigationHandoffPathHints(investigationHandoff)
         : normalizedFeedback === undefined
           ? []
-          : extractIterationPathHints(normalizedFeedback);
+          : extractIterationPathHints(normalizedFeedback),
+    );
     const externalPreparePlan =
       investigationHandoff !== undefined && this.dependencies.projectProfile === 'EXTERNAL_TARGET'
         ? buildExternalTargetInvestigationPreparePlan({
@@ -177,6 +203,19 @@ export class WorkspaceRuntimeService {
     const correlationId = this.dependencies.ids.generate();
     const startedAt = this.dependencies.clock.now();
     this.log(correlationId, 'PREPARE', 'STARTED');
+    if (
+      this.dependencies.workflowLedger !== undefined &&
+      this.dependencies.projectRoot !== undefined &&
+      this.dependencies.projectId !== undefined
+    ) {
+      await this.dependencies.workflowLedger.beginWorkflow({
+        workflowId: correlationId,
+        projectId: this.dependencies.projectId,
+        repositoryRoot: this.dependencies.projectRoot,
+        originalRequest: request,
+        normalizedRequest,
+      });
+    }
     try {
       const canonicalBrain = this.readProjectBrainOrThrow();
       const readerOutput = await this.readProjectContextOrThrow();
@@ -191,7 +230,7 @@ export class WorkspaceRuntimeService {
         );
       }
       const requestedAt = startedAt.toISOString();
-      const sourcePaths = await this.dependencies.sourceFiles.listSourcePaths();
+      const sourcePaths = await this.prepareConfidentiality.listSourcePaths();
       const prepareAttempts: readonly boolean[] =
         externalPreparePlan === undefined ? [false] : [false, true];
       let lastError: unknown;
@@ -205,7 +244,10 @@ export class WorkspaceRuntimeService {
           }
         | undefined;
 
+      const stageStartedAt = startedAt.getTime();
       for (const compactRetry of prepareAttempts) {
+        const elapsedMs = this.dependencies.clock.now().getTime() - stageStartedAt;
+        const remainingTimeoutMs = Math.max(1, this.configuration.providerTimeoutMs - elapsedMs);
         const activeBudget =
           externalPreparePlan === undefined
             ? undefined
@@ -272,7 +314,8 @@ export class WorkspaceRuntimeService {
             correlationId,
             preparedArtifacts.prompt,
             requestedAt,
-            this.configuration.providerTimeoutMs,
+            remainingTimeoutMs,
+            cancellation,
           );
           const providerOutput =
             await this.dependencies.providerExecution.execute(executionRequest);
@@ -301,6 +344,28 @@ export class WorkspaceRuntimeService {
             undefined,
             applyAuthorizationToken,
           );
+          if (this.dependencies.workflowLedger !== undefined) {
+            await this.dependencies.workflowLedger.recordPrepareCompleted({
+              workflowId: correlationId,
+              preparationId: correlationId,
+              changePlan,
+              gate2Review,
+              providerIdentity: providerOutput.executionResult.executionId,
+              contextPackageDigest: this.dependencies.workflowLedger.digestContextPackage({
+                metadata: {
+                  sourceContextCharacters:
+                    preparedArtifacts.prompt.metadata.sourceContextCharacters,
+                },
+              }),
+              promptPackageDigest: this.dependencies.workflowLedger.digestPromptPackage({
+                metadata: {
+                  templateId: preparedArtifacts.prompt.template.id,
+                },
+              }),
+              providerAttemptSummary: '1',
+            });
+          }
+          const outcome = classifyPrepareOutcome(changePlan);
           this.log(correlationId, 'PREPARE', 'SUCCEEDED', startedAt);
           return {
             preparationId: correlationId,
@@ -308,6 +373,7 @@ export class WorkspaceRuntimeService {
             responsePackage,
             changePlan,
             gate2Review,
+            outcome,
             ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
             ...(preparedArtifacts.prepareContextSelection === undefined
               ? {}
@@ -328,6 +394,7 @@ export class WorkspaceRuntimeService {
       throw lastError instanceof Error ? lastError : new Error('Prepare failed.');
     } catch (error: unknown) {
       this.log(correlationId, 'PREPARE', 'FAILED', startedAt, safeCode(error));
+      if (isProviderError(error)) wrapProviderError(error);
       throw error;
     }
   }
@@ -338,10 +405,12 @@ export class WorkspaceRuntimeService {
       input.request.trim().length > 0 ? input.request.trim() : buildFeatureTaskRequest(input.task);
     const normalizedRequest = validateRequest(taskRequest);
     const normalizedFeedback = input.iterationFeedback;
-    const iterationPathHints = mergePathHints(
-      input.task.expectedAreas,
-      input.iterationPathHints ?? [],
-      normalizedFeedback === undefined ? [] : extractIterationPathHints(normalizedFeedback),
+    const iterationPathHints = this.prepareConfidentiality.filterPaths(
+      mergePathHints(
+        input.task.expectedAreas,
+        input.iterationPathHints ?? [],
+        normalizedFeedback === undefined ? [] : extractIterationPathHints(normalizedFeedback),
+      ),
     );
     const correlationId = this.dependencies.ids.generate();
     const startedAt = this.dependencies.clock.now();
@@ -350,6 +419,19 @@ export class WorkspaceRuntimeService {
       taskId: input.task.taskId,
     };
     this.log(correlationId, 'PREPARE_FEATURE_TASK', 'STARTED');
+    if (
+      this.dependencies.workflowLedger !== undefined &&
+      this.dependencies.projectRoot !== undefined &&
+      this.dependencies.projectId !== undefined
+    ) {
+      await this.dependencies.workflowLedger.beginWorkflow({
+        workflowId: correlationId,
+        projectId: this.dependencies.projectId,
+        repositoryRoot: this.dependencies.projectRoot,
+        originalRequest: taskRequest,
+        normalizedRequest: normalizedRequest,
+      });
+    }
     await this.recordFeatureActivity({
       binding: featureBinding,
       correlationId,
@@ -429,6 +511,24 @@ export class WorkspaceRuntimeService {
         featureBinding,
         applyAuthorizationToken,
       );
+      if (this.dependencies.workflowLedger !== undefined) {
+        await this.dependencies.workflowLedger.recordPrepareCompleted({
+          workflowId: correlationId,
+          preparationId: correlationId,
+          changePlan,
+          gate2Review,
+          providerIdentity: providerOutput.executionResult.executionId,
+          contextPackageDigest: this.dependencies.workflowLedger.digestContextPackage({
+            metadata: {
+              sourceContextCharacters: prompt.metadata.sourceContextCharacters,
+            },
+          }),
+          promptPackageDigest: this.dependencies.workflowLedger.digestPromptPackage({
+            metadata: { templateId: prompt.template.id },
+          }),
+          providerAttemptSummary: '1',
+        });
+      }
       const durationMs = Math.max(0, this.dependencies.clock.now().getTime() - startedAt.getTime());
       await this.recordFeatureActivity({
         binding: featureBinding,
@@ -473,6 +573,7 @@ export class WorkspaceRuntimeService {
     preparationId: string,
     approved: boolean,
     evidence?: WorkspaceRequestSecurityEvidence,
+    cancellation?: ExecutionCancellationToken,
   ): Promise<WorkspaceCompletion> {
     await this.assertExternalTargetWorkflowAllowed('APPLY');
     const requestEvidence = evidence ?? { operatorApproved: approved };
@@ -522,10 +623,61 @@ export class WorkspaceRuntimeService {
       );
     }
 
+    let applyLeaseAcquired = false;
+    if (
+      this.dependencies.workflowLedger !== undefined &&
+      this.dependencies.projectRoot !== undefined
+    ) {
+      const validationRecord = this.store.readForApprovalValidation(preparationId);
+      if (validationRecord === undefined) {
+        throw new WorkspaceRuntimeError(
+          'PREPARATION_NOT_FOUND',
+          'Preparation was not found or is no longer valid.',
+        );
+      }
+      const baselineDigest =
+        (await this.dependencies.workflowLedger.readBaselineDigest(preparationId)) ?? '';
+      await this.dependencies.workflowLedger.recordApprovalGranted({
+        workflowId: preparationId,
+        preparationId,
+        changePlan: validationRecord.plan,
+        gate2Review: validationRecord.gate2Review,
+        baselineDigest,
+        expiresAt: new Date(validationRecord.expiresAt),
+        approvalIdentity: String(authorizationContext.principal),
+      });
+      const ledgerAuthorization = await this.dependencies.workflowLedger.validateApplyAuthorization(
+        {
+          workflowId: preparationId,
+          preparationId,
+          changePlan: validationRecord.plan,
+          gate2Review: validationRecord.gate2Review,
+          repositoryRoot: this.dependencies.projectRoot,
+        },
+      );
+      if (ledgerAuthorization.kind === 'REJECTED') {
+        throw new WorkspaceRuntimeError('WORKFLOW_FAILED', ledgerAuthorization.message);
+      }
+      await this.dependencies.workflowLedger.acquireApplyLease(preparationId);
+      applyLeaseAcquired = true;
+    }
+
     const startedAt = this.dependencies.clock.now();
     this.log(preparationId, 'APPLY_AND_VERIFY', 'STARTED');
     const claim = this.store.claim(preparationId);
-    if (claim.kind === 'COMPLETED') return claim.completion;
+    if (claim.kind === 'COMPLETED') {
+      if (applyLeaseAcquired && this.dependencies.workflowLedger !== undefined) {
+        await this.dependencies.workflowLedger.releaseApplyLease(preparationId);
+      }
+      return claim.completion;
+    }
+
+    if (this.dependencies.workflowLedger !== undefined) {
+      await this.dependencies.workflowLedger.beginApplyJournal({
+        workflowId: preparationId,
+        preparationId,
+      });
+    }
 
     const targetPaths = listChangePlanTargetPaths(claim.plan.changeSet.operations);
     let locksAcquired = false;
@@ -561,6 +713,13 @@ export class WorkspaceRuntimeService {
     }
 
     const featureBinding = claim.featureTaskBinding;
+    if (cancellation?.cancelled) {
+      this.store.fail(preparationId);
+      throw new WorkspaceRuntimeError(
+        'PROVIDER_CANCELLED',
+        cancellation.reason ?? 'Apply was cancelled before mutation.',
+      );
+    }
     const applyStartedAt = this.dependencies.clock.now();
     if (featureBinding !== undefined) {
       await this.recordFeatureActivity({
@@ -575,8 +734,13 @@ export class WorkspaceRuntimeService {
     try {
       let applyResult: FileApplyResult;
       try {
+        await this.dependencies.fileApplyCheckpoint?.bindWorkflow?.(preparationId);
         applyResult = await this.dependencies.fileApply.apply(claim.plan);
+        await this.dependencies.fileApplyCheckpoint?.finish?.(
+          applyResult.status === 'APPLIED' ? 'COMPLETED' : 'FAILED',
+        );
       } catch (applyError: unknown) {
+        await this.dependencies.fileApplyCheckpoint?.finish?.('FAILED');
         if (featureBinding !== undefined) {
           const durationMs = Math.max(
             0,
@@ -598,6 +762,13 @@ export class WorkspaceRuntimeService {
         }
         throw applyError;
       }
+      if (this.dependencies.workflowLedger !== undefined) {
+        await this.recordApplyJournalFromResult(
+          preparationId,
+          claim.plan.changeSet.operations,
+          applyResult,
+        );
+      }
       if (featureBinding !== undefined) {
         await this.recordApplyOutcome(featureBinding, preparationId, applyResult);
       }
@@ -611,7 +782,9 @@ export class WorkspaceRuntimeService {
           });
         }
         try {
-          verificationReport = await this.dependencies.verification.verify(applyResult);
+          verificationReport = await this.dependencies.verification.verify(applyResult, {
+            cancellation: cancellation ?? neverCancelled(),
+          });
           if (featureBinding !== undefined) {
             await this.recordActivitySafely(
               createVerificationCompletedActivity(
@@ -643,8 +816,32 @@ export class WorkspaceRuntimeService {
           throw verificationError;
         }
       }
+      let runtimeBrowserVerificationReport: RuntimeBrowserVerificationReport | undefined;
+      if (
+        isVerificationEligibleFileApplyResult(applyResult) &&
+        applyResult.status === 'APPLIED' &&
+        this.dependencies.runtimeBrowserVerification !== undefined &&
+        this.dependencies.projectRoot !== undefined
+      ) {
+        runtimeBrowserVerificationReport =
+          await this.dependencies.runtimeBrowserVerification.verify({
+            projectRoot: this.dependencies.projectRoot,
+            ...(this.dependencies.builderAiRoot === undefined
+              ? {}
+              : { builderAiRoot: this.dependencies.builderAiRoot }),
+            cancellation: cancellation ?? neverCancelled(),
+          });
+      }
       const completion: WorkspaceCompletion =
-        verificationReport === undefined ? { applyResult } : { applyResult, verificationReport };
+        verificationReport === undefined && runtimeBrowserVerificationReport === undefined
+          ? { applyResult }
+          : {
+              applyResult,
+              ...(verificationReport === undefined ? {} : { verificationReport }),
+              ...(runtimeBrowserVerificationReport === undefined
+                ? {}
+                : { runtimeBrowserVerificationReport }),
+            };
       if (isZeroMutationFileApplyResult(applyResult) && claim.attempt < MAXIMUM_APPLY_ATTEMPTS) {
         this.store.releaseForRetry(preparationId);
       } else {
@@ -667,6 +864,12 @@ export class WorkspaceRuntimeService {
         featureBinding,
       });
       this.log(preparationId, 'APPLY_AND_VERIFY', 'SUCCEEDED', startedAt);
+      if (this.dependencies.workflowLedger !== undefined) {
+        await this.dependencies.workflowLedger.completeApplyJournal({
+          workflowId: preparationId,
+          applyResult: applyResult.status,
+        });
+      }
       return structuredClone(completion);
     } catch (error: unknown) {
       this.store.fail(preparationId);
@@ -684,6 +887,49 @@ export class WorkspaceRuntimeService {
       if (locksAcquired) {
         this.applyLock.release(this.security.projectId, preparationId, targetPaths);
       }
+      if (applyLeaseAcquired && this.dependencies.workflowLedger !== undefined) {
+        await this.dependencies.workflowLedger.releaseApplyLease(preparationId);
+      }
+    }
+  }
+
+  private async recordApplyJournalFromResult(
+    workflowId: string,
+    operations: readonly ProjectChangeOperation[],
+    applyResult: FileApplyResult,
+  ): Promise<void> {
+    if (this.dependencies.workflowLedger === undefined) return;
+    const timestamp = this.dependencies.clock.now().toISOString();
+    for (const operation of operations) {
+      const mutated =
+        applyResult.createdFiles.includes(operation.logicalPath) ||
+        applyResult.updatedFiles.includes(operation.logicalPath) ||
+        applyResult.deletedFiles.includes(operation.logicalPath);
+      const failed = applyResult.errors.some(
+        (error) => error.logicalPath === operation.logicalPath,
+      );
+      const indeterminate = applyResult.errors.some(
+        (error) =>
+          error.code === 'INDETERMINATE_MUTATION' && error.logicalPath === operation.logicalPath,
+      );
+      const operationState = indeterminate
+        ? 'UNCERTAIN'
+        : failed
+          ? 'FAILED'
+          : mutated
+            ? 'COMPLETED'
+            : 'PENDING';
+      await this.dependencies.workflowLedger.recordApplyOperation({
+        workflowId,
+        entry: {
+          operationId: operation.operationId,
+          operationType: operation.kind,
+          logicalPath: operation.logicalPath,
+          operationState,
+          timestamp,
+          rollbackState: failed ? 'UNCERTAIN' : 'NOT_STARTED',
+        },
+      });
     }
   }
 
@@ -801,30 +1047,28 @@ export class WorkspaceRuntimeService {
     readonly scopePlan: UpdateScopePlan;
     readonly prepareContextSelection?: PrepareContextSelectionDiagnostics;
   }> {
-    const sourcePaths = await this.dependencies.sourceFiles.listSourcePaths();
+    const sourcePaths = await this.prepareConfidentiality.listSourcePaths();
+    const iterationPathHints = this.prepareConfidentiality.filterPaths(input.iterationPathHints);
+    const sourceContextPolicy = this.prepareConfidentiality.filterSourceContextPolicy(
+      input.sourceContextPolicy,
+    );
     const scopeResolution = this.prepareScope.resolve({
       taskText: input.taskText,
       sourcePaths,
-      ...(input.iterationPathHints.length === 0
-        ? {}
-        : { iterationPathHints: input.iterationPathHints }),
-      baselinePort: this.dependencies.workspaceBaseline,
+      ...(iterationPathHints.length === 0 ? {} : { iterationPathHints }),
+      baselinePort: this.prepareConfidentiality,
     });
     const context = await this.dependencies.contextBuilder.build(
       {
         projectBrain: input.executionBrain,
         blueprintReaderOutput: input.readerOutput,
         currentTaskId: input.currentTaskId,
-        sourceFileSource: this.dependencies.sourceFiles,
-        ...(input.iterationPathHints.length === 0
-          ? {}
-          : { iterationPathHints: input.iterationPathHints }),
+        sourceFileSource: this.prepareConfidentiality,
+        ...(iterationPathHints.length === 0 ? {} : { iterationPathHints }),
         ...(scopeResolution.pinnedBaselineFiles.length === 0
           ? {}
           : { pinnedBaselineFiles: scopeResolution.pinnedBaselineFiles }),
-        ...(input.sourceContextPolicy === undefined
-          ? {}
-          : { sourceContextPolicy: input.sourceContextPolicy }),
+        ...(sourceContextPolicy === undefined ? {} : { sourceContextPolicy }),
       },
       {
         ...(input.contextBudget === undefined
@@ -908,6 +1152,10 @@ export class WorkspaceRuntimeService {
         summary,
         supportingPaths,
         source: input.featureBinding === undefined ? 'VERIFIED_APPLY' : 'FEATURE_TASK',
+        workflowId: input.preparationId,
+        changePlanDigest: digestChangePlanOperations(input.changePlan),
+        verificationSummary: input.verificationReport.status,
+        completedAt: this.dependencies.clock.now().toISOString(),
       });
     } catch {
       // Memory persistence must not fail apply/verify completion.
@@ -970,19 +1218,18 @@ function mergePathHints(...lists: readonly (readonly string[])[]): readonly stri
 }
 
 /**
- * Bounded retry policy for transient provider outages (P1-5 / ADR-019).
- * Exactly one retry (two total provider attempts) is permitted, and only for
- * PROVIDER_UNAVAILABLE failures. The delay is a small deterministic fixed
- * amount; the Execution Engine remains the sole retry-policy decision owner
- * and caps every attempt to the single overall timeout budget below.
+ * Bounded retry policy for transient provider outages (P0-6 / ADR-019).
+ * The execution engine handles per-attempt retry with exponential backoff.
+ * The overall stage deadline is enforced by the provider timeout budget.
  */
-const RETRY_DELAY_MS = 300;
+const RETRY_DELAY_MS = 1_000;
 
 function createExecutionRequest(
   executionId: string,
   prompt: ExecutionRequest['prompt'],
   requestedAt: string,
   timeoutMs: number,
+  cancellation?: ExecutionCancellationToken,
 ): ExecutionRequest {
   return {
     schemaVersion: 1,
@@ -998,15 +1245,15 @@ function createExecutionRequest(
       validationMode: 'STRICT',
       failureStrategy: 'RETRY_THEN_FAIL',
       retry: {
-        maximumRetries: 1,
-        delayStrategy: 'FIXED',
+        maximumRetries: 2,
+        delayStrategy: 'EXPONENTIAL',
         baseDelayMs: RETRY_DELAY_MS,
-        maximumDelayMs: RETRY_DELAY_MS,
-        retryableErrorCodes: ['OUTPUT_TRUNCATED', 'PROVIDER_UNAVAILABLE'],
+        maximumDelayMs: 30_000,
+        retryableErrorCodes: ['OUTPUT_TRUNCATED', 'PROVIDER_UNAVAILABLE', 'TIMEOUT'],
       },
       timeout: { durationMs: timeoutMs, startsAt: 'QUEUED' },
     },
-    cancellation: neverCancelled(),
+    cancellation: cancellation ?? neverCancelled(),
   };
 }
 
@@ -1050,6 +1297,74 @@ function mapExternalTargetOnboardingError(error: unknown): unknown {
     return new WorkspaceRuntimeError('EXTERNAL_TARGET_ONBOARDING_REQUIRED', error.message);
   }
   return error;
+}
+
+function classifyPrepareOutcome(changePlan: ProjectChangePlan): PrepareOutcome {
+  if (changePlan.changeSet.operations.length > 0) {
+    return { kind: 'READY_FOR_REVIEW' };
+  }
+  return {
+    kind: 'INSUFFICIENT_EVIDENCE',
+    reason: 'Provider returned zero operations without explicit no-change signal.',
+  };
+}
+
+function isProviderError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = Reflect.get(error, 'code');
+  if (typeof code !== 'string') return false;
+  return [
+    'PROVIDER_UNAVAILABLE',
+    'TIMEOUT',
+    'CANCELLED',
+    'OUTPUT_TRUNCATED',
+    'CONTRACT_VIOLATION',
+    'INVALID_CONFIGURATION',
+    'UNSUPPORTED_CAPABILITY',
+  ].includes(code);
+}
+
+function wrapProviderError(error: unknown): never {
+  if (!(error instanceof Error)) throw error;
+  const code = Reflect.get(error, 'code');
+  if (typeof code !== 'string') throw error;
+
+  const diagnostics = Reflect.get(error, 'diagnostics');
+  const providerStatus =
+    typeof diagnostics === 'object' && diagnostics !== null
+      ? Reflect.get(diagnostics, 'providerStatus')
+      : undefined;
+  const category =
+    typeof diagnostics === 'object' && diagnostics !== null
+      ? Reflect.get(diagnostics, 'providerErrorCategory')
+      : undefined;
+
+  if (code === 'PROVIDER_UNAVAILABLE' && providerStatus === 429) {
+    throw new WorkspaceRuntimeError('PROVIDER_RATE_LIMITED', error.message);
+  }
+  if (code === 'PROVIDER_UNAVAILABLE') {
+    throw new WorkspaceRuntimeError(
+      category === 'UPSTREAM_5XX' ? 'PROVIDER_UNAVAILABLE' : 'PROVIDER_UNAVAILABLE',
+      error.message,
+    );
+  }
+  if (code === 'TIMEOUT') {
+    throw new WorkspaceRuntimeError('PROVIDER_TIMEOUT', error.message);
+  }
+  if (code === 'CANCELLED') {
+    throw new WorkspaceRuntimeError('PROVIDER_CANCELLED', error.message);
+  }
+  if (code === 'OUTPUT_TRUNCATED') {
+    throw new WorkspaceRuntimeError('OUTPUT_TRUNCATED', error.message);
+  }
+  if (
+    code === 'CONTRACT_VIOLATION' ||
+    code === 'INVALID_CONFIGURATION' ||
+    code === 'UNSUPPORTED_CAPABILITY'
+  ) {
+    throw new WorkspaceRuntimeError('INVALID_PROVIDER_RESPONSE', error.message);
+  }
+  throw error;
 }
 
 function isOutputTruncatedFailure(error: unknown): boolean {

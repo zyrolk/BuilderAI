@@ -36,6 +36,7 @@ export interface UpdateFileOperation extends ChangeOperationBase {
 
 export interface DeleteFileOperation extends ChangeOperationBase {
   readonly kind: 'DELETE_FILE';
+  readonly baselineContentChecksum?: ArtifactChecksum;
 }
 
 export type ProjectChangeOperation =

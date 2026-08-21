@@ -398,4 +398,99 @@ describe('FeatureWorkflowService', () => {
       ),
     ).rejects.toThrow(WorkspaceRuntimeError);
   });
+
+  it('rejects approving non-draft plans', async () => {
+    const persistence = {
+      save: vi.fn(async (plan: unknown) => plan),
+      load: vi.fn(),
+      loadActive: vi.fn(),
+    } as unknown as FeaturePlanPersistence;
+    const service = new FeatureWorkflowService({
+      runtime: { prepareFeatureTask: vi.fn() } as unknown as WorkspaceRuntimeService,
+      persistence,
+      loadProjectBrain: () => {
+        throw new Error('not needed');
+      },
+      clock: { now: () => new Date(NOW) },
+    });
+    vi.spyOn(service, 'loadPlan').mockResolvedValue(approvedPlan());
+    await expect(service.approvePlan('workflow-plan-01')).rejects.toThrow(WorkspaceRuntimeError);
+  });
+
+  it('loads active plan from persistence cache miss', async () => {
+    const plan = approvedPlan();
+    const persistence = {
+      save: vi.fn(async (value: unknown) => value),
+      load: vi.fn(),
+      loadActive: vi.fn(async () => plan),
+    } as unknown as FeaturePlanPersistence;
+    const service = new FeatureWorkflowService({
+      runtime: { prepareFeatureTask: vi.fn() } as unknown as WorkspaceRuntimeService,
+      persistence,
+      loadProjectBrain: () => {
+        throw new Error('not needed');
+      },
+      clock: { now: () => new Date(NOW) },
+    });
+    expect(await service.getActivePlan()).toEqual(plan);
+    expect(await service.getActivePlan()).toEqual(plan);
+    expect(persistence.loadActive).toHaveBeenCalledOnce();
+  });
+
+  it('completes, fails, and skips tasks', async () => {
+    const persistence = {
+      save: vi.fn(async (plan: unknown) => plan),
+      load: vi.fn(),
+      loadActive: vi.fn(),
+    } as unknown as FeaturePlanPersistence;
+    const service = new FeatureWorkflowService({
+      runtime: { prepareFeatureTask: vi.fn() } as unknown as WorkspaceRuntimeService,
+      persistence,
+      loadProjectBrain: () => {
+        throw new Error('not needed');
+      },
+      clock: { now: () => new Date(NOW) },
+    });
+    vi.spyOn(service, 'loadPlan').mockResolvedValue({
+      ...approvedPlan(),
+      tasks: [{ ...approvedPlan().tasks[0]!, status: 'IN_PROGRESS' }],
+    });
+    const completed = await service.completeTask('workflow-plan-01', 'task-01', {
+      summary: 'Done',
+      completedAt: NOW,
+      verificationStatus: 'PASSED',
+    });
+    expect(completed.tasks[0]?.status).toBe('COMPLETED');
+    const failed = await service.failTask('workflow-plan-01', 'task-01', {
+      summary: 'Failed',
+      completedAt: NOW,
+      verificationStatus: 'FAILED',
+    });
+    expect(failed.tasks[0]?.status).toBe('FAILED');
+    const skipped = await service.skipTask('workflow-plan-01', 'task-01', 'Not needed');
+    expect(skipped.tasks[0]?.status).toBe('SKIPPED');
+  });
+
+  it('rejects completion for unknown task', async () => {
+    const service = new FeatureWorkflowService({
+      runtime: { prepareFeatureTask: vi.fn() } as unknown as WorkspaceRuntimeService,
+      persistence: {
+        save: vi.fn(),
+        load: vi.fn(),
+        loadActive: vi.fn(),
+      } as unknown as FeaturePlanPersistence,
+      loadProjectBrain: () => {
+        throw new Error('not needed');
+      },
+      clock: { now: () => new Date(NOW) },
+    });
+    vi.spyOn(service, 'loadPlan').mockResolvedValue(approvedPlan());
+    await expect(
+      service.completeTask('workflow-plan-01', 'missing-task', {
+        summary: 'Done',
+        completedAt: NOW,
+        verificationStatus: 'PASSED',
+      }),
+    ).rejects.toThrow(WorkspaceRuntimeError);
+  });
 });

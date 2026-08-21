@@ -24,12 +24,15 @@ import {
   type IterationFeedbackVerification,
   type IterationFeedbackVerificationDiagnostic,
   type IterationFeedbackVerificationStage,
+  type IterationFeedbackRuntimeBrowser,
+  type IterationFeedbackRuntimeBrowserRoute,
   type IterationPreservationRejection,
   type IterationPreservationRejectionOperation,
 } from './iteration-feedback.types';
 import type { SurgicalityBasis, SurgicalityClassification } from '../../core/change-planner';
 import type { WorkspaceCompletion } from './workspace-runtime.types';
 import { redactVerificationOutput } from '../../infrastructure/verification/verification-output-sanitize';
+import type { RuntimeBrowserVerificationReport } from '../../core/runtime-verification';
 
 const CODE_PATTERN = /^[A-Z0-9_]{1,80}$/u;
 const PREPARATION_ID_PATTERN = /^[A-Za-z0-9-]{8,128}$/u;
@@ -113,6 +116,13 @@ export function buildIterationFeedbackFromCompletion(
       ...(completion.verificationReport === undefined
         ? {}
         : { verification: completion.verificationReport }),
+      ...(completion.runtimeBrowserVerificationReport === undefined
+        ? {}
+        : {
+            runtimeBrowser: summarizeRuntimeBrowserForIteration(
+              completion.runtimeBrowserVerificationReport,
+            ),
+          }),
       ...(preservationRejection === undefined ? {} : { preservationRejection }),
     },
     options,
@@ -141,6 +151,7 @@ export function normalizeIterationFeedback(
   );
   const apply = normalizeApply(Reflect.get(value, 'apply') ?? Reflect.get(value, 'applyResult'));
   const verification = normalizeVerification(Reflect.get(value, 'verification'));
+  const runtimeBrowser = normalizeRuntimeBrowser(Reflect.get(value, 'runtimeBrowser'));
   const preservationRejection = normalizePreservationRejection(
     Reflect.get(value, 'preservationRejection'),
   );
@@ -152,6 +163,7 @@ export function normalizeIterationFeedback(
     ...(priorRequestSummary === undefined ? {} : { priorRequestSummary }),
     apply,
     ...(verification === undefined ? {} : { verification }),
+    ...(runtimeBrowser === undefined ? {} : { runtimeBrowser }),
     ...(preservationRejection === undefined ? {} : { preservationRejection }),
   };
   feedback = shrinkToCharacterLimit(feedback);
@@ -805,4 +817,87 @@ function isApplyResult(value: unknown): value is FileApplyResult {
 
 function isVerificationReport(value: unknown): value is VerificationReport {
   return isRecord(value) && typeof Reflect.get(value, 'status') === 'string';
+}
+
+function summarizeRuntimeBrowserForIteration(
+  report: RuntimeBrowserVerificationReport,
+): IterationFeedbackRuntimeBrowser {
+  const routes: IterationFeedbackRuntimeBrowserRoute[] = report.browser.routes
+    .slice(0, 4)
+    .map((route) => ({
+      path: route.path.slice(0, 120),
+      status: route.status,
+      consoleErrorCount: route.consoleErrors.length,
+      pageExceptionCount: route.pageExceptions.length,
+      failedRequestCount: route.failedRequests.length,
+      ...(route.consoleErrors.length === 0
+        ? {}
+        : {
+            topConsoleError: sanitizeRuntimeBrowserMessage(route.consoleErrors[0]?.message ?? ''),
+          }),
+    }));
+  return {
+    status: report.status,
+    serverStatus: report.server.status,
+    browserStatus: report.browser.status,
+    routes,
+  };
+}
+
+function normalizeRuntimeBrowser(value: unknown): IterationFeedbackRuntimeBrowser | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) throw invalidFeedback('runtimeBrowser must be an object');
+  const status = readBoundedString(Reflect.get(value, 'status'), 40);
+  const serverStatus = readBoundedString(Reflect.get(value, 'serverStatus'), 40);
+  const browserStatus = readBoundedString(Reflect.get(value, 'browserStatus'), 40);
+  if (status === undefined || serverStatus === undefined || browserStatus === undefined) {
+    throw invalidFeedback('runtimeBrowser status fields are required');
+  }
+  const rawRoutes = Reflect.get(value, 'routes');
+  const routes = Array.isArray(rawRoutes)
+    ? rawRoutes
+        .slice(0, 4)
+        .map((route) => normalizeRuntimeBrowserRoute(route))
+        .filter((route): route is IterationFeedbackRuntimeBrowserRoute => route !== undefined)
+    : [];
+  return { status, serverStatus, browserStatus, routes };
+}
+
+function normalizeRuntimeBrowserRoute(
+  value: unknown,
+): IterationFeedbackRuntimeBrowserRoute | undefined {
+  if (!isRecord(value)) return undefined;
+  const path = readBoundedString(Reflect.get(value, 'path'), 120);
+  const status = readBoundedString(Reflect.get(value, 'status'), 40);
+  if (path === undefined || status === undefined) return undefined;
+  const consoleErrorCount = readBoundedCount(Reflect.get(value, 'consoleErrorCount'));
+  const pageExceptionCount = readBoundedCount(Reflect.get(value, 'pageExceptionCount'));
+  const failedRequestCount = readBoundedCount(Reflect.get(value, 'failedRequestCount'));
+  const topConsoleError = readBoundedString(Reflect.get(value, 'topConsoleError'), 240);
+  return {
+    path,
+    status,
+    consoleErrorCount,
+    pageExceptionCount,
+    failedRequestCount,
+    ...(topConsoleError === undefined ? {} : { topConsoleError }),
+  };
+}
+
+function sanitizeRuntimeBrowserMessage(message: string): string {
+  return message
+    .replace(/api[_-]?key[=:]\S+/giu, 'api_key=[redacted]')
+    .replace(/Bearer\s+\S+/giu, 'Bearer [redacted]')
+    .slice(0, 240);
+}
+
+function readBoundedString(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+  return value.trim().slice(0, maxLength);
+}
+
+function readBoundedCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.min(Math.trunc(value), 99)
+    : 0;
 }

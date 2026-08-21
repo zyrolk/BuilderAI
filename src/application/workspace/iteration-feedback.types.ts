@@ -107,5 +107,22 @@ export interface IterationFeedback {
   readonly priorRequestSummary?: string;
   readonly apply: IterationFeedbackApply;
   readonly verification?: IterationFeedbackVerification;
+  readonly runtimeBrowser?: IterationFeedbackRuntimeBrowser;
   readonly preservationRejection?: IterationPreservationRejection;
+}
+
+export interface IterationFeedbackRuntimeBrowserRoute {
+  readonly path: string;
+  readonly status: string;
+  readonly consoleErrorCount: number;
+  readonly pageExceptionCount: number;
+  readonly failedRequestCount: number;
+  readonly topConsoleError?: string;
+}
+
+export interface IterationFeedbackRuntimeBrowser {
+  readonly status: string;
+  readonly serverStatus: string;
+  readonly browserStatus: string;
+  readonly routes: readonly IterationFeedbackRuntimeBrowserRoute[];
 }

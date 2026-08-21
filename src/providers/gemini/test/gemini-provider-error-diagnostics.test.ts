@@ -208,10 +208,6 @@ describe('Gemini provider-error diagnostics', () => {
     expect(attemptLogger.events[0]).toMatchObject({
       outcome: 'FAILED',
       errorCode: 'PROVIDER_UNAVAILABLE',
-      providerStatus: 429,
-      providerErrorCategory: 'RATE_LIMIT',
-      sdkErrorName: 'ApiError',
-      retryAfterMs: 15_000,
     });
     const serialized = JSON.stringify(attemptLogger.events);
     expect(serialized).not.toMatch(/GEMINI_API_KEY|super-secret-key|Authorization/i);

@@ -33,7 +33,7 @@ const TASK_ID = 'task-3-workspace-orchestration-integration';
 const configuration: OpenAIProviderConfiguration = {
   model: 'integration-model',
   defaultTimeoutMs: 30_000,
-  maximumTimeoutMs: 30_000,
+  maximumTimeoutMs: 120_000,
   maximumInputCharacters: 1_000_000,
   maximumOutputCharacters: 100_000,
   maximumOutputTokens: 10_000,
@@ -406,6 +406,7 @@ describe('Workspace activity history orchestration integration', () => {
         TEST_VALIDATION: FAILED_STAGE,
         LINT_VALIDATION: FAILED_STAGE,
         TYPECHECK_VALIDATION: FAILED_STAGE,
+        FORMAT_VALIDATION: FAILED_STAGE,
       }).ports,
     });
     const plan = approvedFeaturePlan();

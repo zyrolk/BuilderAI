@@ -47,8 +47,9 @@ export interface FeatureTaskOutcomeVerificationStage {
     | 'BUILD_VALIDATION'
     | 'TEST_VALIDATION'
     | 'LINT_VALIDATION'
-    | 'TYPECHECK_VALIDATION';
-  readonly status: 'PASSED' | 'FAILED';
+    | 'TYPECHECK_VALIDATION'
+    | 'FORMAT_VALIDATION';
+  readonly status: 'PASSED' | 'FAILED' | 'SKIPPED';
 }
 
 export interface FeatureTaskOutcome {

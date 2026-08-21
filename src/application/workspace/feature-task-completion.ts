@@ -1,7 +1,7 @@
 import {
   VERIFICATION_STAGES,
+  VERIFICATION_STAGE_FAILURE_OUTCOMES,
   type VerificationStage,
-  type VerificationStageStatus,
 } from '../../core/verification';
 import type { FeatureTaskOutcome, FeatureTaskOutcomeVerificationStage } from './feature-plan.types';
 import { WorkspaceRuntimeError } from './workspace-runtime.types';
@@ -21,10 +21,12 @@ export function normalizeVerificationStages(
     const status = Reflect.get(item, 'status');
     if (typeof stage !== 'string' || typeof status !== 'string') continue;
     if (!(VERIFICATION_STAGES as readonly string[]).includes(stage)) continue;
-    if (status !== 'PASSED' && status !== 'FAILED') continue;
+    if (status !== 'PASSED' && status !== 'FAILED' && status !== 'SKIPPED') {
+      continue;
+    }
     stages.push({
       stage: stage as VerificationStage,
-      status: status as VerificationStageStatus,
+      status: status as FeatureTaskOutcomeVerificationStage['status'],
     });
   }
   return stages.length === 0 ? undefined : stages;
@@ -35,7 +37,10 @@ export function hasMandatoryVerificationStageFailure(
 ): boolean {
   return MANDATORY_FEATURE_TASK_VERIFICATION_STAGES.some((mandatory) => {
     const result = stages.find(({ stage }) => stage === mandatory);
-    return result?.status === 'FAILED';
+    return (
+      result !== undefined &&
+      (VERIFICATION_STAGE_FAILURE_OUTCOMES as readonly string[]).includes(result.status)
+    );
   });
 }
 

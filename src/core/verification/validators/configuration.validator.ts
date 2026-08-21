@@ -18,6 +18,8 @@ export class VerificationConfigurationValidator {
       value,
       [
         'pipeline',
+        'workflowDeadlineMs',
+        'stageTimeoutMs',
         'maximumFindingsPerStage',
         'maximumFindingMessageCharacters',
         'maximumStageMetadataEntries',
@@ -44,6 +46,8 @@ export class VerificationConfigurationValidator {
       );
     }
     for (const key of [
+      'workflowDeadlineMs',
+      'stageTimeoutMs',
       'maximumFindingsPerStage',
       'maximumFindingMessageCharacters',
       'maximumStageMetadataEntries',

@@ -150,6 +150,7 @@ export class ProjectChangePlanValidator {
       'sourceSizeBytes',
       ...(hasContent ? ['content'] : []),
       ...(value.kind === 'UPDATE_FILE' ? ['baselineContentChecksum', 'preservation'] : []),
+      ...(value.kind === 'DELETE_FILE' ? ['baselineContentChecksum'] : []),
     ];
     validateExactKeys(value, allowedKeys, path, issues);
     if (!isChangeOperationKind(value.kind)) {
@@ -195,7 +196,10 @@ export class ProjectChangePlanValidator {
     } else if (value.kind === 'DELETE_FILE' && value.content !== undefined) {
       addIssue(issues, 'UNSUPPORTED_CHANGE', `${path}.content`, 'is not allowed for deletion');
     }
-    if (value.kind === 'UPDATE_FILE' && value.baselineContentChecksum !== undefined) {
+    if (
+      (value.kind === 'UPDATE_FILE' || value.kind === 'DELETE_FILE') &&
+      value.baselineContentChecksum !== undefined
+    ) {
       this.validateChecksum(
         value.baselineContentChecksum,
         `${path}.baselineContentChecksum`,

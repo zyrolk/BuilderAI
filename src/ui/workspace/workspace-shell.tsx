@@ -6,11 +6,9 @@ import type { FormEvent } from 'react';
 
 import { isVerificationEligibleFileApplyResult, type FileApplyResult } from '../../core/file-apply';
 import type { VerificationReport } from '../../core/verification';
+import type { CorrectionLoopSession } from '../../application/workspace/correction-loop';
 import { buildIterationFeedbackFromCompletion } from '../../application/workspace/iteration-feedback.service';
-import {
-  buildInvestigationHandoffFeedback,
-  isInvestigationHandoffFeedback,
-} from '../../application/workspace/investigation/investigation-handoff';
+import { isInvestigationHandoffFeedback } from '../../application/workspace/investigation/investigation-handoff';
 import { buildVerificationFailureInvestigationRequest } from '../../application/workspace/verification-failure-investigation';
 import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
 import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
@@ -22,6 +20,7 @@ import { ActivityHistoryPanel } from './activity-history-panel';
 import { ProjectReadinessPanel } from './project-readiness-panel';
 import { ProjectMemoryPanel } from './project-memory-panel';
 import { FeatureWorkflowPanel } from './feature-workflow-panel';
+import { AgentRunPanel } from './agent-run-panel';
 import { HttpFeatureWorkflow } from './http-feature-workflow';
 import { ResultPanel } from './result-panel';
 import { HttpWorkspaceWorkflow } from './http-workspace-workflow';
@@ -38,6 +37,7 @@ import {
   freshPrepareRequiredNotice,
   verificationFailureCorrectionHint,
 } from './operator-recovery-guidance';
+import { correctionSessionHeadline, isCorrectionTerminal } from './correction-loop-display';
 import { isAppliedWithVerificationFailure } from './verification-outcome-display';
 import type {
   PreparedWorkspaceChange,
@@ -70,6 +70,19 @@ const PHASE_LABELS: Readonly<Record<WorkspacePhase, string>> = {
   VERIFYING_PROJECT: 'Verifying project',
   COMPLETED: 'Workflow complete',
   FAILED: 'Workflow stopped',
+  PROVIDER_RATE_LIMITED: 'Provider rate limited — retry later',
+  PROVIDER_UNAVAILABLE: 'Provider temporarily unavailable',
+  PROVIDER_TIMEOUT: 'Provider request timed out',
+  PROVIDER_CANCELLED: 'Request cancelled',
+  OUTPUT_TRUNCATED: 'Provider output was truncated',
+  INVALID_PROVIDER_RESPONSE: 'Invalid provider response',
+  INSUFFICIENT_EVIDENCE: 'Insufficient evidence for a safe change',
+  NO_CHANGE: 'No change needed',
+  RECOVERY_REQUIRED: 'Recovery required',
+  BASELINE_CHANGED: 'Baseline changed — fresh prepare required',
+  RESUMING_WORKFLOW: 'Resuming workflow',
+  WAITING_FOR_APPROVAL: 'Waiting for approval',
+  WORKFLOW_CANCELLED: 'Workflow cancelled',
 };
 
 interface WorkspaceShellProps {
@@ -118,6 +131,8 @@ export function WorkspaceShell({
   const [applyResult, setApplyResult] = useState<FileApplyResult>();
   const [verificationReport, setVerificationReport] = useState<VerificationReport>();
   const [completionSnapshot, setCompletionSnapshot] = useState<WorkspaceCompletionSnapshot>();
+  const [correctionSession, setCorrectionSession] = useState<CorrectionLoopSession>();
+  const [correctionWorkflowId, setCorrectionWorkflowId] = useState<string>();
   const [lastPreparedRequest, setLastPreparedRequest] = useState<string>();
   const [approved, setApproved] = useState(false);
   const [error, setError] = useState<string>();
@@ -329,24 +344,7 @@ export function WorkspaceShell({
       .join('\n');
     setRequest(enrichedRequest);
     await runPrepare(enrichedRequest, undefined, {
-      iterationFeedback: buildInvestigationHandoffFeedback({
-        sourceInvestigationId: investigation.investigationId,
-        priorRequestSummary: originalRequest,
-        investigationSummary: investigation.report.summary,
-        ...(investigation.report.suggestedFixScope === undefined
-          ? {}
-          : { suggestedFixScope: investigation.report.suggestedFixScope }),
-        ...(investigation.report.likelyRootCause === undefined
-          ? {}
-          : { likelyRootCause: investigation.report.likelyRootCause }),
-        sourcePaths: investigation.repositorySourcePaths,
-        requestText: originalRequest,
-        queries: investigation.searchResult.queries,
-        evidence: investigation.report.evidence,
-        searchMatches: investigation.searchResult.matches,
-        hypotheses: investigation.report.hypotheses,
-        affectedAreas: investigation.report.affectedAreas,
-      }),
+      investigationId: investigation.investigationId,
     });
   }
 
@@ -417,6 +415,10 @@ export function WorkspaceShell({
 
   async function handleCorrectionPrepare(): Promise<void> {
     if (!workflow || !completionSnapshot || isBusy) return;
+    if (workflow.startCorrection !== undefined) {
+      await handleBoundedCorrectionStart();
+      return;
+    }
     const correctionRequest =
       request.trim().length > 0 ? request.trim() : DEFAULT_CORRECTION_REQUEST;
     setRequest(correctionRequest);
@@ -434,10 +436,76 @@ export function WorkspaceShell({
     await runPrepare(correctionRequest, completionSnapshot, featureOptions);
   }
 
+  async function handleBoundedCorrectionStart(): Promise<void> {
+    if (!workflow?.startCorrection || !completionSnapshot) return;
+    const workflowId =
+      completionSnapshot.sourcePreparationId ?? correctionWorkflowId ?? crypto.randomUUID();
+    setCorrectionWorkflowId(workflowId);
+    setError(undefined);
+    setPhase('PROCESSING_REQUEST');
+    setProgressIndex(1);
+    try {
+      const started = await workflow.startCorrection(
+        completionSnapshot,
+        workflowId,
+        lastPreparedRequest ?? request,
+      );
+      setCorrectionSession(started.session);
+      if (!started.canPrepare || started.iterationFeedback === undefined) {
+        stopWorkflow(
+          started.session.blockMessage ??
+            'Correction could not be prepared from the available evidence.',
+          0,
+        );
+        return;
+      }
+      const featureOptions: PrepareWorkspaceOptions = {
+        iterationFeedback: started.iterationFeedback,
+        ...(completionSnapshot.featurePlanId === undefined ||
+        completionSnapshot.taskId === undefined
+          ? {}
+          : {
+              featurePlanId: completionSnapshot.featurePlanId,
+              taskId: completionSnapshot.taskId,
+              ...(completionSnapshot.dependencyOverrides === undefined
+                ? {}
+                : { dependencyOverrides: completionSnapshot.dependencyOverrides }),
+            }),
+      };
+      await runPrepare(started.correctionRequest, completionSnapshot, featureOptions, workflowId);
+    } catch {
+      stopWorkflow('Bounded correction could not be started.', 0);
+    }
+  }
+
+  async function handleRejectCorrection(): Promise<void> {
+    if (!workflow?.rejectCorrection || correctionWorkflowId === undefined) return;
+    workflow.abortInFlight?.();
+    const session = await workflow.rejectCorrection(correctionWorkflowId);
+    setCorrectionSession(session);
+    setApproved(false);
+    setPrepared(undefined);
+    setError('Correction was rejected. Manual intervention may be required.');
+    setPhase('COMPLETED');
+  }
+
+  async function handleCancelInFlight(): Promise<void> {
+    workflow?.abortInFlight?.();
+    if (workflow?.rejectCorrection !== undefined && correctionWorkflowId !== undefined) {
+      try {
+        const session = await workflow.rejectCorrection(correctionWorkflowId);
+        setCorrectionSession(session);
+      } catch {
+        // Session cancel is best-effort after the in-flight request is aborted.
+      }
+    }
+  }
+
   async function runPrepare(
     normalizedRequest: string,
     correctionSnapshot?: WorkspaceCompletionSnapshot,
     featureOptions: PrepareWorkspaceOptions = {},
+    activeCorrectionWorkflowId?: string,
   ): Promise<void> {
     if (!workflow || normalizedRequest.length === 0 || isBusy || workflowBlocked) return;
 
@@ -456,7 +524,8 @@ export function WorkspaceShell({
 
     try {
       const iterationFeedback =
-        correctionSnapshot === undefined
+        featureOptions.iterationFeedback ??
+        (correctionSnapshot === undefined
           ? undefined
           : buildIterationFeedbackFromCompletion(
               {
@@ -464,6 +533,12 @@ export function WorkspaceShell({
                 ...(correctionSnapshot.verificationReport === undefined
                   ? {}
                   : { verificationReport: correctionSnapshot.verificationReport }),
+                ...(correctionSnapshot.runtimeBrowserVerificationReport === undefined
+                  ? {}
+                  : {
+                      runtimeBrowserVerificationReport:
+                        correctionSnapshot.runtimeBrowserVerificationReport,
+                    }),
               },
               {
                 ...(correctionSnapshot.sourcePreparationId === undefined
@@ -473,14 +548,18 @@ export function WorkspaceShell({
                   ? {}
                   : { priorRequestSummary: correctionSnapshot.priorRequestSummary }),
               },
-            );
+            ));
+      const prepareOptions: PrepareWorkspaceOptions = {
+        ...featureOptions,
+        ...(iterationFeedback === undefined ? {} : { iterationFeedback }),
+        ...((activeCorrectionWorkflowId ?? correctionWorkflowId) === undefined
+          ? {}
+          : { correctionWorkflowId: activeCorrectionWorkflowId ?? correctionWorkflowId }),
+      };
       const nextPrepared =
-        iterationFeedback === undefined && featureOptions.featurePlanId === undefined
+        Object.keys(prepareOptions).length === 0
           ? await workflow.prepare(normalizedRequest)
-          : await workflow.prepare(normalizedRequest, {
-              ...(iterationFeedback === undefined ? {} : { iterationFeedback }),
-              ...featureOptions,
-            });
+          : await workflow.prepare(normalizedRequest, prepareOptions);
       setPrepared(nextPrepared);
       setPreparationTrace({
         preparationId: nextPrepared.preparationId,
@@ -491,6 +570,18 @@ export function WorkspaceShell({
           ? {}
           : { isCorrection: nextPrepared.isCorrection }),
       });
+      if (workflow.recordCorrectionPrepared !== undefined && nextPrepared.isCorrection === true) {
+        const workflowId = activeCorrectionWorkflowId ?? correctionWorkflowId;
+        const preparationId = nextPrepared.preparationId;
+        if (workflowId !== undefined && preparationId !== undefined) {
+          const session = await workflow.recordCorrectionPrepared(
+            workflowId,
+            preparationId,
+            nextPrepared.changePlan,
+          );
+          setCorrectionSession(session);
+        }
+      }
       if (!nextPrepared.isCorrection) {
         setRejectedPreparedSnapshot(undefined);
         setShowGate2RejectForm(false);
@@ -513,14 +604,20 @@ export function WorkspaceShell({
           author: 'BUILDER_AI',
           message:
             nextPrepared.changePlan.summary.totalOperations === 0 &&
-            featureOptions.iterationFeedback !== undefined &&
-            isInvestigationHandoffFeedback(featureOptions.iterationFeedback)
+            (featureOptions.investigationId !== undefined ||
+              (featureOptions.iterationFeedback !== undefined &&
+                isInvestigationHandoffFeedback(featureOptions.iterationFeedback)))
               ? 'No safe filesystem changes were proposed from the investigation evidence. Refine the investigation or provide clearer reproduction details before preparing again. No files have been changed.'
               : `Prepared ${nextPrepared.changePlan.summary.totalOperations} operation${nextPrepared.changePlan.summary.totalOperations === 1 ? '' : 's'} for review. No files have been changed.`,
         },
       ]);
       void refreshActivityHistory();
     } catch (workflowError: unknown) {
+      if (isCancelledWorkflowError(workflowError)) {
+        await markCorrectionCancelled();
+        stopWorkflow('Correction was cancelled. No project changes were made.', 1);
+        return;
+      }
       stopWorkflow(
         workflowError instanceof WorkspaceWorkflowError
           ? `${workflowError.message} No project changes were made.`
@@ -622,6 +719,14 @@ export function WorkspaceShell({
 
     let completedSteps = 4;
     try {
+      if (
+        workflow.recordCorrectionApplying !== undefined &&
+        correctionWorkflowId !== undefined &&
+        preparationTrace?.isCorrection === true
+      ) {
+        const session = await workflow.recordCorrectionApplying(correctionWorkflowId);
+        setCorrectionSession(session);
+      }
       const nextApplyResult = await workflow.apply(prepared.changePlan);
       setApplyResult(nextApplyResult);
       if (!isVerificationEligibleFileApplyResult(nextApplyResult)) {
@@ -647,7 +752,12 @@ export function WorkspaceShell({
       setActiveTab('VERIFICATION_REPORT');
       const nextVerificationReport = await workflow.verify(nextApplyResult);
       completeWorkflow(nextVerificationReport, nextApplyResult);
-    } catch {
+    } catch (workflowError: unknown) {
+      if (isCancelledWorkflowError(workflowError)) {
+        await markCorrectionCancelled();
+        stopWorkflow('Correction was cancelled. No additional apply was started.', completedSteps);
+        return;
+      }
       stopWorkflow(
         'The approved workflow could not complete. Review the available result evidence.',
         completedSteps,
@@ -655,16 +765,42 @@ export function WorkspaceShell({
     }
   }
 
-  function completeWorkflow(report: VerificationReport, appliedResult: FileApplyResult): void {
+  async function markCorrectionCancelled(): Promise<void> {
+    if (workflow?.rejectCorrection === undefined || correctionWorkflowId === undefined) return;
+    try {
+      const session = await workflow.rejectCorrection(correctionWorkflowId);
+      setCorrectionSession(session);
+    } catch {
+      // Best-effort session update after abort.
+    }
+  }
+
+  async function completeWorkflow(
+    report: VerificationReport,
+    appliedResult: FileApplyResult,
+  ): Promise<void> {
     setVerificationReport(report);
-    setCompletionSnapshot(
+    const snapshot =
+      workflow?.getCompletionSnapshot?.() ??
       createCompletionSnapshot(
         appliedResult,
         report,
         lastPreparedRequest,
         readFeatureBinding(featurePlan, activeFeatureTaskId, activeFeatureDependencyOverrides),
-      ),
-    );
+      );
+    setCompletionSnapshot(snapshot);
+    if (
+      workflow?.recordCorrectionVerified !== undefined &&
+      correctionWorkflowId !== undefined &&
+      preparationTrace?.isCorrection === true
+    ) {
+      try {
+        const session = await workflow.recordCorrectionVerified(correctionWorkflowId, snapshot);
+        setCorrectionSession(session);
+      } catch {
+        // Correction session recording must not block operator review of verification evidence.
+      }
+    }
     setPhase('COMPLETED');
     setProgressIndex(6);
     setConversation((entries) => [
@@ -792,6 +928,8 @@ export function WorkspaceShell({
             />
           )}
 
+          {workflow && <AgentRunPanel disabled={isBusy || workflowBlocked} />}
+
           <form className={styles.requestForm} onSubmit={handleSubmit}>
             <label htmlFor={requestId}>Project request</label>
             <textarea
@@ -822,6 +960,18 @@ export function WorkspaceShell({
                 >
                   {phase === 'PROCESSING_REQUEST' ? 'Preparing request…' : 'Prepare change plan'}
                 </button>
+                {isBusy &&
+                  ['PROCESSING_REQUEST', 'APPLYING_CHANGES', 'VERIFYING_PROJECT'].includes(
+                    phase,
+                  ) && (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => void handleCancelInFlight()}
+                    >
+                      Cancel
+                    </button>
+                  )}
               </div>
             </div>
           </form>
@@ -1021,8 +1171,18 @@ export function WorkspaceShell({
             (phase === 'COMPLETED' || phase === 'FAILED') && (
               <section className={styles.approvalCard} aria-labelledby="correction-title">
                 <div>
-                  <p className={styles.eyebrow}>Explicit correction</p>
-                  <h3 id="correction-title">Fix verification failures</h3>
+                  <p className={styles.eyebrow}>Bounded correction</p>
+                  <h3 id="correction-title">
+                    {correctionSession === undefined
+                      ? 'Fix verification failures'
+                      : correctionSessionHeadline(correctionSession)}
+                  </h3>
+                  {correctionSession?.currentDiagnostic !== undefined && (
+                    <p role="status">Failure: {correctionSession.currentDiagnostic.summary}</p>
+                  )}
+                  {correctionSession !== undefined && isCorrectionTerminal(correctionSession) && (
+                    <p role="status">{correctionSession.blockMessage ?? 'Correction ended.'}</p>
+                  )}
                   {isAppliedWithVerificationFailure(
                     completionSnapshot?.applyResult,
                     completionSnapshot?.verificationReport,
@@ -1034,11 +1194,27 @@ export function WorkspaceShell({
                 <button
                   type="button"
                   className={styles.approveButton}
-                  disabled={!workflow || isBusy}
+                  disabled={
+                    !workflow ||
+                    isBusy ||
+                    (correctionSession !== undefined && isCorrectionTerminal(correctionSession))
+                  }
                   onClick={() => void handleCorrectionPrepare()}
                 >
-                  Fix verification failures
+                  {correctionSession === undefined
+                    ? 'Start correction'
+                    : 'Retry correction prepare'}
                 </button>
+                {correctionSession?.state === 'CORRECTION_WAITING_FOR_APPROVAL' && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!workflow || isBusy}
+                    onClick={() => void handleRejectCorrection()}
+                  >
+                    Reject correction
+                  </button>
+                )}
                 {workflow?.investigate !== undefined && (
                   <button
                     type="button"
@@ -1101,6 +1277,7 @@ export function WorkspaceShell({
             investigationMemorySaveState={investigationMemorySaveState}
             applyResult={applyResult}
             verificationReport={verificationReport}
+            runtimeBrowserVerificationReport={completionSnapshot?.runtimeBrowserVerificationReport}
           />
 
           {memorySupported && (
@@ -1184,6 +1361,10 @@ function formatLabel(value: string): string {
     .split('_')
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(' ');
+}
+
+function isCancelledWorkflowError(error: unknown): boolean {
+  return error instanceof WorkspaceWorkflowError && error.code === 'PROVIDER_CANCELLED';
 }
 
 function statusClass(phase: WorkspacePhase): string {

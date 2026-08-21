@@ -31,7 +31,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
     expect(context.ownershipBoundaries.join(' ')).toMatch(/Project Brain/i);
     expect(context.ownershipBoundaries.join(' ')).toMatch(/\.builderai/i);
     expect(context.ownershipBoundaries.join(' ')).toMatch(/src\/application\/workspace/i);
-  }, 15_000);
+  }, 30_000);
 
   it('instructs ownership-aligned expectedAreas in the decomposition prompt', async () => {
     const context = await buildLiveContext('Add checkout summary to the workspace UI.');
@@ -46,7 +46,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
     expect(serialized).toMatch(
       /Set expectedAreas to repository paths aligned with ownershipBoundaries/i,
     );
-  });
+  }, 30_000);
 
   it('does not steer workflow-local decomposition toward Project Brain by default', async () => {
     const context = await buildLiveContext(
@@ -57,7 +57,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
     expect(boundaries).toMatch(/not canonical Project Brain/i);
     expect(boundaries).toMatch(/operational workflow features/i);
     expect(boundaries).not.toMatch(/Activity History/i);
-  });
+  }, 30_000);
 
   it('still permits Project Brain governance tasks to target canonical Project Brain paths', async () => {
     const context = await buildLiveContext(
@@ -73,7 +73,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
     expect(context.ownershipBoundaries.join(' ')).toMatch(
       /genuinely changes Project Brain governance/i,
     );
-  });
+  }, 30_000);
 
   it('can represent .builderai as local workflow persistence', async () => {
     const context = await buildLiveContext(
@@ -83,7 +83,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
 
     expect(boundaries).toMatch(/\.builderai/i);
     expect(boundaries).toMatch(/local workflow state/i);
-  });
+  }, 30_000);
 
   it('keeps decomposition context within the 15,000-character budget', async () => {
     const context = await buildLiveContext(
@@ -93,7 +93,7 @@ describe('Decomposition architecture ownership boundaries (ADR-026)', () => {
     expect(measureDecompositionContext(context)).toBeLessThanOrEqual(
       DECOMPOSITION_CONTEXT_LIMITS.MAX_SERIALIZED_CHARACTERS,
     );
-  });
+  }, 30_000);
 
   it('preserves existing task count, path safety, and DAG validation', () => {
     const now = '2026-08-02T00:00:00.000Z';

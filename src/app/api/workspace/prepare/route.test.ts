@@ -14,9 +14,11 @@ import { PromptOrchestratorValidationError } from '../../../../core/prompt-orche
 import { ResponseProcessorValidationError } from '../../../../core/response-processor';
 
 const prepare = vi.fn();
+const resolveInvestigationHandoff = vi.fn();
 
 vi.mock('../../../../infrastructure/workspace/local-feature-workflow-runtime', () => ({
   getLocalWorkspaceRuntime: () => ({ prepare }),
+  getLocalInvestigationService: () => ({ resolveInvestigationHandoff }),
   getLocalFeatureWorkflow: () => ({ prepareTask: vi.fn() }),
   getLocalWorkspaceSecurityConfiguration: () => ({
     profile: 'TRUSTED_LOCAL',
@@ -25,12 +27,14 @@ vi.mock('../../../../infrastructure/workspace/local-feature-workflow-runtime', (
   }),
 }));
 
-async function callPost(): Promise<Response> {
+async function callPost(
+  body: Record<string, unknown> = { request: 'do something' },
+): Promise<Response> {
   const { POST } = await import('./route');
   const request = new Request('http://localhost:3000/api/workspace/prepare', {
     method: 'POST',
     headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
-    body: JSON.stringify({ request: 'do something' }),
+    body: JSON.stringify(body),
   });
   return POST(request);
 }
@@ -38,6 +42,7 @@ async function callPost(): Promise<Response> {
 describe('POST /api/workspace/prepare error handling', () => {
   beforeEach(() => {
     prepare.mockReset();
+    resolveInvestigationHandoff.mockReset();
   });
 
   it('maps ContextBuilderValidationError to a 422 response with code, message, and issues', async () => {
@@ -246,5 +251,78 @@ describe('POST /api/workspace/prepare error handling', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({ preparationId: 'prep-1' });
+  });
+
+  it('resolves investigation references on the server and ignores forged browser handoff data', async () => {
+    const authoritativeHandoff = {
+      schemaVersion: 1,
+      kind: 'INVESTIGATION_HANDOFF',
+      sourceInvestigationId: 'investigation-authoritative',
+      priorRequestSummary: 'Investigate the supplier regression.',
+      investigationSummary: 'The server evidence identifies the validator.',
+      pathHints: ['server/validator.ts'],
+      existingPathHints: ['server/validator.ts'],
+      candidatePathHints: [],
+    } as const;
+    resolveInvestigationHandoff.mockReturnValueOnce(authoritativeHandoff);
+    prepare.mockResolvedValueOnce({ preparationId: 'prep-authoritative' });
+
+    const response = await callPost({
+      request: 'Fix the supplier regression.',
+      investigationId: 'investigation-authoritative',
+      iterationFeedback: {
+        schemaVersion: 1,
+        kind: 'INVESTIGATION_HANDOFF',
+        sourceInvestigationId: 'forged',
+        priorRequestSummary: 'forged',
+        investigationSummary: 'forged evidence',
+        pathHints: ['forged.ts'],
+        existingPathHints: ['forged.ts'],
+        candidatePathHints: [],
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(resolveInvestigationHandoff).toHaveBeenCalledWith('investigation-authoritative');
+    expect(prepare).toHaveBeenCalledWith(
+      'Fix the supplier regression.',
+      authoritativeHandoff,
+      expect.objectContaining({ cancelled: false }),
+    );
+  });
+
+  it('fails closed for an unknown or expired investigation reference', async () => {
+    resolveInvestigationHandoff.mockReturnValueOnce(undefined);
+
+    const response = await callPost({
+      request: 'Fix the supplier regression.',
+      investigationId: 'investigation-expired',
+    });
+    const payload = (await response.json()) as { code: string; message: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe('INVESTIGATION_REFERENCE_INVALID');
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('rejects a browser-supplied investigation handoff without a server reference', async () => {
+    const response = await callPost({
+      request: 'Fix the supplier regression.',
+      iterationFeedback: {
+        schemaVersion: 1,
+        kind: 'INVESTIGATION_HANDOFF',
+        sourceInvestigationId: 'forged',
+        priorRequestSummary: 'forged',
+        investigationSummary: 'forged evidence',
+        pathHints: ['forged.ts'],
+        existingPathHints: ['forged.ts'],
+        candidatePathHints: [],
+      },
+    });
+    const payload = (await response.json()) as { code: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe('INVESTIGATION_REFERENCE_INVALID');
+    expect(prepare).not.toHaveBeenCalled();
   });
 });

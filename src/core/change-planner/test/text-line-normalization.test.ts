@@ -23,12 +23,16 @@ describe('text line normalization (CP9.1)', () => {
   const crlfSample = lfSample.replace(/\n/g, '\r\n');
 
   function classifyGolden(baseline: string, proposed: string, churnRatio: number) {
+    // Relax parse budget only in this helper; production default remains 250ms.
     const structuredAnalysis = structuredService.analyze({
       baselineContent: baseline,
       proposedContent: proposed,
       churnRatio,
       elevatedChurnThreshold: DEFAULT_PRESERVATION_CONFIGURATION.elevatedChurnThreshold,
-      configuration: DEFAULT_PRESERVATION_CONFIGURATION.structuredHtml,
+      configuration: {
+        ...DEFAULT_PRESERVATION_CONFIGURATION.structuredHtml,
+        parseTimeLimitMs: 5_000,
+      },
     });
     return classifier.classify({
       logicalPath: 'index.html',

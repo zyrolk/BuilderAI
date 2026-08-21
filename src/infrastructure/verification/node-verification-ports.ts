@@ -1,26 +1,37 @@
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 
+import type { ExecutionCancellationToken } from '../../core/execution-engine';
 import type { ProjectContextReaderPort } from '../../core/target-project';
 import type {
   BuildRunnerPort,
   DependencyValidatorPort,
+  FormatRunnerPort,
   LintRunnerPort,
   ProjectValidatorPort,
   TestRunnerPort,
   TypecheckRunnerPort,
   VerificationContext,
-  VerificationDiagnostic,
   VerificationMessage,
   VerificationStagePortResult,
 } from '../../core/verification';
 import { DEFAULT_VERIFICATION_CONFIGURATION } from '../../core/verification';
+import {
+  createBuildDescriptor,
+  createDependencyValidationDescriptor,
+  createNamedScriptDescriptor,
+  createTestDescriptor,
+} from '../../core/verification/policy';
 import { discoverPackageScripts, type DiscoveredPackageScripts } from './package-script-discovery';
-import { buildVerificationDiagnostic } from './verification-diagnostic';
+import { SafeVerificationRunner } from './safe-verification-runner';
+import {
+  descriptorIdForScript,
+  mapExecutionToStageResult,
+  skippedStageResult,
+} from './verification-stage-result';
 
 export interface NodeVerificationConfiguration {
   readonly projectRoot: string;
+  readonly builderAiRoot?: string;
   readonly commandTimeoutMs: number;
   readonly maximumOutputBytes: number;
   readonly maximumDiagnosticStdoutCharacters?: number;
@@ -28,18 +39,9 @@ export interface NodeVerificationConfiguration {
   readonly maximumDiagnosticCombinedCharacters?: number;
 }
 
-interface CommandResult {
-  readonly exitCode: number | null;
-  readonly timedOut: boolean;
-  readonly outputBytes: number;
-  readonly outputTruncated: boolean;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-interface RunOptions {
-  readonly failureCode: string;
-  readonly commandLabel: string;
+export interface NodeVerificationExecutionContext {
+  readonly cancellation?: ExecutionCancellationToken;
+  readonly remainingWorkflowMs?: number;
 }
 
 export class NodeProjectValidator implements ProjectValidatorPort {
@@ -65,111 +67,98 @@ export class NodeProjectValidator implements ProjectValidatorPort {
 }
 
 export class NodeDependencyValidator implements DependencyValidatorPort {
-  constructor(private readonly runner: BoundedNpmCommandRunner) {}
+  constructor(private readonly executor: SafeVerificationCommandExecutor) {}
 
   async validateDependencies(context: VerificationContext): Promise<VerificationStagePortResult> {
-    void context;
-    return this.runner.run('dependency-validation', ['ls', '--omit=dev', '--json', '--depth=0'], {
-      failureCode: 'DEPENDENCY_VALIDATION_FAILED',
-      commandLabel: 'npm ls --omit=dev --json --depth=0',
-    });
+    this.executor.setExecutionContext(readExecutionContext(context));
+    return this.executor.runDependencyValidation();
   }
 }
 
 export class NodeBuildRunner implements BuildRunnerPort {
-  constructor(private readonly runner: BoundedNpmCommandRunner) {}
+  constructor(
+    private readonly executor: SafeVerificationCommandExecutor,
+    private readonly scripts: DiscoveredPackageScripts,
+  ) {}
 
   async runBuild(context: VerificationContext): Promise<VerificationStagePortResult> {
-    void context;
-    return this.runner.run('build-validation', ['run', 'build'], {
-      failureCode: 'BUILD_FAILED',
-      commandLabel: 'npm run build',
-    });
+    if (!this.scripts.hasBuild) return skippedStageResult('build');
+    this.executor.setExecutionContext(readExecutionContext(context));
+    return this.executor.runBuild();
   }
 }
 
 export class NodeTestRunner implements TestRunnerPort {
-  constructor(private readonly runner: BoundedNpmCommandRunner) {}
+  constructor(
+    private readonly executor: SafeVerificationCommandExecutor,
+    private readonly scripts: DiscoveredPackageScripts,
+  ) {}
 
   async runTests(context: VerificationContext): Promise<VerificationStagePortResult> {
-    void context;
-    return this.runner.run('test-validation', ['test'], {
-      failureCode: 'TEST_FAILED',
-      commandLabel: 'npm test',
-    });
+    if (!this.scripts.hasTest) return skippedStageResult('test');
+    this.executor.setExecutionContext(readExecutionContext(context));
+    return this.executor.runTest();
   }
 }
 
 export class NodeLintRunner implements LintRunnerPort {
   constructor(
-    private readonly runner: BoundedNpmCommandRunner,
+    private readonly executor: SafeVerificationCommandExecutor,
     private readonly scripts: DiscoveredPackageScripts,
   ) {}
 
   async runLint(context: VerificationContext): Promise<VerificationStagePortResult> {
-    void context;
     const script = this.scripts.lintScript;
-    if (script === undefined) {
-      return skippedOptionalStage('lint');
-    }
-    return this.runner.run('lint-validation', ['run', script], {
-      failureCode: 'LINT_FAILED',
-      commandLabel: `npm run ${script}`,
-    });
+    if (script === undefined) return skippedStageResult('lint');
+    this.executor.setExecutionContext(readExecutionContext(context));
+    return this.executor.runNamedScript('lint', script);
   }
 }
 
 export class NodeTypecheckRunner implements TypecheckRunnerPort {
   constructor(
-    private readonly runner: BoundedNpmCommandRunner,
+    private readonly executor: SafeVerificationCommandExecutor,
     private readonly scripts: DiscoveredPackageScripts,
   ) {}
 
   async runTypecheck(context: VerificationContext): Promise<VerificationStagePortResult> {
-    void context;
     const script = this.scripts.typecheckScript;
-    if (script === undefined) {
-      return skippedOptionalStage('typecheck');
-    }
-    return this.runner.run('typecheck-validation', ['run', script], {
-      failureCode: 'TYPECHECK_FAILED',
-      commandLabel: `npm run ${script}`,
-    });
+    if (script === undefined) return skippedStageResult('typecheck');
+    this.executor.setExecutionContext(readExecutionContext(context));
+    return this.executor.runNamedScript('typecheck', script);
   }
 }
 
-export function createNodeVerificationRunners(configuration: NodeVerificationConfiguration): {
-  readonly commandRunner: BoundedNpmCommandRunner;
-  readonly scripts: DiscoveredPackageScripts;
-  readonly dependencyValidator: NodeDependencyValidator;
-  readonly buildRunner: NodeBuildRunner;
-  readonly testRunner: NodeTestRunner;
-  readonly lintRunner: NodeLintRunner;
-  readonly typecheckRunner: NodeTypecheckRunner;
-} {
-  const commandRunner = new BoundedNpmCommandRunner(configuration);
-  const scripts = discoverPackageScripts(configuration.projectRoot);
-  return {
-    commandRunner,
-    scripts,
-    dependencyValidator: new NodeDependencyValidator(commandRunner),
-    buildRunner: new NodeBuildRunner(commandRunner),
-    testRunner: new NodeTestRunner(commandRunner),
-    lintRunner: new NodeLintRunner(commandRunner, scripts),
-    typecheckRunner: new NodeTypecheckRunner(commandRunner, scripts),
-  };
+export class NodeFormatRunner implements FormatRunnerPort {
+  constructor(
+    private readonly executor: SafeVerificationCommandExecutor,
+    private readonly scripts: DiscoveredPackageScripts,
+  ) {}
+
+  async runFormat(context: VerificationContext): Promise<VerificationStagePortResult> {
+    const script = this.scripts.formatScript;
+    if (script === undefined) return skippedStageResult('format');
+    this.executor.setExecutionContext(readExecutionContext(context));
+    return this.executor.runNamedScript('format', script);
+  }
 }
 
-export class BoundedNpmCommandRunner {
-  private readonly root: string;
+export class SafeVerificationCommandExecutor {
+  private readonly runner: SafeVerificationRunner;
   private readonly diagnosticLimits: {
     readonly maximumStdoutCharacters: number;
     readonly maximumStderrCharacters: number;
     readonly maximumCombinedCharacters: number;
   };
+  private executionContext: NodeVerificationExecutionContext = {};
 
   constructor(private readonly configuration: NodeVerificationConfiguration) {
-    this.root = path.resolve(configuration.projectRoot);
+    this.runner = new SafeVerificationRunner({
+      projectRoot: configuration.projectRoot,
+      builderAiRoot: configuration.builderAiRoot,
+      stageTimeoutMs: configuration.commandTimeoutMs,
+      outputLimitBytes: configuration.maximumOutputBytes,
+    });
     this.diagnosticLimits = {
       maximumStdoutCharacters:
         configuration.maximumDiagnosticStdoutCharacters ??
@@ -181,168 +170,118 @@ export class BoundedNpmCommandRunner {
         configuration.maximumDiagnosticCombinedCharacters ??
         DEFAULT_VERIFICATION_CONFIGURATION.maximumDiagnosticCombinedCharacters,
     };
-    if (
-      !Number.isSafeInteger(configuration.commandTimeoutMs) ||
-      configuration.commandTimeoutMs <= 0 ||
-      !Number.isSafeInteger(configuration.maximumOutputBytes) ||
-      configuration.maximumOutputBytes <= 0
-    ) {
-      throw new Error('Node verification configuration is invalid.');
-    }
   }
 
-  async run(
-    stageName: string,
-    arguments_: readonly string[],
-    options: RunOptions,
-  ): Promise<VerificationStagePortResult> {
-    const invocation = npmInvocation(arguments_);
-    const result = await executeBounded(
-      invocation.executable,
-      invocation.arguments,
-      this.root,
-      this.configuration,
-    );
-    const errors: VerificationMessage[] = [];
-    const warnings: VerificationMessage[] = [];
-    if (result.timedOut) {
-      errors.push({
-        code: 'VERIFICATION_COMMAND_TIMEOUT',
-        message: `${stageName} exceeded its time limit.`,
-      });
-    } else if (result.exitCode !== 0) {
-      errors.push({
-        code: options.failureCode,
-        message: `${stageName} exited unsuccessfully.`,
-      });
-    }
-    if (result.outputTruncated) {
-      warnings.push({
-        code: 'OUTPUT_TRUNCATED',
-        message: `${stageName} output exceeded the configured diagnostic limit.`,
-      });
-    }
-    const failed = errors.length > 0;
-    const diagnostic = failed
-      ? buildVerificationDiagnostic({
-          commandLabel: options.commandLabel,
-          exitCode: result.exitCode,
-          timedOut: result.timedOut,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          outputBytes: result.outputBytes,
-          outputTruncated: result.outputTruncated,
-          limits: this.diagnosticLimits,
-        })
-      : undefined;
-    return {
-      status: failed ? 'FAILED' : 'PASSED',
-      warnings,
-      errors,
-      metadata: {
-        'exit-code': result.exitCode ?? -1,
-        'output-bytes': result.outputBytes,
-        'output-truncated': result.outputTruncated,
+  setExecutionContext(context: NodeVerificationExecutionContext): void {
+    this.executionContext = context;
+  }
+
+  async runDependencyValidation(): Promise<VerificationStagePortResult> {
+    const descriptor = createDependencyValidationDescriptor(this.policyConfiguration());
+    const execution = await this.runner.execute(descriptor, this.executionContext);
+    return mapExecutionToStageResult({
+      descriptor,
+      execution,
+      failure: {
+        failureCode: 'DEPENDENCY_VALIDATION_FAILED',
+        message: 'Dependency validation exited unsuccessfully.',
       },
-      ...(diagnostic === undefined ? {} : { diagnostic }),
+      diagnosticLimits: this.diagnosticLimits,
+    });
+  }
+
+  async runBuild(): Promise<VerificationStagePortResult> {
+    const descriptor = createBuildDescriptor(this.policyConfiguration());
+    const execution = await this.runner.execute(descriptor, this.executionContext);
+    return mapExecutionToStageResult({
+      descriptor,
+      execution,
+      failure: { failureCode: 'BUILD_FAILED', message: 'Build validation exited unsuccessfully.' },
+      diagnosticLimits: this.diagnosticLimits,
+    });
+  }
+
+  async runTest(): Promise<VerificationStagePortResult> {
+    const descriptor = createTestDescriptor(this.policyConfiguration());
+    const execution = await this.runner.execute(descriptor, this.executionContext);
+    return mapExecutionToStageResult({
+      descriptor,
+      execution,
+      failure: { failureCode: 'TEST_FAILED', message: 'Test validation exited unsuccessfully.' },
+      diagnosticLimits: this.diagnosticLimits,
+    });
+  }
+
+  async runNamedScript(
+    scriptKind: 'lint' | 'typecheck' | 'format',
+    scriptName: string,
+  ): Promise<VerificationStagePortResult> {
+    const descriptor = createNamedScriptDescriptor(this.policyConfiguration(), {
+      id: descriptorIdForScript(scriptKind),
+      stage:
+        scriptKind === 'lint'
+          ? 'LINT_VALIDATION'
+          : scriptKind === 'typecheck'
+            ? 'TYPECHECK_VALIDATION'
+            : 'FORMAT_VALIDATION',
+      scriptName,
+    });
+    const execution = await this.runner.execute(descriptor, this.executionContext);
+    const failureCode =
+      scriptKind === 'lint'
+        ? 'LINT_FAILED'
+        : scriptKind === 'typecheck'
+          ? 'TYPECHECK_FAILED'
+          : 'FORMAT_FAILED';
+    return mapExecutionToStageResult({
+      descriptor,
+      execution,
+      failure: {
+        failureCode,
+        message: `${scriptKind} validation exited unsuccessfully.`,
+      },
+      diagnosticLimits: this.diagnosticLimits,
+    });
+  }
+
+  private policyConfiguration() {
+    return {
+      projectRoot: path.resolve(this.configuration.projectRoot),
+      builderAiRoot: this.configuration.builderAiRoot,
+      stageTimeoutMs: this.configuration.commandTimeoutMs,
+      outputLimitBytes: this.configuration.maximumOutputBytes,
     };
   }
 }
 
-function skippedOptionalStage(scriptKind: 'lint' | 'typecheck'): VerificationStagePortResult {
+export function createNodeVerificationRunners(configuration: NodeVerificationConfiguration): {
+  readonly commandExecutor: SafeVerificationCommandExecutor;
+  readonly scripts: DiscoveredPackageScripts;
+  readonly dependencyValidator: NodeDependencyValidator;
+  readonly buildRunner: NodeBuildRunner;
+  readonly testRunner: NodeTestRunner;
+  readonly lintRunner: NodeLintRunner;
+  readonly typecheckRunner: NodeTypecheckRunner;
+  readonly formatRunner: NodeFormatRunner;
+} {
+  const commandExecutor = new SafeVerificationCommandExecutor(configuration);
+  const scripts = discoverPackageScripts(configuration.projectRoot);
   return {
-    status: 'PASSED',
-    warnings: [
-      {
-        code: 'STAGE_SKIPPED',
-        message: `No ${scriptKind} script declared in package.json; ${scriptKind} validation was skipped.`,
-      },
-    ],
-    errors: [],
-    metadata: { skipped: true, 'script-kind': scriptKind },
+    commandExecutor,
+    scripts,
+    dependencyValidator: new NodeDependencyValidator(commandExecutor),
+    buildRunner: new NodeBuildRunner(commandExecutor, scripts),
+    testRunner: new NodeTestRunner(commandExecutor, scripts),
+    lintRunner: new NodeLintRunner(commandExecutor, scripts),
+    typecheckRunner: new NodeTypecheckRunner(commandExecutor, scripts),
+    formatRunner: new NodeFormatRunner(commandExecutor, scripts),
   };
 }
 
-function npmInvocation(arguments_: readonly string[]): {
-  readonly executable: string;
-  readonly arguments: readonly string[];
-} {
-  if (process.platform !== 'win32') return { executable: 'npm', arguments: arguments_ };
-  const configured = process.env.npm_execpath;
-  const installed = path.resolve(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-  const cliPath = configured !== undefined && existsSync(configured) ? configured : installed;
-  if (!existsSync(cliPath)) throw new Error('The npm CLI entry point could not be located.');
-  return { executable: process.execPath, arguments: [cliPath, ...arguments_] };
-}
-
-function executeBounded(
-  executable: string,
-  arguments_: readonly string[],
-  cwd: string,
-  configuration: NodeVerificationConfiguration,
-): Promise<CommandResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(executable, [...arguments_], {
-      cwd,
-      env: restrictedEnvironment(),
-      shell: false,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let outputBytes = 0;
-    let outputTruncated = false;
-    let timedOut = false;
-    let hardKill: ReturnType<typeof setTimeout> | undefined;
-    let stdout = '';
-    let stderr = '';
-    const append = (target: 'stdout' | 'stderr', chunk: Buffer | string): void => {
-      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      outputBytes += Buffer.byteLength(text, 'utf8');
-      if (outputBytes > configuration.maximumOutputBytes) outputTruncated = true;
-      if (target === 'stdout') stdout += text;
-      else stderr += text;
-    };
-    child.stdout.on('data', (chunk: Buffer | string) => append('stdout', chunk));
-    child.stderr.on('data', (chunk: Buffer | string) => append('stderr', chunk));
-    child.once('error', reject);
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
-      hardKill = setTimeout(() => child.kill('SIGKILL'), 5_000);
-      hardKill.unref();
-    }, configuration.commandTimeoutMs);
-    timeout.unref();
-    child.once('close', (exitCode) => {
-      clearTimeout(timeout);
-      if (hardKill !== undefined) clearTimeout(hardKill);
-      resolve({ exitCode, timedOut, outputBytes, outputTruncated, stdout, stderr });
-    });
-  });
-}
-
-function restrictedEnvironment(): NodeJS.ProcessEnv {
-  const allowed = [
-    'APPDATA',
-    'CI',
-    'ComSpec',
-    'HOME',
-    'LOCALAPPDATA',
-    'NODE_ENV',
-    'PATH',
-    'PATHEXT',
-    'SystemRoot',
-    'TEMP',
-    'TMP',
-    'USERPROFILE',
-  ] as const;
+function readExecutionContext(context: VerificationContext): NodeVerificationExecutionContext {
   return {
-    NODE_ENV: process.env.NODE_ENV ?? 'production',
-    ...Object.fromEntries(
-      allowed.flatMap((name) => {
-        const value = process.env[name];
-        return value === undefined ? [] : [[name, value]];
-      }),
-    ),
+    remainingWorkflowMs: context.execution?.remainingWorkflowMs,
+    cancellation: context.execution?.cancellation,
   };
 }
 
@@ -353,4 +292,4 @@ function toMessage(diagnostic: {
   return { code: diagnostic.code, message: diagnostic.message.slice(0, 2_000) };
 }
 
-export type { VerificationDiagnostic };
+export type { VerificationDiagnostic } from '../../core/verification';

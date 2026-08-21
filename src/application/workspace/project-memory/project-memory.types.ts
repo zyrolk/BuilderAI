@@ -42,6 +42,11 @@ export interface ProjectMemoryCompletedWork extends ProjectMemoryRecordBase {
   readonly category: 'COMPLETED_WORK';
   readonly preparationId?: string;
   readonly verificationStatus?: 'PASSED';
+  readonly workflowId?: string;
+  readonly changePlanDigest?: string;
+  readonly verificationSummary?: string;
+  readonly correctionSummary?: string;
+  readonly completedAt?: string;
 }
 
 export interface ProjectMemoryInvestigation extends ProjectMemoryRecordBase {

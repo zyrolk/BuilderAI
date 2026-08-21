@@ -13,6 +13,7 @@ export function mapWorkspaceRuntimeErrorStatus(
       return 422;
     case 'INVALID_REQUEST':
     case 'INVALID_ITERATION_FEEDBACK':
+    case 'INVESTIGATION_REFERENCE_INVALID':
     case 'INVALID_FEATURE_PLAN':
     case 'APPROVAL_REQUIRED':
       return 400;
@@ -27,6 +28,16 @@ export function mapWorkspaceRuntimeErrorStatus(
     case 'APPLY_AUTHORIZATION_REQUIRED':
     case 'BASELINE_INTEGRITY_REQUIRED':
       return 409;
+    case 'PROVIDER_RATE_LIMITED':
+      return 429;
+    case 'PROVIDER_UNAVAILABLE':
+    case 'PROVIDER_TIMEOUT':
+      return 503;
+    case 'PROVIDER_CANCELLED':
+      return 499;
+    case 'OUTPUT_TRUNCATED':
+    case 'INVALID_PROVIDER_RESPONSE':
+      return 502;
     default:
       return undefined;
   }

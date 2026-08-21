@@ -24,7 +24,7 @@ import { ZYRO_STYLE_FIXTURE_ROOT } from './external-target.fixture';
 const configuration: OpenAIProviderConfiguration = {
   model: 'integration-model',
   defaultTimeoutMs: 30_000,
-  maximumTimeoutMs: 30_000,
+  maximumTimeoutMs: 120_000,
   maximumInputCharacters: 1_000_000,
   maximumOutputCharacters: 100_000,
   maximumOutputTokens: 10_000,

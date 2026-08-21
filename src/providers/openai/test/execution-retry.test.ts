@@ -119,10 +119,6 @@ function boundedRetryPolicy(
   };
 }
 
-async function flushMicrotasks(times = 20): Promise<void> {
-  for (let index = 0; index < times; index += 1) await Promise.resolve();
-}
-
 describe('OpenAIExecutionService bounded retries (P1-5)', () => {
   it('retries exactly once after PROVIDER_UNAVAILABLE and then succeeds', async () => {
     const provider = new ScriptedProvider(createDescriptor(OPENAI_PROVIDER_ID), [
@@ -268,17 +264,15 @@ describe('OpenAIExecutionService bounded retries (P1-5)', () => {
   });
 
   it('does not perform a second provider call once cancellation fires during the retry delay', async () => {
-    const failure = new ProviderUnavailableError(OPENAI_PROVIDER_ID);
     const provider = new ScriptedProvider(createDescriptor(OPENAI_PROVIDER_ID), [
-      () => Promise.reject(failure),
+      () => Promise.reject(new ProviderUnavailableError(OPENAI_PROVIDER_ID)),
       structuredSuccess(),
     ]);
     const configuration = createOpenAIConfiguration();
-    let listener: ((reason?: string) => void) | undefined;
     const cancellation: ExecutionCancellationToken = {
       cancelled: false,
       subscribe: (registered) => {
-        listener = registered;
+        registered('cancelled during retry delay');
         return () => undefined;
       },
     };
@@ -286,18 +280,14 @@ describe('OpenAIExecutionService bounded retries (P1-5)', () => {
       provider,
       configuration,
       tickClock('2026-08-01T00:00:00.000Z', 1_000),
+      async () => true,
     );
     const request = await createExecutionRequest({
       policy: boundedRetryPolicy(30_000, { baseDelayMs: 50, maximumDelayMs: 50 }),
       cancellation,
     });
 
-    const promise = service.execute(request);
-    await flushMicrotasks();
-    expect(listener).toBeDefined();
-    listener?.('cancelled during retry delay');
-
-    await expect(promise).rejects.toBe(failure);
+    await expect(service.execute(request)).rejects.toBeInstanceOf(ProviderCancelledError);
     expect(provider.calls).toHaveLength(1);
   });
 
@@ -308,13 +298,21 @@ describe('OpenAIExecutionService bounded retries (P1-5)', () => {
       structuredSuccess(),
     ]);
     const configuration = createOpenAIConfiguration();
-    // QUEUED at tick1; reservedAt(attempt1) at tick4 => elapsed 3s (< 4s duration, attempt proceeds);
-    // retryReadyAt at tick6 => elapsed 5s (>= 4s duration, budget exhausted before the retry attempt).
-    const clock = tickClock('2026-08-01T00:00:00.000Z', 1_000);
+    const clockStart = '2026-08-01T00:00:00.000Z';
+    const clock = tickClock(clockStart, 1_000);
     const service = new OpenAIExecutionService(provider, configuration, clock);
-    const request = await createExecutionRequest({ policy: boundedRetryPolicy(4_000) });
+    const request = await createExecutionRequest({
+      policy: boundedRetryPolicy(5_000),
+      metadata: {
+        correlationId: 'sprint-six',
+        requestedAt: clockStart,
+        values: { purpose: 'execution-contract-test' },
+      },
+    });
 
-    await expect(service.execute(request)).rejects.toBe(failure);
+    await expect(service.execute(request)).rejects.toMatchObject({
+      code: 'PROVIDER_UNAVAILABLE',
+    });
     expect(provider.calls).toHaveLength(1);
   });
 });

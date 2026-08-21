@@ -31,7 +31,7 @@ import type { ContextBuildInput } from '../../core/context-builder';
 const configuration: OpenAIProviderConfiguration = {
   model: 'integration-model',
   defaultTimeoutMs: 30_000,
-  maximumTimeoutMs: 30_000,
+  maximumTimeoutMs: 120_000,
   maximumInputCharacters: 1_000_000,
   maximumOutputCharacters: 100_000,
   maximumOutputTokens: 10_000,
@@ -116,6 +116,7 @@ describe('WorkspaceRuntimeService', () => {
       'TEST_VALIDATION',
       'LINT_VALIDATION',
       'TYPECHECK_VALIDATION',
+      'FORMAT_VALIDATION',
     ]);
   });
 
@@ -148,7 +149,7 @@ describe('WorkspaceRuntimeService', () => {
     expect(contextBuilder.lastPackage?.size.characters).toBeLessThanOrEqual(
       DEFAULT_CONTEXT_LIMITS.maxCharacters,
     );
-  }, 30_000);
+  }, 60_000);
 
   it('keeps a broad Project Brain request within the default Context Builder budget', async () => {
     const contextBuilder = new RecordingContextBuilder();
@@ -176,7 +177,7 @@ describe('WorkspaceRuntimeService', () => {
     expect(contextBuilder.lastPackage?.relevantDocumentation.map(({ kind }) => kind)).toEqual(
       expect.arrayContaining(['project-constitution', 'ai-rules']),
     );
-  }, 30_000);
+  }, 60_000);
 
   it('recovers from a single transient provider outage via the bounded retry policy (P1-5)', async () => {
     const fileSystem = new InMemoryFileSystemPort();
@@ -406,6 +407,7 @@ describe('WorkspaceRuntimeService', () => {
       'TEST_VALIDATION',
       'LINT_VALIDATION',
       'TYPECHECK_VALIDATION',
+      'FORMAT_VALIDATION',
     ]);
 
     const mutationCallsAfterFirst = [...fileSystem.mutationCalls];
@@ -414,7 +416,7 @@ describe('WorkspaceRuntimeService', () => {
     expect(replay).toEqual(first);
     expect(fileApply.calls).toBe(1);
     expect(fileSystem.mutationCalls).toEqual(mutationCallsAfterFirst);
-    expect(verification.calls).toHaveLength(6);
+    expect(verification.calls).toHaveLength(7);
   });
 
   it('keeps APPLIED permanently terminal when verification FAILS and never repeats Apply (P1-6)', async () => {
@@ -427,6 +429,7 @@ describe('WorkspaceRuntimeService', () => {
       TEST_VALIDATION: FAILED_STAGE_RESULT,
       LINT_VALIDATION: FAILED_STAGE_RESULT,
       TYPECHECK_VALIDATION: FAILED_STAGE_RESULT,
+      FORMAT_VALIDATION: FAILED_STAGE_RESULT,
     });
     const service = createService(
       fileSystem,
@@ -514,7 +517,7 @@ describe('WorkspaceRuntimeService', () => {
 
     expect(contextBuilder.lastInput?.iterationPathHints?.length).toBeGreaterThan(0);
     expect(contextBuilder.lastInput?.iterationPathHints?.length).toBeLessThanOrEqual(8);
-  }, 30_000);
+  }, 60_000);
 
   it('rejects invalid iteration feedback before provider execution', async () => {
     const service = createService(

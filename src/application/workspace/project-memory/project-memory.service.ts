@@ -64,6 +64,11 @@ export interface SaveVerifiedCompletedWorkInput {
   readonly summary: string;
   readonly supportingPaths: readonly string[];
   readonly source?: 'VERIFIED_APPLY' | 'FEATURE_TASK';
+  readonly workflowId?: string;
+  readonly changePlanDigest?: string;
+  readonly verificationSummary?: string;
+  readonly correctionSummary?: string;
+  readonly completedAt?: string;
 }
 
 export class ProjectMemoryService {

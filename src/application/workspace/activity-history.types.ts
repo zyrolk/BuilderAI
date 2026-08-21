@@ -90,7 +90,7 @@ export interface VerificationCompletedActivity extends BaseWorkspaceActivity {
     readonly durationMs: number;
     readonly status: 'PASSED' | 'PARTIALLY_PASSED' | 'FAILED';
     readonly stages: readonly {
-      readonly name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST' | 'LINT' | 'TYPECHECK';
+      readonly name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST' | 'LINT' | 'TYPECHECK' | 'FORMAT';
       readonly status: 'PASSED' | 'FAILED' | 'SKIPPED';
       readonly durationMs: number;
       readonly findingCount: number;

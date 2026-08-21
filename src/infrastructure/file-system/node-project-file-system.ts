@@ -12,6 +12,9 @@ import {
   DEFAULT_MAXIMUM_BASELINE_BYTES,
   readTextBaselineFromAbsolutePath,
 } from '../workspace/text-baseline-content';
+import { readFile } from 'node:fs/promises';
+
+const WINDOWS_DEVICE_NAME_PATTERN = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/iu;
 
 export class NodeProjectFileSystem implements FileSystemPort {
   private readonly root: string;
@@ -58,6 +61,23 @@ export class NodeProjectFileSystem implements FileSystemPort {
     }
   }
 
+  async readRegularFileContent(logicalPath: string): Promise<string | null> {
+    try {
+      const absolutePath = this.resolveContained(logicalPath);
+      await this.rejectSymlinkAncestors(absolutePath, true);
+      const entry = await lstat(absolutePath);
+      if (!entry.isFile() || entry.isSymbolicLink()) return null;
+      if (entry.nlink > 1) return null;
+      if (entry.size > DEFAULT_MAXIMUM_BASELINE_BYTES) return null;
+      const raw = await readFile(absolutePath, 'utf8');
+      if (raw.includes('\u0000')) return null;
+      return raw;
+    } catch (error: unknown) {
+      if (errorCode(error) === 'ENOENT') return null;
+      throw this.portError('INSPECTION_FAILED', logicalPath, error);
+    }
+  }
+
   async createFileIfAbsent(logicalPath: string, content: string): Promise<void> {
     const absolutePath = this.resolveForMutation(logicalPath, 'CREATE_FAILED');
     try {
@@ -76,6 +96,7 @@ export class NodeProjectFileSystem implements FileSystemPort {
 
   async updateFileIfRegularFile(logicalPath: string, content: string): Promise<void> {
     const absolutePath = this.resolveForMutation(logicalPath, 'UPDATE_FAILED');
+    let mutationAttempted = false;
     try {
       await this.rejectSymlinkAncestors(absolutePath);
       await this.assertRealPathContained(absolutePath);
@@ -84,6 +105,8 @@ export class NodeProjectFileSystem implements FileSystemPort {
       try {
         const entry = await handle.stat();
         if (!entry.isFile()) throw new Error('Update target is not a regular file.');
+        if (entry.nlink > 1) throw new Error('Update target has multiple hard links.');
+        mutationAttempted = true;
         await handle.truncate(0);
         await handle.writeFile(content, 'utf8');
         await handle.sync();
@@ -91,6 +114,9 @@ export class NodeProjectFileSystem implements FileSystemPort {
         await handle.close();
       }
     } catch (error: unknown) {
+      if (mutationAttempted) {
+        throw new FileSystemPortError('UPDATE_FAILED', logicalPath, 'INDETERMINATE_MUTATION');
+      }
       throw this.portError('UPDATE_FAILED', logicalPath, error);
     }
   }
@@ -102,6 +128,9 @@ export class NodeProjectFileSystem implements FileSystemPort {
       const entry = await lstat(absolutePath);
       if (!entry.isFile() || entry.isSymbolicLink()) {
         throw new Error('Delete target is not a regular file.');
+      }
+      if (entry.nlink > 1) {
+        throw new Error('Delete target has multiple hard links.');
       }
       const handle = await open(absolutePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       try {
@@ -137,6 +166,18 @@ export class NodeProjectFileSystem implements FileSystemPort {
         .some((segment) => segment === '' || segment === '.' || segment === '..')
     ) {
       throw new Error('Logical path is invalid.');
+    }
+    const segments = logicalPath.split('/');
+    for (const segment of segments) {
+      if (segment.includes(':')) {
+        throw new Error('Path segment contains NTFS alternate data stream separator.');
+      }
+      if (WINDOWS_DEVICE_NAME_PATTERN.test(segment)) {
+        throw new Error('Path segment is a reserved Windows device name.');
+      }
+      if (segment.endsWith('.') || segment.endsWith(' ')) {
+        throw new Error('Path segment has trailing dot or space.');
+      }
     }
     const absolutePath = path.resolve(this.root, logicalPath);
     this.assertContained(absolutePath);

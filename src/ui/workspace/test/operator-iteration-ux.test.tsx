@@ -16,7 +16,7 @@ import {
 } from './workspace.fixture';
 
 const NOW = '2026-08-05T00:00:00.000Z';
-const GATE2_TEST_TIMEOUT_MS = 15_000;
+const GATE2_TEST_TIMEOUT_MS = 30_000;
 
 async function prepareForGate2Review(request: string): Promise<void> {
   fireEvent.change(screen.getByLabelText('Project request'), {

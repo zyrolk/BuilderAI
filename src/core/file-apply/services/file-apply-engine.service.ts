@@ -6,7 +6,7 @@ import {
 } from '../../change-planner';
 import type { FileApplyConfiguration } from '../config';
 import { DEFAULT_FILE_APPLY_CONFIGURATION } from '../config';
-import type { FileApplyClockPort, FileSystemPort } from '../ports';
+import type { FileApplyCheckpointPort, FileApplyClockPort, FileSystemPort } from '../ports';
 import {
   FILE_APPLY_RESULT_SCHEMA_VERSION,
   BaselineContentDriftError,
@@ -33,6 +33,7 @@ export class FileApplyEngineService {
     private readonly fileSystem: FileSystemPort,
     private readonly configuration: FileApplyConfiguration = DEFAULT_FILE_APPLY_CONFIGURATION,
     private readonly clock: FileApplyClockPort = new SystemFileApplyClockService(),
+    private readonly checkpoint?: FileApplyCheckpointPort,
   ) {
     this.configurationValidator.validate(configuration);
     this.resultValidator = new FileApplyResultValidator(configuration);
@@ -115,15 +116,19 @@ export class FileApplyEngineService {
     const errors: FileApplyError[] = [];
     const operations = plan.changeSet.operations;
 
+    await this.checkpoint?.clear?.();
+
     for (let index = 0; index < operations.length; index += 1) {
       const operation = operations[index];
       if (operation === undefined) continue;
       try {
-        await this.executeOperation(operation);
+        await this.captureAndExecute(operation);
         if (operation.kind === 'CREATE_FILE') createdFiles.push(operation.logicalPath);
         else if (operation.kind === 'UPDATE_FILE') updatedFiles.push(operation.logicalPath);
         else deletedFiles.push(operation.logicalPath);
       } catch (error: unknown) {
+        const isIndeterminate =
+          error instanceof FileSystemPortError && error.message === 'INDETERMINATE_MUTATION';
         if (error instanceof BaselineContentDriftError) {
           errors.push({
             code: 'BASELINE_CONTENT_DRIFT',
@@ -131,6 +136,17 @@ export class FileApplyEngineService {
             logicalPath: error.logicalPath,
             operationId: operation.operationId,
           });
+          skippedFiles.push(...operations.slice(index).map(({ logicalPath }) => logicalPath));
+        } else if (isIndeterminate) {
+          updatedFiles.push(operation.logicalPath);
+          errors.push({
+            code: 'INDETERMINATE_MUTATION',
+            message:
+              'Write may have partially mutated the target; recovery must assume mutation occurred',
+            logicalPath: error.logicalPath,
+            operationId: operation.operationId,
+          });
+          skippedFiles.push(...operations.slice(index + 1).map(({ logicalPath }) => logicalPath));
         } else {
           errors.push({
             code: 'FILESYSTEM_OPERATION_FAILED',
@@ -139,13 +155,37 @@ export class FileApplyEngineService {
               error instanceof FileSystemPortError ? error.logicalPath : operation.logicalPath,
             operationId: operation.operationId,
           });
+          skippedFiles.push(...operations.slice(index).map(({ logicalPath }) => logicalPath));
         }
-        skippedFiles.push(...operations.slice(index).map(({ logicalPath }) => logicalPath));
         break;
       }
     }
 
     const appliedCount = createdFiles.length + updatedFiles.length + deletedFiles.length;
+    const hasFailure = errors.length > 0;
+    const hasApplied = appliedCount > 0;
+
+    if (hasFailure && hasApplied && this.checkpoint !== undefined && !hasIndeterminate(errors)) {
+      const rollbackResult = await this.attemptRollback();
+      if (rollbackResult.success) {
+        return this.finalize(
+          {
+            status: 'FAILED',
+            createdFiles: [],
+            updatedFiles: [],
+            deletedFiles: [],
+            skippedFiles: operations.map(({ logicalPath }) => logicalPath),
+            warnings: this.createWarnings(plan),
+            errors: [...errors, ...rollbackResult.errors],
+            metadata: structuredClone(plan.metadata),
+          },
+          startedAt,
+        );
+      }
+      errors.push(...rollbackResult.errors);
+    }
+
+    await this.checkpoint?.clear?.();
     return this.finalize(
       {
         status:
@@ -162,6 +202,129 @@ export class FileApplyEngineService {
     );
   }
 
+  private async captureAndExecute(operation: ProjectChangeOperation): Promise<void> {
+    if (this.checkpoint !== undefined) {
+      if (operation.kind === 'CREATE_FILE') {
+        await this.checkpoint.captureBaseline(
+          operation.logicalPath,
+          operation.kind,
+          null,
+          operation.operationId,
+        );
+      } else {
+        const content = this.fileSystem.readRegularFileContent
+          ? await this.fileSystem.readRegularFileContent(operation.logicalPath)
+          : null;
+        await this.checkpoint.captureBaseline(
+          operation.logicalPath,
+          operation.kind,
+          content,
+          operation.operationId,
+        );
+      }
+    }
+
+    await this.executeOperation(operation);
+
+    if (this.checkpoint !== undefined) {
+      if (operation.kind === 'DELETE_FILE') {
+        await this.checkpoint.recordMutationResult(
+          operation.logicalPath,
+          operation.kind,
+          null,
+          operation.operationId,
+        );
+      } else {
+        await this.checkpoint.recordMutationResult(
+          operation.logicalPath,
+          operation.kind,
+          operation.content,
+          operation.operationId,
+        );
+      }
+    }
+  }
+
+  private async attemptRollback(): Promise<{
+    readonly success: boolean;
+    readonly errors: readonly FileApplyError[];
+  }> {
+    const entries = [...this.checkpoint!.entries()].reverse();
+    const errors: FileApplyError[] = [];
+    let allSucceeded = true;
+
+    for (const entry of entries) {
+      try {
+        if (entry.kind === 'CREATE_FILE') {
+          if (entry.writtenContent !== null) {
+            const externalModified = await this.isExternallyModified(
+              entry.logicalPath,
+              entry.writtenContent,
+            );
+            if (externalModified) {
+              allSucceeded = false;
+              errors.push({
+                code: 'ROLLBACK_UNSAFE_EXTERNAL_MODIFICATION',
+                message:
+                  'File was modified by an external actor after BuilderAI write; rollback refused',
+                logicalPath: entry.logicalPath,
+              });
+              continue;
+            }
+          }
+          await this.fileSystem.deleteFileIfRegularFile(entry.logicalPath);
+        } else if (entry.kind === 'DELETE_FILE') {
+          if (entry.baselineContent !== null) {
+            await this.fileSystem.createFileIfAbsent(entry.logicalPath, entry.baselineContent);
+          }
+        } else {
+          if (entry.writtenContent !== null) {
+            const externalModified = await this.isExternallyModified(
+              entry.logicalPath,
+              entry.writtenContent,
+            );
+            if (externalModified) {
+              allSucceeded = false;
+              errors.push({
+                code: 'ROLLBACK_UNSAFE_EXTERNAL_MODIFICATION',
+                message:
+                  'File was modified by an external actor after BuilderAI write; rollback refused',
+                logicalPath: entry.logicalPath,
+              });
+              continue;
+            }
+          }
+          if (entry.baselineContent !== null) {
+            await this.fileSystem.updateFileIfRegularFile(entry.logicalPath, entry.baselineContent);
+          }
+        }
+      } catch {
+        allSucceeded = false;
+        errors.push({
+          code: 'ROLLBACK_FAILED',
+          message: 'Rollback failed; recovery must assume mutation occurred',
+          logicalPath: entry.logicalPath,
+        });
+      }
+    }
+
+    return { success: allSucceeded, errors };
+  }
+
+  private async isExternallyModified(
+    logicalPath: string,
+    expectedContent: string,
+  ): Promise<boolean> {
+    if (!this.fileSystem.readRegularFileContent) return false;
+    try {
+      const currentContent = await this.fileSystem.readRegularFileContent(logicalPath);
+      if (currentContent === null) return true;
+      return currentContent !== expectedContent;
+    } catch {
+      return true;
+    }
+  }
+
   private async executeOperation(operation: ProjectChangeOperation): Promise<void> {
     if (operation.kind === 'CREATE_FILE') {
       await this.fileSystem.createFileIfAbsent(operation.logicalPath, operation.content);
@@ -172,15 +335,26 @@ export class FileApplyEngineService {
         const currentChecksum = await this.fileSystem.readRegularFileBaselineChecksum(
           operation.logicalPath,
         );
-        if (
-          currentChecksum !== null &&
-          !artifactChecksumsEqual(currentChecksum, operation.baselineContentChecksum)
-        ) {
+        if (currentChecksum === null) {
+          throw new BaselineContentDriftError(operation.logicalPath);
+        }
+        if (!artifactChecksumsEqual(currentChecksum, operation.baselineContentChecksum)) {
           throw new BaselineContentDriftError(operation.logicalPath);
         }
       }
       await this.fileSystem.updateFileIfRegularFile(operation.logicalPath, operation.content);
       return;
+    }
+    if (operation.baselineContentChecksum !== undefined) {
+      const currentChecksum = await this.fileSystem.readRegularFileBaselineChecksum(
+        operation.logicalPath,
+      );
+      if (currentChecksum === null) {
+        throw new BaselineContentDriftError(operation.logicalPath);
+      }
+      if (!artifactChecksumsEqual(currentChecksum, operation.baselineContentChecksum)) {
+        throw new BaselineContentDriftError(operation.logicalPath);
+      }
     }
     await this.fileSystem.deleteFileIfRegularFile(operation.logicalPath);
   }
@@ -227,4 +401,8 @@ export class FileApplyEngineService {
     this.resultValidator.validate(result);
     return structuredClone(result);
   }
+}
+
+function hasIndeterminate(errors: readonly FileApplyError[]): boolean {
+  return errors.some(({ code }) => code === 'INDETERMINATE_MUTATION');
 }

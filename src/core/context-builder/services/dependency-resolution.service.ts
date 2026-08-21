@@ -29,7 +29,7 @@ import {
   expandQueryTokens,
   tokenize,
 } from '../internal/text-relevance';
-import type { ProjectFileSource } from '../ports';
+import { ProjectFileSourceAccessDeniedError, type ProjectFileSource } from '../ports';
 import type {
   ContextOmission,
   ContextSelectionEvidence,
@@ -238,6 +238,7 @@ export class DependencyResolutionService {
         content = await source.readSourceFile(sourcePath);
         reads += 1;
       } catch (error: unknown) {
+        if (error instanceof ProjectFileSourceAccessDeniedError) return;
         throw new ContextBuilderValidationError([
           {
             code: 'INVALID_REFERENCE',
@@ -314,7 +315,8 @@ export class DependencyResolutionService {
         try {
           await source.readSourceFile(importPath);
           reads += 1;
-        } catch {
+        } catch (error: unknown) {
+          if (error instanceof ProjectFileSourceAccessDeniedError) return;
           throw new ContextBuilderValidationError([
             {
               code: 'INVALID_REFERENCE',

@@ -3,12 +3,14 @@ import type { ProjectChangePlan } from '../../core/change-planner';
 import type { ExecutionRequest, ExecutionResult } from '../../core/execution-engine';
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
+import type { RuntimeBrowserVerificationReport } from '../../core/runtime-verification';
 import type { VerificationReport } from '../../core/verification';
 
 import type { FeaturePlan, FeatureTask } from './feature-plan.types';
 import type { Gate2ReviewProjection } from './gate2-review';
 import type { IterationFeedback } from './iteration-feedback.types';
 import type { PrepareContextSelectionDiagnostics } from './prepare-context';
+import type { PrepareOutcome } from './prepare-outcome';
 
 export interface ProviderExecutionOutput {
   readonly providerResponse: AIProviderResponse;
@@ -29,11 +31,14 @@ export interface WorkspacePreparation {
   readonly applyAuthorizationToken?: string;
   /** Bounded prepare context selection metrics for external-target investigation flows. */
   readonly prepareContextSelection?: PrepareContextSelectionDiagnostics;
+  /** Typed semantic outcome: READY_FOR_REVIEW, NO_CHANGE, or INSUFFICIENT_EVIDENCE. */
+  readonly outcome?: PrepareOutcome;
 }
 
 export interface WorkspaceCompletion {
   readonly applyResult: FileApplyResult;
   readonly verificationReport?: VerificationReport;
+  readonly runtimeBrowserVerificationReport?: RuntimeBrowserVerificationReport;
 }
 
 export interface WorkspaceRuntimeClock {
@@ -101,6 +106,7 @@ export class WorkspaceRuntimeError extends Error {
     readonly code:
       | 'INVALID_REQUEST'
       | 'INVALID_ITERATION_FEEDBACK'
+      | 'INVESTIGATION_REFERENCE_INVALID'
       | 'INVALID_FEATURE_PLAN'
       | 'FEATURE_PLAN_NOT_FOUND'
       | 'PROJECT_CONTEXT_INVALID'
@@ -115,6 +121,12 @@ export class WorkspaceRuntimeError extends Error {
       | 'APPLY_AUTHORIZATION_REQUIRED'
       | 'APPLY_PATH_CONFLICT'
       | 'BASELINE_INTEGRITY_REQUIRED'
+      | 'PROVIDER_RATE_LIMITED'
+      | 'PROVIDER_UNAVAILABLE'
+      | 'PROVIDER_TIMEOUT'
+      | 'PROVIDER_CANCELLED'
+      | 'OUTPUT_TRUNCATED'
+      | 'INVALID_PROVIDER_RESPONSE'
       | 'WORKFLOW_FAILED',
     message: string,
   ) {

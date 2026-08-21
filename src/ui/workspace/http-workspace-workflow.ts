@@ -6,6 +6,8 @@ import {
 } from '../../application/workspace/iteration-feedback.service';
 import type { Gate2ReviewProjection } from '../../application/workspace/gate2-review';
 import type { WorkspaceInvestigation } from '../../application/workspace/investigation';
+import type { CorrectionLoopSession } from '../../application/workspace/correction-loop';
+import type { IterationFeedback } from '../../application/workspace/iteration-feedback.types';
 import type { FeaturePlan } from '../../application/workspace/feature-plan.types';
 import type { ActivityHistory } from '../../application/workspace/activity-history.types';
 import { parseWorkspaceActivity } from '../../application/workspace/activity-history.schemas';
@@ -16,6 +18,7 @@ import {
   type FileApplyResult,
 } from '../../core/file-apply';
 import { ResponsePackageValidator, type ResponsePackage } from '../../core/response-processor';
+import type { RuntimeBrowserVerificationReport } from '../../core/runtime-verification';
 import { VerificationReportValidator, type VerificationReport } from '../../core/verification';
 import type { ExternalTargetProjectMemory } from '../../application/workspace/project-memory';
 import {
@@ -39,6 +42,7 @@ interface PreparationWireResponse {
 interface CompletionWireResponse {
   readonly applyResult: FileApplyResult;
   readonly verificationReport?: VerificationReport;
+  readonly runtimeBrowserVerificationReport?: RuntimeBrowserVerificationReport;
 }
 
 export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
@@ -47,11 +51,17 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
   private verificationReport?: VerificationReport;
   private lastRequest?: string;
   private lastCompletionSnapshot?: WorkspaceCompletionSnapshot;
+  private inFlightAbort?: AbortController;
+  private correctionWorkflowId?: string;
   private activeFeatureBinding?: {
     readonly featurePlanId: string;
     readonly taskId: string;
     readonly dependencyOverrides?: readonly string[];
   };
+
+  abortInFlight(): void {
+    this.inFlightAbort?.abort();
+  }
 
   getCompletionSnapshot(): WorkspaceCompletionSnapshot | undefined {
     return this.lastCompletionSnapshot === undefined
@@ -70,12 +80,17 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
   ): Promise<PreparedWorkspaceChange> {
     const body: Record<string, unknown> = { request };
     if (options.iterationFeedback !== undefined) body.iterationFeedback = options.iterationFeedback;
+    if (options.investigationId !== undefined) body.investigationId = options.investigationId;
     if (options.featurePlanId !== undefined) body.featurePlanId = options.featurePlanId;
     if (options.taskId !== undefined) body.taskId = options.taskId;
     if (options.dependencyOverrides !== undefined) {
       body.dependencyOverrides = options.dependencyOverrides;
     }
-    const value = await post('/api/workspace/prepare', body);
+    if (options.correctionWorkflowId !== undefined) {
+      body.correctionWorkflowId = options.correctionWorkflowId;
+      this.correctionWorkflowId = options.correctionWorkflowId;
+    }
+    const value = await this.postCancellable('/api/workspace/prepare', body);
     const response = parsePreparation(value);
     this.preparationId = response.preparationId;
     this.preparedExecutionId = response.changePlan.source.executionId;
@@ -170,9 +185,12 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     ) {
       throw new Error('No matching server preparation is available.');
     }
-    const value = await post('/api/workspace/apply', {
+    const value = await this.postCancellable('/api/workspace/apply', {
       preparationId: this.preparationId,
       approved: true,
+      ...(this.correctionWorkflowId === undefined
+        ? {}
+        : { correctionWorkflowId: this.correctionWorkflowId }),
     });
     const completion = parseCompletion(value);
     this.verificationReport = completion.verificationReport;
@@ -181,6 +199,9 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
       ...(completion.verificationReport === undefined
         ? {}
         : { verificationReport: completion.verificationReport }),
+      ...(completion.runtimeBrowserVerificationReport === undefined
+        ? {}
+        : { runtimeBrowserVerificationReport: completion.runtimeBrowserVerificationReport }),
       ...(this.preparationId === undefined ? {} : { sourcePreparationId: this.preparationId }),
       ...(this.lastRequest === undefined ? {} : { priorRequestSummary: this.lastRequest }),
       ...(this.activeFeatureBinding ?? {}),
@@ -237,6 +258,105 @@ export class HttpWorkspaceWorkflow implements WorkspaceWorkflowPort {
     const value = await post('/api/workspace/memory', input);
     return parseProjectMemory(value);
   }
+
+  async startCorrection(
+    snapshot: WorkspaceCompletionSnapshot,
+    workflowId: string,
+    originalTaskSummary?: string,
+  ): Promise<{
+    readonly session: CorrectionLoopSession;
+    readonly correctionRequest: string;
+    readonly canPrepare: boolean;
+    readonly iterationFeedback?: IterationFeedback;
+  }> {
+    this.correctionWorkflowId = workflowId;
+    const value = await this.postCancellable('/api/workspace/correction/start', {
+      workflowId,
+      applyResult: snapshot.applyResult,
+      ...(snapshot.verificationReport === undefined
+        ? {}
+        : { verificationReport: snapshot.verificationReport }),
+      ...(snapshot.runtimeBrowserVerificationReport === undefined
+        ? {}
+        : { runtimeBrowserVerificationReport: snapshot.runtimeBrowserVerificationReport }),
+      ...(snapshot.sourcePreparationId === undefined
+        ? {}
+        : { sourcePreparationId: snapshot.sourcePreparationId }),
+      ...(snapshot.priorRequestSummary === undefined
+        ? {}
+        : { priorRequestSummary: snapshot.priorRequestSummary }),
+      ...(originalTaskSummary === undefined ? {} : { originalTaskSummary }),
+    });
+    return value as {
+      readonly session: CorrectionLoopSession;
+      readonly correctionRequest: string;
+      readonly canPrepare: boolean;
+      readonly iterationFeedback?: IterationFeedback;
+    };
+  }
+
+  async rejectCorrection(workflowId: string): Promise<CorrectionLoopSession> {
+    const value = await post('/api/workspace/correction/reject', { workflowId });
+    return Reflect.get(value as object, 'session') as CorrectionLoopSession;
+  }
+
+  async recordCorrectionPrepared(
+    workflowId: string,
+    preparationId: string,
+    changePlan: ProjectChangePlan,
+  ): Promise<CorrectionLoopSession> {
+    const value = await post('/api/workspace/correction/prepared', {
+      workflowId,
+      preparationId,
+      changePlan,
+    });
+    return Reflect.get(value as object, 'session') as CorrectionLoopSession;
+  }
+
+  async recordCorrectionApplying(workflowId: string): Promise<CorrectionLoopSession> {
+    const value = await post('/api/workspace/correction/applying', { workflowId });
+    return Reflect.get(value as object, 'session') as CorrectionLoopSession;
+  }
+
+  async recordCorrectionVerified(
+    workflowId: string,
+    snapshot: WorkspaceCompletionSnapshot,
+  ): Promise<CorrectionLoopSession> {
+    const value = await post('/api/workspace/correction/verified', {
+      workflowId,
+      applyResult: snapshot.applyResult,
+      ...(snapshot.verificationReport === undefined
+        ? {}
+        : { verificationReport: snapshot.verificationReport }),
+      ...(snapshot.runtimeBrowserVerificationReport === undefined
+        ? {}
+        : { runtimeBrowserVerificationReport: snapshot.runtimeBrowserVerificationReport }),
+    });
+    return Reflect.get(value as object, 'session') as CorrectionLoopSession;
+  }
+
+  private async postCancellable(url: string, body: unknown): Promise<unknown> {
+    const controller = new AbortController();
+    this.inFlightAbort = controller;
+    try {
+      return await post(url, body, controller.signal);
+    } catch (error: unknown) {
+      if (isAbortError(error)) {
+        throw new WorkspaceWorkflowError('PROVIDER_CANCELLED', 'Request cancelled.');
+      }
+      throw error;
+    } finally {
+      if (this.inFlightAbort === controller) {
+        this.inFlightAbort = undefined;
+      }
+    }
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const name = Reflect.get(error, 'name');
+  return name === 'AbortError' || name === 'TimeoutError';
 }
 
 function readSourcePreparationFromFeedback(iterationFeedback: unknown): {
@@ -247,12 +367,13 @@ function readSourcePreparationFromFeedback(iterationFeedback: unknown): {
   return typeof sourcePreparationId === 'string' ? { sourcePreparationId } : {};
 }
 
-async function post(url: string, body: unknown): Promise<unknown> {
+async function post(url: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
   const response = await fetch(url, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    ...(signal === undefined ? {} : { signal }),
   });
   const value = (await response.json()) as unknown;
   if (!response.ok) throw workspaceError(value);
@@ -342,13 +463,26 @@ function parseCompletion(value: unknown): CompletionWireResponse {
   if (typeof value !== 'object' || value === null) throw new Error('Invalid completion response.');
   const applyResult = Reflect.get(value, 'applyResult');
   const verificationReport = Reflect.get(value, 'verificationReport');
+  const runtimeBrowserVerificationReport = Reflect.get(value, 'runtimeBrowserVerificationReport');
   const applyValidator: FileApplyResultValidator = new FileApplyResultValidator();
   const verificationValidator: VerificationReportValidator = new VerificationReportValidator();
   applyValidator.validate(applyResult);
   if (verificationReport !== undefined) verificationValidator.validate(verificationReport);
+  if (
+    runtimeBrowserVerificationReport !== undefined &&
+    typeof runtimeBrowserVerificationReport !== 'object'
+  ) {
+    throw new Error('Invalid runtime browser verification response.');
+  }
   return {
     applyResult,
     ...(verificationReport === undefined ? {} : { verificationReport }),
+    ...(runtimeBrowserVerificationReport === undefined
+      ? {}
+      : {
+          runtimeBrowserVerificationReport:
+            runtimeBrowserVerificationReport as RuntimeBrowserVerificationReport,
+        }),
   };
 }
 

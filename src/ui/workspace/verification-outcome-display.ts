@@ -44,7 +44,17 @@ export function summarizeVerificationFailures(
   const failedStages: VerificationStage[] = [];
 
   for (const stage of report.stages) {
-    if (stage.status !== 'FAILED') continue;
+    if (
+      stage.status !== 'FAILED' &&
+      stage.status !== 'TIMEOUT' &&
+      stage.status !== 'CANCELLED' &&
+      stage.status !== 'POLICY_BLOCKED' &&
+      stage.status !== 'OUTPUT_LIMIT_EXCEEDED' &&
+      stage.status !== 'PROCESS_FAILED' &&
+      stage.status !== 'UNAVAILABLE'
+    ) {
+      continue;
+    }
     failedStages.push(stage.stage);
     for (const error of stage.errors) {
       if (error.code === 'VERIFICATION_COMMAND_TIMEOUT') {

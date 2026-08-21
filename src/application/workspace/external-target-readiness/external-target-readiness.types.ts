@@ -34,6 +34,9 @@ export interface ExternalTargetVerificationCapabilities {
   readonly test: boolean;
   readonly lint: boolean;
   readonly typecheck: boolean;
+  readonly format: boolean;
+  readonly devServer: boolean;
+  readonly browserVerification: boolean;
 }
 
 export interface ExternalTargetReadiness {

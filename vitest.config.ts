@@ -12,6 +12,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     testTimeout: 15_000,
+    hookTimeout: 30_000,
+    teardownTimeout: 30_000,
+    // Limit parallel workers so process-heavy integration tests stay within per-test budgets.
+    maxWorkers: 4,
     exclude: [
       '**/node_modules/**',
       '**/.next/**',

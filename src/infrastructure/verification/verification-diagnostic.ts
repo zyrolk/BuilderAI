@@ -8,9 +8,12 @@ export interface VerificationDiagnosticLimits {
 }
 
 export interface BuildVerificationDiagnosticInput {
-  readonly commandLabel: string;
+  readonly commandDescriptorId: string;
   readonly exitCode: number | null;
   readonly timedOut: boolean;
+  readonly cancelled?: boolean;
+  readonly outputLimited?: boolean;
+  readonly policyBlocked?: boolean;
   readonly stdout: string;
   readonly stderr: string;
   readonly outputBytes: number;
@@ -49,7 +52,11 @@ export function buildVerificationDiagnostic(
     : undefined;
 
   return {
-    commandLabel: input.commandLabel,
+    commandDescriptorId: input.commandDescriptorId,
+    ...(input.timedOut ? { timedOut: true } : {}),
+    ...(input.cancelled ? { cancelled: true } : {}),
+    ...(input.outputLimited ? { outputLimited: true } : {}),
+    ...(input.policyBlocked ? { policyBlocked: true } : {}),
     ...(input.timedOut ? {} : { exitCode: input.exitCode ?? -1 }),
     ...(stdoutExcerpt.text.length === 0 ? {} : { stdoutExcerpt: stdoutExcerpt.text }),
     ...(stderrExcerpt.text.length === 0 ? {} : { stderrExcerpt: stderrExcerpt.text }),

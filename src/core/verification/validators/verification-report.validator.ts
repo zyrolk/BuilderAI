@@ -4,6 +4,9 @@ import {
   VERIFICATION_REPORT_SCHEMA_VERSION,
   VERIFICATION_STAGES,
   VERIFICATION_STATUSES,
+  VERIFICATION_STAGE_FAILURE_OUTCOMES,
+  VERIFICATION_STAGE_STATUSES,
+  VERIFICATION_STAGE_SUCCESS_OUTCOMES,
   VerificationValidationError,
   type VerificationFinding,
   type VerificationMessage,
@@ -109,7 +112,7 @@ export class VerificationReportValidator {
       if (stage.stage !== VERIFICATION_STAGES[index]) {
         addIssue(issues, 'INVALID_STAGE_ORDER', `${path}.stage`, 'does not match canonical order');
       }
-      if (stage.status !== 'PASSED' && stage.status !== 'FAILED') {
+      if (!VERIFICATION_STAGE_STATUSES.some((status) => status === stage.status)) {
         addIssue(issues, 'INVALID_REPORT', `${path}.status`, 'is unsupported');
       }
       validateMessages(
@@ -148,11 +151,31 @@ export class VerificationReportValidator {
         addIssue(issues, 'INVALID_REPORT', `${path}.durationMs`, 'must be non-negative and finite');
       }
       if (Array.isArray(stage.errors)) {
-        if (stage.status === 'PASSED' && stage.errors.length > 0) {
-          addIssue(issues, 'INVALID_REPORT', `${path}.status`, 'PASSED cannot contain errors');
+        if (
+          (VERIFICATION_STAGE_SUCCESS_OUTCOMES as readonly string[]).includes(
+            String(stage.status),
+          ) &&
+          stage.errors.length > 0
+        ) {
+          addIssue(
+            issues,
+            'INVALID_REPORT',
+            `${path}.status`,
+            `${String(stage.status)} cannot contain errors`,
+          );
         }
-        if (stage.status === 'FAILED' && stage.errors.length === 0) {
-          addIssue(issues, 'INVALID_REPORT', `${path}.status`, 'FAILED requires an error');
+        if (
+          (VERIFICATION_STAGE_FAILURE_OUTCOMES as readonly string[]).includes(
+            String(stage.status),
+          ) &&
+          stage.errors.length === 0
+        ) {
+          addIssue(
+            issues,
+            'INVALID_REPORT',
+            `${path}.status`,
+            `${String(stage.status)} requires an error`,
+          );
         }
       }
     });
@@ -206,9 +229,11 @@ export class VerificationReportValidator {
 }
 
 export function deriveStatus(stages: readonly VerificationStageResult[]): VerificationStatus {
-  const passed = stages.filter(({ status }) => status === 'PASSED').length;
-  if (passed === stages.length) return 'PASSED';
-  if (passed === 0) return 'FAILED';
+  const successful = stages.filter(({ status }) =>
+    (VERIFICATION_STAGE_SUCCESS_OUTCOMES as readonly string[]).includes(status),
+  ).length;
+  if (successful === stages.length) return 'PASSED';
+  if (successful === 0) return 'FAILED';
   return 'PARTIALLY_PASSED';
 }
 

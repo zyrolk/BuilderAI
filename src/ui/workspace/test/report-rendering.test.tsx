@@ -30,7 +30,7 @@ describe('Workspace report rendering', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Verification Report' }));
     expect(screen.getByText('Verification status')).toBeInTheDocument();
     expect(screen.getByText('Test Validation')).toBeInTheDocument();
-  }, 15_000);
+  }, 30_000);
 
   it('renders safe scalar stage metadata (string, number, boolean) for Verification stages (P1-8)', async () => {
     render(<WorkspaceShell project={PROJECT_VIEW} workflow={createWorkflow()} />);
@@ -50,5 +50,5 @@ describe('Workspace report rendering', () => {
     expect(screen.getByText('npm')).toBeInTheDocument();
     expect(screen.queryByText('Output Bytes')).not.toBeInTheDocument();
     expect(screen.queryByText('Output Truncated')).not.toBeInTheDocument();
-  }, 15_000);
+  }, 30_000);
 });

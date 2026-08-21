@@ -21,6 +21,11 @@ export interface FileSystemPort {
    * target is missing, not a regular file, unreadable, binary, oversize, or symlinked.
    */
   readRegularFileBaselineChecksum(logicalPath: string): Promise<ArtifactChecksum | null>;
+  /**
+   * Reads the current text content for checkpoint/rollback purposes. Returns null when the target
+   * is missing, not a regular file, unreadable, binary, oversize, or symlinked.
+   */
+  readRegularFileContent?(logicalPath: string): Promise<string | null>;
   createFileIfAbsent(logicalPath: string, content: string): Promise<void>;
   updateFileIfRegularFile(logicalPath: string, content: string): Promise<void>;
   deleteFileIfRegularFile(logicalPath: string): Promise<void>;

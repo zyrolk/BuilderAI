@@ -80,10 +80,14 @@ export function createPortHarness(
       testRunner: { runTests: (context) => invoke('TEST_VALIDATION', context) },
       lintRunner: { runLint: (context) => invoke('LINT_VALIDATION', context) },
       typecheckRunner: { runTypecheck: (context) => invoke('TYPECHECK_VALIDATION', context) },
+      formatRunner: { runFormat: (context) => invoke('FORMAT_VALIDATION', context) },
     },
   };
 }
 
 export function createDeterministicClock(): SequenceClock {
-  return new SequenceClock([0, 1, 3, 4, 7, 8, 13, 14, 20, 21, 25, 26, 30, 31, 40]);
+  return new SequenceClock([
+    0, 1, 3, 4, 7, 8, 13, 14, 20, 21, 25, 26, 30, 31, 35, 36, 40, 41, 45, 46, 50, 51, 55, 56, 60,
+    61, 65, 66, 70, 71, 75, 76, 80, 81, 85, 86, 90, 91, 95, 96, 100,
+  ]);
 }

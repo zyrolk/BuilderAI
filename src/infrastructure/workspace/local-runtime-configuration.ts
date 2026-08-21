@@ -44,7 +44,14 @@ export interface LocalWorkspaceRuntimeConfiguration {
   readonly workspace: WorkspaceRuntimeConfiguration;
   readonly security: WorkspaceSecurityConfiguration;
   readonly verificationCommandTimeoutMs: number;
+  readonly verificationWorkflowDeadlineMs: number;
   readonly verificationMaximumOutputBytes: number;
+  readonly runtimeBrowserVerificationEnabled: boolean;
+  readonly runtimeBrowserWorkflowDeadlineMs: number;
+  readonly runtimeBrowserMaximumOutputBytes: number;
+  readonly correctionMaximumAttempts: number;
+  readonly correctionHardMaximumAttempts: number;
+  readonly correctionWorkflowDeadlineMs: number;
 }
 
 export function isLocalWorkspaceRuntimeConfigured(): boolean {
@@ -80,8 +87,14 @@ export function loadLocalWorkspaceRuntimeConfiguration(): LocalWorkspaceRuntimeC
     security: loadWorkspaceSecurityConfiguration(projectId),
     verificationCommandTimeoutMs: integer(
       'BUILDERAI_VERIFICATION_TIMEOUT_MS',
-      600_000,
+      120_000,
       10_000,
+      1_800_000,
+    ),
+    verificationWorkflowDeadlineMs: integer(
+      'BUILDERAI_VERIFICATION_WORKFLOW_DEADLINE_MS',
+      600_000,
+      60_000,
       1_800_000,
     ),
     verificationMaximumOutputBytes: integer(
@@ -89,6 +102,28 @@ export function loadLocalWorkspaceRuntimeConfiguration(): LocalWorkspaceRuntimeC
       1_000_000,
       1_024,
       10_000_000,
+    ),
+    runtimeBrowserVerificationEnabled:
+      optional('BUILDERAI_RUNTIME_BROWSER_VERIFICATION_ENABLED') !== 'false',
+    runtimeBrowserWorkflowDeadlineMs: integer(
+      'BUILDERAI_RUNTIME_BROWSER_WORKFLOW_DEADLINE_MS',
+      300_000,
+      30_000,
+      1_800_000,
+    ),
+    runtimeBrowserMaximumOutputBytes: integer(
+      'BUILDERAI_RUNTIME_BROWSER_MAX_OUTPUT_BYTES',
+      1_000_000,
+      1_024,
+      10_000_000,
+    ),
+    correctionMaximumAttempts: integer('BUILDERAI_CORRECTION_MAX_ATTEMPTS', 2, 1, 3),
+    correctionHardMaximumAttempts: integer('BUILDERAI_CORRECTION_HARD_MAX_ATTEMPTS', 3, 2, 3),
+    correctionWorkflowDeadlineMs: integer(
+      'BUILDERAI_CORRECTION_WORKFLOW_DEADLINE_MS',
+      300_000,
+      60_000,
+      1_800_000,
     ),
   };
 }

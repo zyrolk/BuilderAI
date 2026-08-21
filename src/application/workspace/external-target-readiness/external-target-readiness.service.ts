@@ -26,6 +26,7 @@ import {
   resolveScanRoots,
 } from '../../../infrastructure/project/project-source-index-policy';
 import { discoverPackageScripts } from '../../../infrastructure/verification/package-script-discovery';
+import { discoverRuntimeScripts } from '../../../infrastructure/runtime-verification/runtime-script-discovery';
 import { READINESS_DIAGNOSTIC_CODES } from './external-target-readiness-codes';
 import {
   EXTERNAL_TARGET_READINESS_SCHEMA_VERSION,
@@ -259,6 +260,29 @@ export class ExternalTargetReadinessService {
         ),
       );
     }
+    if (verificationScripts.formatScript === undefined) {
+      warnings.push(
+        readinessIssue(
+          READINESS_DIAGNOSTIC_CODES.VERIFICATION_FORMAT_UNAVAILABLE,
+          'WARNING',
+          'No format script was discovered in package.json.',
+          'package.json',
+        ),
+      );
+    }
+
+    const runtimeScripts = discoverRuntimeScripts(projectRoot);
+    if (runtimeScripts.devScript === undefined) {
+      warnings.push(
+        readinessIssue(
+          READINESS_DIAGNOSTIC_CODES.RUNTIME_DEV_SERVER_UNAVAILABLE,
+          'WARNING',
+          'No dev/start/preview script was discovered for runtime browser verification.',
+          'package.json',
+          'Add a dev script so BuilderAI can verify the application in a browser after apply.',
+        ),
+      );
+    }
 
     return buildProjection({
       projectRoot,
@@ -276,6 +300,9 @@ export class ExternalTargetReadinessService {
         test: verificationScripts.hasTest,
         lint: verificationScripts.lintScript !== undefined,
         typecheck: verificationScripts.typecheckScript !== undefined,
+        format: verificationScripts.formatScript !== undefined,
+        devServer: runtimeScripts.devScript !== undefined,
+        browserVerification: runtimeScripts.devScript !== undefined,
       },
       runtimeConnected: input.runtimeConnected ?? true,
     });
@@ -419,6 +446,9 @@ function buildProjection(input: {
       test: false,
       lint: false,
       typecheck: false,
+      format: false,
+      devServer: false,
+      browserVerification: false,
     },
     warnings,
     blockers,

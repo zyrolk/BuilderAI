@@ -127,11 +127,21 @@ export function validateProjectMemoryRecordInput(
       const preparationId = readOptionalString(input, 'preparationId');
       const verificationStatus =
         readOptionalString(input, 'verificationStatus') === 'PASSED' ? 'PASSED' : undefined;
+      const workflowId = readOptionalString(input, 'workflowId');
+      const changePlanDigest = readOptionalString(input, 'changePlanDigest');
+      const verificationSummary = readOptionalString(input, 'verificationSummary');
+      const correctionSummary = readOptionalString(input, 'correctionSummary');
+      const completedAt = readOptionalString(input, 'completedAt');
       return {
         ...base,
         category: 'COMPLETED_WORK',
         ...(preparationId === undefined ? {} : { preparationId }),
         ...(verificationStatus === undefined ? {} : { verificationStatus }),
+        ...(workflowId === undefined ? {} : { workflowId }),
+        ...(changePlanDigest === undefined ? {} : { changePlanDigest }),
+        ...(verificationSummary === undefined ? {} : { verificationSummary }),
+        ...(correctionSummary === undefined ? {} : { correctionSummary }),
+        ...(completedAt === undefined ? {} : { completedAt }),
       } satisfies ProjectMemoryCompletedWork;
     }
     case 'INVESTIGATION': {

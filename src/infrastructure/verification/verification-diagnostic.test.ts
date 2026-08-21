@@ -5,7 +5,7 @@ import { buildVerificationDiagnostic } from './verification-diagnostic';
 describe('verification-diagnostic', () => {
   it('scenario 6 — truncates very large output deterministically', () => {
     const diagnostic = buildVerificationDiagnostic({
-      commandLabel: 'npm test',
+      commandDescriptorId: 'npm-test',
       exitCode: 1,
       timedOut: false,
       stdout: 'A'.repeat(20_000),
@@ -27,7 +27,7 @@ describe('verification-diagnostic', () => {
   it('prefers stderr tail content for failing test output', () => {
     const stderr = `${'noise\n'.repeat(40)}tests/supplierOrder.test.ts:42 Expected PROCESSING but received CANCELLED`;
     const diagnostic = buildVerificationDiagnostic({
-      commandLabel: 'npm test',
+      commandDescriptorId: 'npm-test',
       exitCode: 1,
       timedOut: false,
       stdout: '',

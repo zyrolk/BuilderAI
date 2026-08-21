@@ -3,16 +3,20 @@ import {
   isVerificationEligibleFileApplyResult,
   type FileApplyResult,
 } from '../../file-apply';
+import type { ExecutionCancellationToken } from '../../execution-engine';
 import type { VerificationConfiguration } from '../config';
 import { DEFAULT_VERIFICATION_CONFIGURATION } from '../config';
 import type { VerificationClockPort, VerificationPorts } from '../ports';
 import {
   VERIFICATION_REPORT_SCHEMA_VERSION,
+  VERIFICATION_STAGE_FAILURE_OUTCOMES,
+  VERIFICATION_STAGE_SUCCESS_OUTCOMES,
   type VerificationContext,
   type VerificationReport,
   type VerificationStage,
   type VerificationStagePortResult,
   type VerificationStageResult,
+  type VerificationStageStatus,
   VerificationValidationError,
 } from '../types';
 import {
@@ -27,6 +31,10 @@ import {
   normalizeMetadata,
 } from '../validators/validation-helpers';
 import { SystemVerificationClockService } from './system-verification-clock.service';
+
+export interface VerificationEngineOptions {
+  readonly cancellation?: ExecutionCancellationToken;
+}
 
 export class VerificationEngineService {
   private readonly applyResultValidator: FileApplyResultValidator = new FileApplyResultValidator();
@@ -45,13 +53,29 @@ export class VerificationEngineService {
     this.reportValidator = new VerificationReportValidator(configuration);
   }
 
-  async verify(value: unknown): Promise<VerificationReport> {
+  async verify(
+    value: unknown,
+    options: VerificationEngineOptions = {},
+  ): Promise<VerificationReport> {
     const applyResult = this.acceptSuccessfulApplyResult(value);
     const context = this.createContext(applyResult);
     const startedAt = this.clock.now();
+    const workflowDeadlineAt = startedAt + this.configuration.workflowDeadlineMs;
     const stages: VerificationStageResult[] = [];
     for (const stage of this.configuration.pipeline) {
-      stages.push(await this.runStage(stage, context));
+      const remainingWorkflowMs = workflowDeadlineAt - this.clock.now();
+      if (remainingWorkflowMs <= 0 || options.cancellation?.cancelled) {
+        stages.push(
+          createUnavailableStageResult(stage, startedAt, options.cancellation?.cancelled),
+        );
+        continue;
+      }
+      stages.push(
+        await this.runStage(stage, context, {
+          remainingWorkflowMs,
+          cancellation: options.cancellation,
+        }),
+      );
     }
     const report: VerificationReport = {
       schemaVersion: VERIFICATION_REPORT_SCHEMA_VERSION,
@@ -106,10 +130,14 @@ export class VerificationEngineService {
   private async runStage(
     stage: VerificationStage,
     context: VerificationContext,
+    options: {
+      readonly remainingWorkflowMs: number;
+      readonly cancellation?: ExecutionCancellationToken;
+    },
   ): Promise<VerificationStageResult> {
     const startedAt = this.clock.now();
     try {
-      const result = await this.invoke(stage, structuredClone(context));
+      const result = await this.invoke(stage, structuredClone(context), options);
       this.stageResultValidator.validate(result);
       return this.toStageResult(stage, result, startedAt);
     } catch (error: unknown) {
@@ -135,20 +163,33 @@ export class VerificationEngineService {
   private invoke(
     stage: VerificationStage,
     context: VerificationContext,
+    options: {
+      readonly remainingWorkflowMs: number;
+      readonly cancellation?: ExecutionCancellationToken;
+    },
   ): Promise<VerificationStagePortResult> {
+    const enrichedContext: VerificationContext = {
+      ...context,
+      execution: {
+        remainingWorkflowMs: options.remainingWorkflowMs,
+        cancellation: options.cancellation,
+      },
+    };
     switch (stage) {
       case 'PROJECT_VALIDATION':
-        return this.ports.projectValidator.validateProject(context);
+        return this.ports.projectValidator.validateProject(enrichedContext);
       case 'DEPENDENCY_VALIDATION':
-        return this.ports.dependencyValidator.validateDependencies(context);
+        return this.ports.dependencyValidator.validateDependencies(enrichedContext);
       case 'BUILD_VALIDATION':
-        return this.ports.buildRunner.runBuild(context);
+        return this.ports.buildRunner.runBuild(enrichedContext);
       case 'TEST_VALIDATION':
-        return this.ports.testRunner.runTests(context);
+        return this.ports.testRunner.runTests(enrichedContext);
       case 'LINT_VALIDATION':
-        return this.ports.lintRunner.runLint(context);
+        return this.ports.lintRunner.runLint(enrichedContext);
       case 'TYPECHECK_VALIDATION':
-        return this.ports.typecheckRunner.runTypecheck(context);
+        return this.ports.typecheckRunner.runTypecheck(enrichedContext);
+      case 'FORMAT_VALIDATION':
+        return this.ports.formatRunner.runFormat(enrichedContext);
     }
   }
 
@@ -171,7 +212,37 @@ export class VerificationEngineService {
   }
 }
 
+function createUnavailableStageResult(
+  stage: VerificationStage,
+  startedAt: number,
+  cancelled?: boolean,
+): VerificationStageResult {
+  return {
+    stage,
+    status: cancelled ? 'CANCELLED' : 'UNAVAILABLE',
+    warnings: [],
+    errors: [
+      {
+        code: cancelled ? 'VERIFICATION_CANCELLED' : 'VERIFICATION_WORKFLOW_DEADLINE_EXCEEDED',
+        message: cancelled
+          ? 'Verification was cancelled before this stage could start.'
+          : 'Verification workflow deadline expired before this stage could start.',
+      },
+    ],
+    durationMs: 0,
+    metadata: { 'skipped-due-to-deadline': true },
+  };
+}
+
 function duration(startedAt: number, finishedAt: number): number {
   const elapsed = finishedAt - startedAt;
   return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : 0;
+}
+
+export function isVerificationStageFailure(status: VerificationStageStatus): boolean {
+  return (VERIFICATION_STAGE_FAILURE_OUTCOMES as readonly string[]).includes(status);
+}
+
+export function isVerificationStageSuccess(status: VerificationStageStatus): boolean {
+  return (VERIFICATION_STAGE_SUCCESS_OUTCOMES as readonly string[]).includes(status);
 }

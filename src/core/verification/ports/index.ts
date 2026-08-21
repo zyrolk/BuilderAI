@@ -1,3 +1,4 @@
+export * from './format-runner.port';
 export * from './build-runner.port';
 export * from './dependency-validator.port';
 export * from './lint-runner.port';

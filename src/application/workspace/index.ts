@@ -1,6 +1,7 @@
 export * from './activity-history.service';
 export * from './activity-history.types';
 export * from './activity-history.schemas';
+export * from './agent-operating';
 export * from './bounded-project-task-id';
 export * from './feature-task-completion';
 export * from './decomposition-context.service';
@@ -24,3 +25,4 @@ export * from './workspace-authorization.service';
 export * from './workspace-apply-lock.service';
 export * from './workspace-apply-audit.service';
 export * from './workspace-apply-policy.service';
+export * from './workflow-ledger';

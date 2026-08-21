@@ -1,4 +1,5 @@
 import { WorkspaceRuntimeError } from '../../../../application/workspace';
+import { createCancellationTokenFromSignal } from '../../../../application/workspace/request-cancellation';
 import {
   assertTrustedLocalRequest,
   LocalRequestRejectedError,
@@ -6,7 +7,10 @@ import {
   readBoundedJson,
   readWorkspaceRequestSecurityEvidence,
 } from '../../../../infrastructure/workspace';
-import { getLocalWorkspaceRuntime } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
+import {
+  getLocalCorrectionLoopService,
+  getLocalWorkspaceRuntime,
+} from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,12 +23,30 @@ export async function POST(request: Request): Promise<Response> {
     const preparationId = field(body, 'preparationId');
     const approved =
       typeof body === 'object' && body !== null && Reflect.get(body, 'approved') === true;
-    const completion = await getLocalWorkspaceRuntime().approveAndApply(
-      preparationId,
-      approved,
-      evidence,
-    );
-    return json(completion, 200);
+    const correctionWorkflowId =
+      typeof body === 'object' && body !== null
+        ? readOptionalCorrectionWorkflowId(body)
+        : undefined;
+    const cancellation = createCancellationTokenFromSignal(request.signal);
+    if (correctionWorkflowId !== undefined) {
+      getLocalCorrectionLoopService().registerCancellation(correctionWorkflowId, cancellation);
+    }
+    try {
+      const completion = await getLocalWorkspaceRuntime().approveAndApply(
+        preparationId,
+        approved,
+        evidence,
+        cancellation,
+      );
+      return json(completion, 200);
+    } finally {
+      if (correctionWorkflowId !== undefined && cancellation.cancelled) {
+        await getLocalCorrectionLoopService().cancelCorrection(
+          correctionWorkflowId,
+          cancellation.reason ?? 'apply cancelled',
+        );
+      }
+    }
   } catch (error: unknown) {
     if (error instanceof LocalRequestRejectedError) {
       return json({ code: error.code, message: error.message }, 403);
@@ -41,6 +63,13 @@ function field(value: unknown, name: string): string {
   if (typeof value !== 'object' || value === null) return '';
   const candidate = Reflect.get(value, name);
   return typeof candidate === 'string' ? candidate : '';
+}
+
+function readOptionalCorrectionWorkflowId(body: object): string | undefined {
+  const candidate = Reflect.get(body, 'correctionWorkflowId');
+  return typeof candidate === 'string' && candidate.trim().length > 0
+    ? candidate.trim()
+    : undefined;
 }
 
 function json(value: unknown, status: number): Response {

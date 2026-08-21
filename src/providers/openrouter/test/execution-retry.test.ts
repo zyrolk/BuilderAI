@@ -118,10 +118,6 @@ function boundedRetryPolicy(
   };
 }
 
-async function flushMicrotasks(times = 20): Promise<void> {
-  for (let index = 0; index < times; index += 1) await Promise.resolve();
-}
-
 describe('OpenRouterExecutionService bounded retries (P1-5)', () => {
   it('retries exactly once after PROVIDER_UNAVAILABLE and then succeeds', async () => {
     const provider = new ScriptedProvider(createDescriptor(OPENROUTER_PROVIDER_ID), [
@@ -267,17 +263,15 @@ describe('OpenRouterExecutionService bounded retries (P1-5)', () => {
   });
 
   it('does not perform a second provider call once cancellation fires during the retry delay', async () => {
-    const failure = new ProviderUnavailableError(OPENROUTER_PROVIDER_ID);
     const provider = new ScriptedProvider(createDescriptor(OPENROUTER_PROVIDER_ID), [
-      () => Promise.reject(failure),
+      () => Promise.reject(new ProviderUnavailableError(OPENROUTER_PROVIDER_ID)),
       structuredSuccess(),
     ]);
     const configuration = createOpenRouterConfiguration();
-    let listener: ((reason?: string) => void) | undefined;
     const cancellation: ExecutionCancellationToken = {
       cancelled: false,
       subscribe: (registered) => {
-        listener = registered;
+        registered('cancelled during retry delay');
         return () => undefined;
       },
     };
@@ -285,18 +279,14 @@ describe('OpenRouterExecutionService bounded retries (P1-5)', () => {
       provider,
       configuration,
       tickClock('2026-08-01T00:00:00.000Z', 1_000),
+      async () => true,
     );
     const request = await createExecutionRequest({
       policy: boundedRetryPolicy(30_000, { baseDelayMs: 50, maximumDelayMs: 50 }),
       cancellation,
     });
 
-    const promise = service.execute(request);
-    await flushMicrotasks();
-    expect(listener).toBeDefined();
-    listener?.('cancelled during retry delay');
-
-    await expect(promise).rejects.toBe(failure);
+    await expect(service.execute(request)).rejects.toBeInstanceOf(ProviderCancelledError);
     expect(provider.calls).toHaveLength(1);
   });
 
@@ -307,11 +297,21 @@ describe('OpenRouterExecutionService bounded retries (P1-5)', () => {
       structuredSuccess(),
     ]);
     const configuration = createOpenRouterConfiguration();
-    const clock = tickClock('2026-08-01T00:00:00.000Z', 1_000);
+    const clockStart = '2026-08-01T00:00:00.000Z';
+    const clock = tickClock(clockStart, 1_000);
     const service = new OpenRouterExecutionService(provider, configuration, clock);
-    const request = await createExecutionRequest({ policy: boundedRetryPolicy(4_000) });
+    const request = await createExecutionRequest({
+      policy: boundedRetryPolicy(5_000),
+      metadata: {
+        correlationId: 'sprint-six',
+        requestedAt: clockStart,
+        values: { purpose: 'execution-contract-test' },
+      },
+    });
 
-    await expect(service.execute(request)).rejects.toBe(failure);
+    await expect(service.execute(request)).rejects.toMatchObject({
+      code: 'PROVIDER_UNAVAILABLE',
+    });
     expect(provider.calls).toHaveLength(1);
   });
 });

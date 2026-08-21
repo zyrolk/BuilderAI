@@ -2,6 +2,8 @@ import type { VerificationConfiguration } from '../config';
 import { DEFAULT_VERIFICATION_CONFIGURATION } from '../config';
 import {
   VERIFICATION_STAGE_STATUSES,
+  VERIFICATION_STAGE_FAILURE_OUTCOMES,
+  VERIFICATION_STAGE_SUCCESS_OUTCOMES,
   VerificationValidationError,
   type VerificationStagePortResult,
   type VerificationValidationIssue,
@@ -81,8 +83,27 @@ export class VerificationStagePortResultValidator {
       maximumCombinedCharacters: this.configuration.maximumDiagnosticCombinedCharacters,
     });
     if (Array.isArray(value.errors)) {
-      if (value.status === 'PASSED' && value.errors.length > 0) {
-        addIssue(issues, 'INVALID_PORT_RESULT', '$.status', 'PASSED cannot contain errors');
+      if (
+        (VERIFICATION_STAGE_SUCCESS_OUTCOMES as readonly string[]).includes(String(value.status)) &&
+        value.errors.length > 0
+      ) {
+        addIssue(
+          issues,
+          'INVALID_PORT_RESULT',
+          '$.status',
+          `${String(value.status)} cannot contain errors`,
+        );
+      }
+      if (
+        (VERIFICATION_STAGE_FAILURE_OUTCOMES as readonly string[]).includes(String(value.status)) &&
+        value.errors.length === 0
+      ) {
+        addIssue(
+          issues,
+          'INVALID_PORT_RESULT',
+          '$.status',
+          `${String(value.status)} requires at least one error`,
+        );
       }
       if (value.status === 'FAILED' && value.errors.length === 0) {
         addIssue(issues, 'INVALID_PORT_RESULT', '$.status', 'FAILED requires at least one error');

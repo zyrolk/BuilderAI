@@ -15,7 +15,7 @@ const FAILED_REPORT: VerificationReport = {
       durationMs: 2,
       metadata: { 'exit-code': 1 },
       diagnostic: {
-        commandLabel: 'npm test',
+        commandDescriptorId: 'npm-run-test',
         exitCode: 1,
         stderrExcerpt: 'FAIL tests/supplierOrder.test.ts',
         truncated: false,
@@ -63,7 +63,7 @@ describe('verification-failure-investigation', () => {
         {
           ...FAILED_REPORT.stages[0]!,
           diagnostic: {
-            commandLabel: 'npm run build',
+            commandDescriptorId: 'npm-run-build',
             exitCode: 2,
             stdoutExcerpt: 'Compiled with warnings',
             stderrExcerpt: 'Module not found',
@@ -74,7 +74,7 @@ describe('verification-failure-investigation', () => {
     };
 
     const request = buildVerificationFailureInvestigationRequest({ report });
-    expect(request).toContain('Command: npm run build');
+    expect(request).toContain('Command descriptor: npm-run-build');
     expect(request).toContain('Exit code: 2');
     expect(request).toContain('Stdout excerpt (TEST_VALIDATION): Compiled with warnings');
     expect(request).toContain('Stderr excerpt (TEST_VALIDATION): Module not found');

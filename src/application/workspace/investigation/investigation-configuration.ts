@@ -1,6 +1,16 @@
 export interface InvestigationConfiguration {
   readonly maximumSearchQueries: number;
+  /**
+   * Maximum number of files whose content is read during search. Files are selected by
+   * path-relevance scoring from the full eligible inventory, not lexicographic truncation.
+   */
   readonly maximumFilesScanned: number;
+  /**
+   * Maximum number of eligible paths scored during candidate selection. Bounds the cost of
+   * path-level scoring for very large repositories. All eligible paths up to this limit are
+   * scored; only the top `maximumFilesScanned` by path relevance have their content read.
+   */
+  readonly maximumCandidatePaths: number;
   readonly maximumMatches: number;
   readonly maximumMatchesPerFile: number;
   readonly maximumExcerptCharacters: number;
@@ -14,6 +24,7 @@ export interface InvestigationConfiguration {
 export const DEFAULT_INVESTIGATION_CONFIGURATION: InvestigationConfiguration = {
   maximumSearchQueries: 12,
   maximumFilesScanned: 400,
+  maximumCandidatePaths: 15_000,
   maximumMatches: 48,
   maximumMatchesPerFile: 3,
   maximumExcerptCharacters: 240,

@@ -397,6 +397,7 @@ describe('CP12 investigation prompt package bounds', () => {
     const configuration = {
       maximumSearchQueries: 4,
       maximumFilesScanned: 5,
+      maximumCandidatePaths: 15_000,
       maximumMatches: 2,
       maximumMatchesPerFile: 2,
       maximumExcerptCharacters: 80,

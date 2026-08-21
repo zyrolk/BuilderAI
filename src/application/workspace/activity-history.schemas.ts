@@ -205,7 +205,8 @@ export function parseWorkspaceActivity(value: unknown): WorkspaceActivity {
           s.name !== 'BUILD' &&
           s.name !== 'TEST' &&
           s.name !== 'LINT' &&
-          s.name !== 'TYPECHECK'
+          s.name !== 'TYPECHECK' &&
+          s.name !== 'FORMAT'
         ) {
           throw new Error('Invalid stage name');
         }

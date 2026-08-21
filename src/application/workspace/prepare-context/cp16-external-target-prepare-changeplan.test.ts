@@ -4,15 +4,26 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { ProviderOutputTruncatedError } from '../../../core/ai-provider';
 import { ChangePlannerService, ChangePlanValidationError } from '../../../core/change-planner';
-import type { WorkspaceVisibilityPort } from '../../../core/change-planner/ports';
-import { ContextBuilderService, type ContextBuildInput } from '../../../core/context-builder';
+import type {
+  WorkspaceBaselinePort,
+  WorkspaceVisibilityPort,
+} from '../../../core/change-planner/ports';
+import {
+  ContextBuilderService,
+  type ContextBuildInput,
+  type ContextPackage,
+  type ProjectFileSource,
+} from '../../../core/context-builder';
+import type { ExecutionRequest } from '../../../core/execution-engine';
 import { FileApplyEngineService } from '../../../core/file-apply';
 import { InMemoryFileSystemPort } from '../../../core/file-apply/test/file-apply.fixture';
 import { loadCanonicalProjectBrain } from '../../../core/project-brain';
 import {
   PromptOrchestratorService,
   type PromptBuildInput,
+  type PromptPackage,
 } from '../../../core/prompt-orchestrator';
 import { ResponseProcessorService } from '../../../core/response-processor';
 import {
@@ -37,13 +48,17 @@ import {
   type OpenAIProviderConfiguration,
 } from '../../../providers/openai';
 import type { ExternalTargetReadiness } from '../external-target-readiness';
-import { buildInvestigationHandoffFeedback } from '../investigation/investigation-handoff';
+import {
+  buildInvestigationHandoffFeedback,
+  type InvestigationHandoffFeedback,
+} from '../investigation/investigation-handoff';
+import type { ProviderExecutionPort } from '../workspace-runtime.types';
 import { WorkspaceRuntimeService } from '../workspace-runtime.service';
 
 const configuration: OpenAIProviderConfiguration = {
   model: 'integration-model',
   defaultTimeoutMs: 30_000,
-  maximumTimeoutMs: 30_000,
+  maximumTimeoutMs: 120_000,
   maximumInputCharacters: 1_000_000,
   maximumOutputCharacters: 100_000,
   maximumOutputTokens: 10_000,
@@ -60,9 +75,11 @@ const SERVICE_FILE_PATH = 'src/services/supplierSyncSettings.ts';
 const TEST_FILE_CONTENT =
   "describe('supplierSyncSettings PRICE_CHANGED', () => { it('preserves Cost Price', () => {}); });\n";
 const UPDATED_TEST_CONTENT = `${TEST_FILE_CONTENT}it('keeps PRICE_CHANGED comparison when sync flags stay enabled', () => {});\n`;
+const NEVER_EXPOSE_SECRET_MARKER = 'BUILDERAI_NEVER_EXPOSE_SECRET_MARKER_9f7a4c2e';
 
 class RecordingContextBuilder extends ContextBuilderService {
   lastInput?: ContextBuildInput;
+  lastContext?: ContextPackage;
 
   override async build(
     input: ContextBuildInput,
@@ -74,16 +91,67 @@ class RecordingContextBuilder extends ContextBuilderService {
       : never
   ) {
     this.lastInput = input;
-    return super.build(input, ...parameters);
+    this.lastContext = await super.build(input, ...parameters);
+    return this.lastContext;
   }
 }
 
 class RecordingPromptOrchestrator extends PromptOrchestratorService {
   lastBuildInput?: PromptBuildInput;
+  lastPrompt?: PromptPackage;
 
-  override async build(input: PromptBuildInput) {
+  override async build(
+    input: PromptBuildInput,
+    ...parameters: Parameters<PromptOrchestratorService['build']> extends [
+      PromptBuildInput,
+      ...infer Rest,
+    ]
+      ? Rest
+      : never
+  ) {
     this.lastBuildInput = input;
-    return super.build(input);
+    this.lastPrompt = await super.build(input, ...parameters);
+    return this.lastPrompt;
+  }
+}
+
+class RecordingProjectFileSource implements ProjectFileSource {
+  readonly reads: string[] = [];
+
+  constructor(private readonly delegate: ProjectFileSource) {}
+
+  listSourcePaths(): Promise<readonly string[]> {
+    return this.delegate.listSourcePaths();
+  }
+
+  readSourceFile(logicalPath: string): Promise<string> {
+    this.reads.push(logicalPath);
+    return this.delegate.readSourceFile(logicalPath);
+  }
+}
+
+class RecordingWorkspaceBaseline implements WorkspaceBaselinePort {
+  readonly reads: string[] = [];
+
+  constructor(private readonly delegate: WorkspaceBaselinePort) {}
+
+  readTextBaseline(logicalPath: string) {
+    this.reads.push(logicalPath);
+    return this.delegate.readTextBaseline(logicalPath);
+  }
+}
+
+class TruncateFirstPrepareExecution implements ProviderExecutionPort {
+  readonly prompts: PromptPackage[] = [];
+
+  constructor(private readonly delegate: ProviderExecutionPort) {}
+
+  execute(request: ExecutionRequest) {
+    this.prompts.push(structuredClone(request.prompt));
+    if (this.prompts.length === 1) {
+      throw new ProviderOutputTruncatedError('integration-provider');
+    }
+    return this.delegate.execute(request);
   }
 }
 
@@ -125,6 +193,12 @@ function createSupplierSyncFixture(): { readonly root: string; readonly cleanup:
     'export function compareSupplierPriceChanged() { return true; }\n',
     'utf8',
   );
+  mkdirSync(path.join(root, 'server/secrets'), { recursive: true });
+  writeFileSync(
+    path.join(root, 'server/secrets/api-config.json'),
+    `${JSON.stringify({ token: NEVER_EXPOSE_SECRET_MARKER })}\n`,
+    'utf8',
+  );
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
@@ -142,7 +216,15 @@ function readyReadiness(root: string): ExternalTargetReadiness {
     governanceDocuments: [],
     indexedFileCount: 2,
     protectedAreas: [{ path: 'server/secrets/', classification: 'MUTATION_PROTECTED' }],
-    verification: { build: true, test: true, lint: true, typecheck: true },
+    verification: {
+      build: true,
+      test: true,
+      lint: true,
+      typecheck: true,
+      format: false,
+      devServer: true,
+      browserVerification: true,
+    },
     warnings: [],
     blockers: [],
   };
@@ -187,6 +269,10 @@ function createRuntime(input: {
   readonly existingFiles?: readonly string[];
   readonly baselineFiles?: Readonly<Record<string, string>>;
   readonly pathProtectionManifest?: readonly string[];
+  readonly sourceFiles?: ProjectFileSource;
+  readonly workspaceBaseline?: WorkspaceBaselinePort;
+  readonly providerRequests?: unknown[];
+  readonly decorateProviderExecution?: (delegate: ProviderExecutionPort) => ProviderExecutionPort;
 }) {
   const documentSource = new NodeFileSystemDocumentSource(input.root);
   const blueprintReader = createProjectContextReader({
@@ -205,24 +291,30 @@ function createRuntime(input: {
   const provider = new OpenAIProvider(
     configuration,
     {
-      create: async () => input.providerResponse,
+      create: async (request) => {
+        input.providerRequests?.push(structuredClone(request));
+        return input.providerResponse;
+      },
     },
     () => '2026-08-08T12:00:00.000Z',
   );
   const verificationPorts = createPortHarness().ports;
+  const providerExecution = new OpenAIExecutionService(provider, configuration);
   return new WorkspaceRuntimeService({
     loadProjectBrain: () => loadWorkspaceProjectBrain(input.root, 'EXTERNAL_TARGET'),
     blueprintReader,
-    sourceFiles: new NodeProjectFileSource(input.root),
+    sourceFiles: input.sourceFiles ?? new NodeProjectFileSource(input.root),
     contextBuilder: input.contextBuilder,
     promptOrchestrator: input.promptOrchestrator,
-    workspaceBaseline: new MemoryWorkspaceBaselinePort(
-      input.baselineFiles ?? {
-        [TEST_FILE_PATH]: TEST_FILE_CONTENT,
-        'server/secrets/api-config.json': '{"token":"old"}\n',
-      },
-    ),
-    providerExecution: new OpenAIExecutionService(provider, configuration),
+    workspaceBaseline:
+      input.workspaceBaseline ??
+      new MemoryWorkspaceBaselinePort(
+        input.baselineFiles ?? {
+          [TEST_FILE_PATH]: TEST_FILE_CONTENT,
+          'server/secrets/api-config.json': '{"token":"old"}\n',
+        },
+      ),
+    providerExecution: input.decorateProviderExecution?.(providerExecution) ?? providerExecution,
     responseProcessor: new ResponseProcessorService(),
     changePlanner: new ChangePlannerService(undefined, fakeVisibility(existingFiles)),
     fileApply: new FileApplyEngineService(
@@ -267,6 +359,25 @@ function buildHandoff() {
     hypotheses: [],
     affectedAreas: [SERVICE_FILE_PATH],
   });
+}
+
+function buildProtectedPathHandoff(): InvestigationHandoffFeedback {
+  return {
+    schemaVersion: 1,
+    kind: 'INVESTIGATION_HANDOFF',
+    sourceInvestigationId: 'inv-never-expose',
+    priorRequestSummary: 'Read-only repository investigation.',
+    investigationSummary: 'Safe implementation evidence was found without reading secrets.',
+    suggestedFixScope: `Update ${SERVICE_FILE_PATH}.`,
+    pathHints: [
+      SERVICE_FILE_PATH,
+      'server/secrets/api-config.json',
+      'SERVER/SECRETS/API-CONFIG.JSON',
+      'server\\secrets\\api-config.json',
+    ],
+    existingPathHints: [SERVICE_FILE_PATH, './server/secrets/api-config.json'],
+    candidatePathHints: ['server/secrets/future-config.json', '../server/secrets/api-config.json'],
+  };
 }
 
 describe('CP16 external-target investigation prepare ChangePlan generation', () => {
@@ -464,6 +575,147 @@ describe('CP16 external-target investigation prepare ChangePlan generation', () 
       );
       expect(promptOrchestrator.lastBuildInput?.iterationFeedback?.apply.updatedPaths).toEqual([]);
       expect(promptOrchestrator.lastBuildInput?.iterationFeedback?.apply.status).toBe('FAILED');
+    } finally {
+      fixture.cleanup();
+    }
+  }, 30_000);
+
+  it('blocks every protected PREPARE path channel before reads and provider serialization', async () => {
+    const fixture = createSupplierSyncFixture();
+    const contextBuilder = new RecordingContextBuilder();
+    const promptOrchestrator = new RecordingPromptOrchestrator();
+    const sourceFiles = new RecordingProjectFileSource(new NodeProjectFileSource(fixture.root));
+    const workspaceBaseline = new RecordingWorkspaceBaseline(
+      new MemoryWorkspaceBaselinePort({
+        [SERVICE_FILE_PATH]:
+          "import '../../server/secrets/api-config';\nexport function compareSupplierPriceChanged() { return true; }\n",
+        'server/secrets/api-config.json': NEVER_EXPOSE_SECRET_MARKER,
+      }),
+    );
+    const providerRequests: unknown[] = [];
+    try {
+      writeFileSync(
+        path.join(fixture.root, SERVICE_FILE_PATH),
+        "import '../../server/secrets/api-config';\nexport function compareSupplierPriceChanged() { return true; }\n",
+        'utf8',
+      );
+      const service = createRuntime({
+        root: fixture.root,
+        contextBuilder,
+        promptOrchestrator,
+        sourceFiles,
+        workspaceBaseline,
+        providerRequests,
+        providerResponse: createProviderResponse({
+          summary: 'Keep the safe supplier implementation unchanged.',
+          artifacts: [],
+        }),
+      });
+
+      await service.prepare(
+        `Inspect ${SERVICE_FILE_PATH} and server/secrets/api-config.json, then prepare the smallest safe change.`,
+        buildProtectedPathHandoff(),
+      );
+
+      const serializedContext = JSON.stringify(contextBuilder.lastContext);
+      const serializedPrompt = JSON.stringify(promptOrchestrator.lastPrompt);
+      const serializedProviderBoundary = JSON.stringify(providerRequests);
+      expect(sourceFiles.reads).toContain(SERVICE_FILE_PATH);
+      expect(sourceFiles.reads.some((logicalPath) => /server\/secrets/iu.test(logicalPath))).toBe(
+        false,
+      );
+      expect(
+        workspaceBaseline.reads.some((logicalPath) => /server\/secrets/iu.test(logicalPath)),
+      ).toBe(false);
+      expect(contextBuilder.lastInput?.iterationPathHints).toEqual([SERVICE_FILE_PATH]);
+      expect(contextBuilder.lastInput?.sourceContextPolicy?.priorityPaths).toEqual([
+        SERVICE_FILE_PATH,
+      ]);
+      expect(
+        contextBuilder.lastContext?.relevantFiles.map(({ path: logicalPath }) => logicalPath),
+      ).toContain(SERVICE_FILE_PATH);
+      expect(serializedContext).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+      expect(serializedPrompt).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+      expect(serializedProviderBoundary).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+      expect(providerRequests).toHaveLength(1);
+    } finally {
+      fixture.cleanup();
+    }
+  }, 30_000);
+
+  it('rejects an explicit protected path request before the first provider call', async () => {
+    const fixture = createSupplierSyncFixture();
+    const contextBuilder = new RecordingContextBuilder();
+    const promptOrchestrator = new RecordingPromptOrchestrator();
+    const sourceFiles = new RecordingProjectFileSource(new NodeProjectFileSource(fixture.root));
+    const providerRequests: unknown[] = [];
+    try {
+      const service = createRuntime({
+        root: fixture.root,
+        contextBuilder,
+        promptOrchestrator,
+        sourceFiles,
+        providerRequests,
+        providerResponse: createProviderResponse({
+          summary: 'No safe mutation is required.',
+          artifacts: [],
+        }),
+      });
+
+      await service.prepare(
+        `Inspect server/secrets/api-config.json and prepare a safe change without exposing its contents.`,
+      );
+
+      expect(sourceFiles.reads.some((logicalPath) => /server\/secrets/iu.test(logicalPath))).toBe(
+        false,
+      );
+      expect(JSON.stringify(contextBuilder.lastContext)).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+      expect(JSON.stringify(promptOrchestrator.lastPrompt)).not.toContain(
+        NEVER_EXPOSE_SECRET_MARKER,
+      );
+      expect(JSON.stringify(providerRequests)).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+    } finally {
+      fixture.cleanup();
+    }
+  }, 30_000);
+
+  it('keeps protected content outside normal and compact PREPARE attempts', async () => {
+    const fixture = createSupplierSyncFixture();
+    const contextBuilder = new RecordingContextBuilder();
+    const promptOrchestrator = new RecordingPromptOrchestrator();
+    const sourceFiles = new RecordingProjectFileSource(new NodeProjectFileSource(fixture.root));
+    const providerRequests: unknown[] = [];
+    let compactExecution: TruncateFirstPrepareExecution | undefined;
+    try {
+      const service = createRuntime({
+        root: fixture.root,
+        contextBuilder,
+        promptOrchestrator,
+        sourceFiles,
+        providerRequests,
+        decorateProviderExecution: (delegate) => {
+          compactExecution = new TruncateFirstPrepareExecution(delegate);
+          return compactExecution;
+        },
+        providerResponse: createProviderResponse({
+          summary: 'No safe mutation is required.',
+          artifacts: [],
+        }),
+      });
+
+      const preparation = await service.prepare(
+        `Review ${SERVICE_FILE_PATH} and server/secrets/api-config.json without exposing secrets.`,
+        buildProtectedPathHandoff(),
+      );
+
+      expect(compactExecution?.prompts).toHaveLength(2);
+      expect(preparation.prepareContextSelection?.compactRetryUsed).toBe(true);
+      expect(JSON.stringify(compactExecution?.prompts)).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+      expect(JSON.stringify(providerRequests)).not.toContain(NEVER_EXPOSE_SECRET_MARKER);
+      expect(providerRequests).toHaveLength(1);
+      expect(sourceFiles.reads.some((logicalPath) => /server\/secrets/iu.test(logicalPath))).toBe(
+        false,
+      );
     } finally {
       fixture.cleanup();
     }

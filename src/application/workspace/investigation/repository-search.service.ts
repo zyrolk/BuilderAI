@@ -9,7 +9,11 @@ import {
   INVESTIGATION_PROTECTED_SKIPPED_MESSAGE,
   type InvestigationConfiguration,
 } from './investigation-configuration';
-import { buildInvestigationRankingContext, rankSearchMatches } from './investigation-path-ranking';
+import {
+  buildInvestigationRankingContext,
+  rankSearchMatches,
+  selectCandidatePathsByRelevance,
+} from './investigation-path-ranking';
 import type { RepositorySearchMatch, RepositorySearchResult } from './investigation.types';
 
 const TEXTUAL_EXTENSIONS = new Set([
@@ -82,10 +86,15 @@ export class RepositorySearchService {
       limitationMessages.push(INVESTIGATION_PROTECTED_SKIPPED_MESSAGE);
     }
 
-    const pathsToScan = eligiblePaths.slice(0, this.configuration.maximumFilesScanned);
+    const rankingContext = buildInvestigationRankingContext({ requestText, queries });
+    const inventoryPaths = eligiblePaths.slice(0, this.configuration.maximumCandidatePaths);
+    const pathsToScan = selectCandidatePathsByRelevance(
+      inventoryPaths,
+      rankingContext,
+      this.configuration.maximumFilesScanned,
+    );
     let truncated = eligiblePaths.length > pathsToScan.length;
     const candidateMatches: RepositorySearchMatch[] = [];
-    const rankingContext = buildInvestigationRankingContext({ requestText, queries });
 
     for (const logicalPath of pathsToScan) {
       let fileMatchCount = 0;

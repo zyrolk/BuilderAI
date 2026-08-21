@@ -77,6 +77,7 @@ export function ProjectReadinessPanel({ readiness }: ProjectReadinessPanelProps)
           <li>
             {readiness.verification.typecheck ? 'Typecheck available' : 'Typecheck unavailable'}
           </li>
+          <li>{readiness.verification.format ? 'Format available' : 'Format unavailable'}</li>
         </ul>
       </div>
 

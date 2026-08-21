@@ -333,6 +333,67 @@ export function extractExplicitPathsFromRequest(requestText: string): readonly s
   return [...paths];
 }
 
+/**
+ * Scores a repository path cheaply (no content read) for candidate selection.
+ * Reuses the same relevance signals as `scoreSearchMatch` minus line-level scoring.
+ */
+export function scorePathRelevance(
+  logicalPath: string,
+  context: InvestigationRankingContext,
+): number {
+  const path = normalizePath(logicalPath);
+  let score = 0;
+
+  if (context.explicitPaths.some((hint) => normalizePath(hint) === path)) {
+    score += 200;
+  }
+  if (pathMentionedInRequest(path, context)) {
+    score += 120;
+  }
+
+  const queryOverlap = queryTokenOverlap(path, context.queries);
+  score += queryOverlap * 25;
+
+  const stem = basenameStemForPath(path);
+  for (const token of requestTokens(context.requestText)) {
+    if (stem.toLowerCase().includes(token)) score += 8;
+    if (basename(path).toLowerCase().includes(token)) score += 10;
+  }
+
+  if (TEST_FILE_PATTERN.test(path)) score += 5;
+
+  const anchorStems = new Set(
+    context.queries
+      .map((query) => query.replace(/\.[^.]+$/u, ''))
+      .filter((value) => value.length >= 4),
+  );
+  for (const anchor of anchorStems) {
+    if (isTestCounterpart(path, anchor)) score += 20;
+  }
+
+  score -= referenceFilePenalty(path, context);
+  score -= generatedPathPenalty(path);
+
+  return score;
+}
+
+/**
+ * Ranks all eligible paths by path-level relevance and returns the top candidates for
+ * content reading. Deterministic: ties broken by lexicographic path order.
+ */
+export function selectCandidatePathsByRelevance(
+  eligiblePaths: readonly string[],
+  context: InvestigationRankingContext,
+  maximumCandidates: number,
+): readonly string[] {
+  const scored = eligiblePaths.map((path) => ({
+    path,
+    score: scorePathRelevance(path, context),
+  }));
+  scored.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+  return scored.slice(0, maximumCandidates).map(({ path }) => path);
+}
+
 export function buildInvestigationRankingContext(input: {
   readonly requestText: string;
   readonly queries: readonly string[];

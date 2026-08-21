@@ -51,14 +51,15 @@ describe('Investigation UI', () => {
       createZyroStyleInvestigationSource(),
     ).investigate('Investigate cancelSupplierOrder.');
 
+    const prepare = vi.fn().mockResolvedValue({
+      responsePackage: RESPONSE_PACKAGE,
+      changePlan: CHANGE_PLAN,
+      gate2Review: GATE2_REVIEW,
+      preparationId: 'prep-after-investigation',
+    });
     const workflow = createWorkflow({
       investigate: async () => investigation,
-      prepare: async () => ({
-        responsePackage: RESPONSE_PACKAGE,
-        changePlan: CHANGE_PLAN,
-        gate2Review: GATE2_REVIEW,
-        preparationId: 'prep-after-investigation',
-      }),
+      prepare,
     });
 
     render(<WorkspaceShell project={PROJECT_VIEW} workflow={workflow} />);
@@ -75,5 +76,9 @@ describe('Investigation UI', () => {
     expect(
       await screen.findByRole('heading', { name: 'Review before applying' }),
     ).toBeInTheDocument();
+    expect(prepare).toHaveBeenCalledWith(
+      expect.stringContaining('Investigate cancelSupplierOrder.'),
+      { investigationId: investigation.investigationId },
+    );
   });
 });

@@ -169,7 +169,7 @@ function formatVerificationStatus(status: 'PASSED' | 'PARTIALLY_PASSED' | 'FAILE
 }
 
 function formatStageName(
-  name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST' | 'LINT' | 'TYPECHECK',
+  name: 'PROJECT' | 'DEPENDENCY' | 'BUILD' | 'TEST' | 'LINT' | 'TYPECHECK' | 'FORMAT',
 ): string {
   switch (name) {
     case 'PROJECT':
@@ -184,6 +184,8 @@ function formatStageName(
       return 'Lint';
     case 'TYPECHECK':
       return 'Typecheck';
+    case 'FORMAT':
+      return 'Format';
   }
 }
 

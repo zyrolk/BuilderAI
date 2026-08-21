@@ -73,10 +73,16 @@ export class FakeGeminiClient implements GeminiClient {
 
 export function sequenceClock(values: readonly string[]): GeminiClock {
   let index = 0;
+  let last = values[0];
   return () => {
     const value = values[index];
     index += 1;
-    if (value === undefined) throw new Error('Fixture clock exhausted.');
-    return value;
+    if (value !== undefined) {
+      last = value;
+      return value;
+    }
+    if (last === undefined) throw new Error('Fixture clock exhausted.');
+    last = new Date(Date.parse(last) + 1).toISOString();
+    return last;
   };
 }

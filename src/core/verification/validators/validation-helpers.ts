@@ -50,12 +50,16 @@ export function validateOptionalDiagnostic(
     return;
   }
   const allowedKeys = [
-    'commandLabel',
+    'commandDescriptorId',
     'exitCode',
     'stdoutExcerpt',
     'stderrExcerpt',
     'truncated',
     'omittedBytes',
+    'timedOut',
+    'cancelled',
+    'outputLimited',
+    'policyBlocked',
   ] as const;
   for (const key of allowedKeys) {
     if (!(key in value)) continue;
@@ -65,15 +69,15 @@ export function validateOptionalDiagnostic(
       addIssue(issues, code, `${path}.${key}`, 'is not allowed');
     }
   }
-  if ('commandLabel' in value && typeof value.commandLabel !== 'string') {
-    addIssue(issues, code, `${path}.commandLabel`, 'must be a string');
+  if ('commandDescriptorId' in value && typeof value.commandDescriptorId !== 'string') {
+    addIssue(issues, code, `${path}.commandDescriptorId`, 'must be a string');
   }
   if (
-    'commandLabel' in value &&
-    typeof value.commandLabel === 'string' &&
-    value.commandLabel.length > 240
+    'commandDescriptorId' in value &&
+    typeof value.commandDescriptorId === 'string' &&
+    value.commandDescriptorId.length > 120
   ) {
-    addIssue(issues, code, `${path}.commandLabel`, 'must contain at most 240 characters');
+    addIssue(issues, code, `${path}.commandDescriptorId`, 'must contain at most 120 characters');
   }
   if (
     'exitCode' in value &&
@@ -112,6 +116,11 @@ export function validateOptionalDiagnostic(
       `must contain at most ${configuration.maximumStderrCharacters} characters`,
     );
   }
+  for (const booleanKey of ['timedOut', 'cancelled', 'outputLimited', 'policyBlocked'] as const) {
+    if (booleanKey in value && typeof value[booleanKey] !== 'boolean') {
+      addIssue(issues, code, `${path}.${booleanKey}`, 'must be a boolean');
+    }
+  }
   if ('truncated' in value && typeof value.truncated !== 'boolean') {
     addIssue(issues, code, `${path}.truncated`, 'must be a boolean');
   }
@@ -144,12 +153,18 @@ export function normalizeDiagnostic(
 ): VerificationDiagnostic | undefined {
   if (diagnostic === undefined) return undefined;
   return {
-    ...(diagnostic.commandLabel === undefined ? {} : { commandLabel: diagnostic.commandLabel }),
+    ...(diagnostic.commandDescriptorId === undefined
+      ? {}
+      : { commandDescriptorId: diagnostic.commandDescriptorId }),
     ...(diagnostic.exitCode === undefined ? {} : { exitCode: diagnostic.exitCode }),
     ...(diagnostic.stdoutExcerpt === undefined ? {} : { stdoutExcerpt: diagnostic.stdoutExcerpt }),
     ...(diagnostic.stderrExcerpt === undefined ? {} : { stderrExcerpt: diagnostic.stderrExcerpt }),
     truncated: diagnostic.truncated,
     ...(diagnostic.omittedBytes === undefined ? {} : { omittedBytes: diagnostic.omittedBytes }),
+    ...(diagnostic.timedOut === undefined ? {} : { timedOut: diagnostic.timedOut }),
+    ...(diagnostic.cancelled === undefined ? {} : { cancelled: diagnostic.cancelled }),
+    ...(diagnostic.outputLimited === undefined ? {} : { outputLimited: diagnostic.outputLimited }),
+    ...(diagnostic.policyBlocked === undefined ? {} : { policyBlocked: diagnostic.policyBlocked }),
   };
 }
 

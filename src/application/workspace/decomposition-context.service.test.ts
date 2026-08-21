@@ -27,5 +27,5 @@ describe('DecompositionContextBuilder', () => {
     expect(measureDecompositionContext(context)).toBeLessThanOrEqual(
       DECOMPOSITION_CONTEXT_LIMITS.MAX_SERIALIZED_CHARACTERS,
     );
-  });
+  }, 30_000);
 });

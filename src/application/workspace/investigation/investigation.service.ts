@@ -29,6 +29,11 @@ import { RepositorySearchService } from './repository-search.service';
 import { extractSearchQueries } from './search-query-extraction';
 import type { WorkspaceInvestigation } from './investigation.types';
 import { InvestigationValidationError } from './investigation.types';
+import {
+  buildInvestigationHandoffFeedback,
+  type InvestigationHandoffFeedback,
+} from './investigation-handoff';
+import type { InvestigationHandoffStore } from './investigation-continuity';
 
 export interface InvestigationServiceDependencies {
   readonly sourceFiles: ProjectFileSource;
@@ -42,6 +47,7 @@ export interface InvestigationServiceDependencies {
   readonly pathProtection?: WorkspacePathProtectionPolicy;
   readonly projectProfile?: WorkspaceProjectProfile;
   readonly evaluateExternalTargetReadiness?: () => Promise<ExternalTargetReadiness | undefined>;
+  readonly handoffStore?: InvestigationHandoffStore;
 }
 
 export class InvestigationService {
@@ -161,6 +167,26 @@ export class InvestigationService {
         investigationId,
       );
 
+      const handoff = buildInvestigationHandoffFeedback({
+        sourceInvestigationId: investigationId,
+        priorRequestSummary: normalizedRequest,
+        investigationSummary: report.summary,
+        ...(report.suggestedFixScope === undefined
+          ? {}
+          : { suggestedFixScope: report.suggestedFixScope }),
+        sourcePaths,
+        requestText: requestForAnalysis,
+        queries,
+        evidence: report.evidence,
+        searchMatches: searchResult.matches,
+        hypotheses: report.hypotheses,
+        affectedAreas: report.affectedAreas,
+        ...(report.likelyRootCause === undefined
+          ? {}
+          : { likelyRootCause: report.likelyRootCause }),
+      });
+      this.dependencies.handoffStore?.save(handoff);
+
       this.log(investigationId, 'INVESTIGATE', 'SUCCEEDED', startedAt);
       return {
         investigationId,
@@ -181,6 +207,11 @@ export class InvestigationService {
         error instanceof Error ? error.message : 'Investigation failed.',
       );
     }
+  }
+
+  resolveInvestigationHandoff(investigationId: string): InvestigationHandoffFeedback | undefined {
+    if (!/^[A-Za-z0-9-]{1,128}$/u.test(investigationId)) return undefined;
+    return this.dependencies.handoffStore?.resolve(investigationId);
   }
 
   private log(

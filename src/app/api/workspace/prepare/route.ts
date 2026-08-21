@@ -7,6 +7,8 @@ import { ChangePlanValidationError } from '../../../../core/change-planner';
 import { ContextBuilderValidationError } from '../../../../core/context-builder';
 import { PromptOrchestratorValidationError } from '../../../../core/prompt-orchestrator';
 import { ResponseProcessorValidationError } from '../../../../core/response-processor';
+import { isInvestigationHandoffFeedback } from '../../../../application/workspace/investigation';
+import { createCancellationTokenFromSignal } from '../../../../application/workspace/request-cancellation';
 import {
   assertTrustedLocalRequest,
   LocalRequestRejectedError,
@@ -14,9 +16,13 @@ import {
   readBoundedJson,
   assertAuthorizedWorkspaceRequest,
 } from '../../../../infrastructure/workspace';
-import { getLocalWorkspaceRuntime } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
-import { getLocalFeatureWorkflow } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
-import { getLocalWorkspaceSecurityConfiguration } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
+import {
+  getLocalFeatureWorkflow,
+  getLocalInvestigationService,
+  getLocalWorkspaceRuntime,
+  getLocalWorkspaceSecurityConfiguration,
+  getLocalCorrectionLoopService,
+} from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,27 +40,70 @@ export async function POST(request: Request): Promise<Response> {
     });
     const userRequest = readStringField(body, 'request');
     const iterationFeedback = readOptionalField(body, 'iterationFeedback');
+    const investigationId = readOptionalString(body, 'investigationId');
     const featurePlanId = readOptionalString(body, 'featurePlanId');
     const taskId = readOptionalString(body, 'taskId');
     const dependencyOverrides = readOptionalStringArray(body, 'dependencyOverrides');
+    const correctionWorkflowId = readOptionalString(body, 'correctionWorkflowId');
 
-    if (featurePlanId !== undefined && taskId !== undefined) {
-      const result = await getLocalFeatureWorkflow().prepareTask(
-        { featurePlanId, taskId, dependencyOverrides },
-        userRequest,
-        iterationFeedback,
+    if (investigationId === undefined && isInvestigationHandoffFeedback(iterationFeedback)) {
+      throw new WorkspaceRuntimeError(
+        'INVESTIGATION_REFERENCE_INVALID',
+        'Prepare Fix requires a server-held investigation reference.',
       );
-      return json({ ...result.preparation, featurePlan: result.plan }, 200);
     }
 
-    const preparation =
-      iterationFeedback === undefined
-        ? await getLocalWorkspaceRuntime().prepare(userRequest)
-        : await getLocalWorkspaceRuntime().prepare(userRequest, iterationFeedback);
-    return json(preparation, 200);
+    const authoritativeIterationFeedback =
+      investigationId === undefined
+        ? iterationFeedback
+        : getAuthoritativeInvestigationHandoff(investigationId);
+
+    const cancellation = createCancellationTokenFromSignal(request.signal);
+    if (correctionWorkflowId !== undefined) {
+      getLocalCorrectionLoopService().registerCancellation(correctionWorkflowId, cancellation);
+    }
+
+    try {
+      if (featurePlanId !== undefined && taskId !== undefined) {
+        const result = await getLocalFeatureWorkflow().prepareTask(
+          { featurePlanId, taskId, dependencyOverrides },
+          userRequest,
+          authoritativeIterationFeedback,
+        );
+        return json({ ...result.preparation, featurePlan: result.plan }, 200);
+      }
+
+      const preparation =
+        authoritativeIterationFeedback === undefined
+          ? await getLocalWorkspaceRuntime().prepare(userRequest, undefined, cancellation)
+          : await getLocalWorkspaceRuntime().prepare(
+              userRequest,
+              authoritativeIterationFeedback,
+              cancellation,
+            );
+      return json(preparation, 200);
+    } finally {
+      if (correctionWorkflowId !== undefined && cancellation.cancelled) {
+        await getLocalCorrectionLoopService().cancelCorrection(
+          correctionWorkflowId,
+          cancellation.reason ?? 'prepare cancelled',
+        );
+      }
+    }
   } catch (error: unknown) {
     return errorResponse(error);
   }
+}
+
+function getAuthoritativeInvestigationHandoff(investigationId: string): unknown {
+  const handoff = getLocalInvestigationService().resolveInvestigationHandoff(investigationId);
+  if (handoff === undefined) {
+    throw new WorkspaceRuntimeError(
+      'INVESTIGATION_REFERENCE_INVALID',
+      'The investigation reference is unknown or expired.',
+    );
+  }
+  return handoff;
 }
 
 function readOptionalField(value: unknown, field: string): unknown {
@@ -94,6 +143,7 @@ function errorResponse(error: unknown): Response {
     const validationStatus =
       error.code === 'INVALID_REQUEST' ||
       error.code === 'INVALID_ITERATION_FEEDBACK' ||
+      error.code === 'INVESTIGATION_REFERENCE_INVALID' ||
       error.code === 'INVALID_FEATURE_PLAN'
         ? 400
         : 422;

@@ -16,7 +16,7 @@ function failedReportWithDiagnostic(): VerificationReport {
             status: 'FAILED' as const,
             errors: [{ code: 'TEST_FAILED', message: 'Test validation exited unsuccessfully.' }],
             diagnostic: {
-              commandLabel: 'npm test',
+              commandDescriptorId: 'npm-run-test',
               exitCode: 1,
               stderrExcerpt:
                 'FAIL tests/supplierOrder.test.ts\nExpected PROCESSING but received CANCELLED',
@@ -45,7 +45,7 @@ describe('CP9 verification diagnostics UI', () => {
         verificationReport={failedReportWithDiagnostic()}
       />,
     );
-    expect(screen.getByText(/Command: npm test/i)).toBeInTheDocument();
+    expect(screen.getByText(/Stage: npm-run-test/i)).toBeInTheDocument();
     expect(screen.getByText(/Exit code: 1/i)).toBeInTheDocument();
     expect(screen.getByText(/supplierOrder.test.ts/i)).toBeInTheDocument();
   });
@@ -71,7 +71,7 @@ describe('CP9 verification diagnostics UI', () => {
           ? {
               ...stage,
               diagnostic: {
-                commandLabel: 'npm run build',
+                commandDescriptorId: 'npm-run-build',
                 exitCode: 2,
                 stdoutExcerpt: 'Compiled with warnings',
                 stderrExcerpt: 'Module not found',

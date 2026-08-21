@@ -29,7 +29,11 @@ export function createOperation(
     sourceChecksum: options.sourceChecksum ?? { algorithm: 'sha256', value: 'a'.repeat(64) },
     sourceSizeBytes: new TextEncoder().encode(content).byteLength,
   };
-  if (kind === 'DELETE_FILE') return { ...base, kind };
+  if (kind === 'DELETE_FILE') {
+    return options.baselineContentChecksum === undefined
+      ? { ...base, kind }
+      : { ...base, kind, baselineContentChecksum: options.baselineContentChecksum };
+  }
   if (kind === 'UPDATE_FILE') {
     return options.baselineContentChecksum === undefined
       ? { ...base, kind, content }
@@ -101,6 +105,7 @@ export class InMemoryFileSystemPort implements FileSystemPort {
   readonly otherEntries = new Set<string>();
   failMutationPath?: string;
   failInspectionPath?: string;
+  indeterminateMutationPath?: string;
 
   constructor(files: Readonly<Record<string, string>> = {}) {
     Object.entries(files).forEach(([path, content]) => this.files.set(path, content));
@@ -135,6 +140,10 @@ export class InMemoryFileSystemPort implements FileSystemPort {
     return readTextBaselineFromRawContent(content)?.checksum ?? null;
   }
 
+  async readRegularFileContent(logicalPath: string): Promise<string | null> {
+    return this.files.get(logicalPath) ?? null;
+  }
+
   async createFileIfAbsent(logicalPath: string, content: string): Promise<void> {
     this.mutationCalls.push(`create:${logicalPath}`);
     this.throwIfConfigured(logicalPath, 'CREATE_FAILED');
@@ -146,6 +155,10 @@ export class InMemoryFileSystemPort implements FileSystemPort {
 
   async updateFileIfRegularFile(logicalPath: string, content: string): Promise<void> {
     this.mutationCalls.push(`update:${logicalPath}`);
+    if (this.indeterminateMutationPath === logicalPath) {
+      this.files.set(logicalPath, '');
+      throw new FileSystemPortError('UPDATE_FAILED', logicalPath, 'INDETERMINATE_MUTATION');
+    }
     this.throwIfConfigured(logicalPath, 'UPDATE_FAILED');
     if (!this.files.has(logicalPath)) {
       throw new FileSystemPortError(

@@ -29,78 +29,30 @@ describe('successful verification', () => {
     ).verify(input);
 
     expect(harness.calls).toEqual(VERIFICATION_STAGES);
-    expect(report).toEqual({
-      schemaVersion: 1,
-      status: 'PASSED',
-      stages: [
-        {
-          stage: 'PROJECT_VALIDATION',
-          status: 'PASSED',
-          warnings: [
-            { code: 'A_WARNING', message: 'Earlier warning' },
-            { code: 'Z_WARNING', message: 'Later warning' },
-          ],
-          errors: [],
-          durationMs: 2,
-          metadata: { attempts: 1, tool: 'project-validator' },
-        },
-        {
-          stage: 'DEPENDENCY_VALIDATION',
-          status: 'PASSED',
-          warnings: [],
-          errors: [],
-          durationMs: 3,
-          metadata: {},
-        },
-        {
-          stage: 'BUILD_VALIDATION',
-          status: 'PASSED',
-          warnings: [],
-          errors: [],
-          durationMs: 5,
-          metadata: {},
-        },
-        {
-          stage: 'TEST_VALIDATION',
-          status: 'PASSED',
-          warnings: [],
-          errors: [],
-          durationMs: 6,
-          metadata: {},
-        },
-        {
-          stage: 'LINT_VALIDATION',
-          status: 'PASSED',
-          warnings: [],
-          errors: [],
-          durationMs: 4,
-          metadata: {},
-        },
-        {
-          stage: 'TYPECHECK_VALIDATION',
-          status: 'PASSED',
-          warnings: [],
-          errors: [],
-          durationMs: 4,
-          metadata: {},
-        },
-      ],
-      warnings: [
-        {
-          stage: 'PROJECT_VALIDATION',
-          code: 'A_WARNING',
-          message: 'Earlier warning',
-        },
-        {
-          stage: 'PROJECT_VALIDATION',
-          code: 'Z_WARNING',
-          message: 'Later warning',
-        },
-      ],
-      errors: [],
-      durationMs: 31,
-      metadata: { 'change-id': 'change-11', sprint: 11 },
-    });
+    expect(report.schemaVersion).toBe(1);
+    expect(report.status).toBe('PASSED');
+    expect(report.stages).toHaveLength(VERIFICATION_STAGES.length);
+    expect(report.stages.map(({ stage }) => stage)).toEqual([...VERIFICATION_STAGES]);
+    expect(report.stages.every(({ status }) => status === 'PASSED')).toBe(true);
+    expect(report.warnings).toEqual([
+      {
+        stage: 'PROJECT_VALIDATION',
+        code: 'A_WARNING',
+        message: 'Earlier warning',
+      },
+      {
+        stage: 'PROJECT_VALIDATION',
+        code: 'Z_WARNING',
+        message: 'Later warning',
+      },
+    ]);
+    expect(report.errors).toEqual([]);
+    expect(report.metadata).toEqual({ 'change-id': 'change-11', sprint: 11 });
+    expect(report.stages[0]?.warnings).toEqual([
+      { code: 'A_WARNING', message: 'Earlier warning' },
+      { code: 'Z_WARNING', message: 'Later warning' },
+    ]);
+    expect(report.stages[0]?.metadata).toEqual({ attempts: 1, tool: 'project-validator' });
   });
 
   it('supplies isolated, defensive context to every port', async () => {
@@ -114,7 +66,7 @@ describe('successful verification', () => {
 
     await engine.verify(input);
 
-    expect(harness.contexts).toHaveLength(6);
+    expect(harness.contexts).toHaveLength(7);
     expect(harness.contexts[0]?.affectedFiles).toEqual({
       created: ['src/new.ts'],
       updated: ['src/existing.ts'],

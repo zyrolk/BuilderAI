@@ -195,10 +195,14 @@ export const VERIFICATION_REPORT: VerificationReport = {
       ['TEST_VALIDATION', { 'exit-code': 0, 'output-bytes': 482, 'output-truncated': false }],
       ['LINT_VALIDATION', { skipped: true }],
       ['TYPECHECK_VALIDATION', { skipped: true }],
+      ['FORMAT_VALIDATION', { skipped: true }],
     ] as const
   ).map(([stage, metadata]) => ({
     stage,
-    status: 'PASSED' as const,
+    status:
+      'skipped' in metadata && metadata.skipped === true
+        ? ('SKIPPED' as const)
+        : ('PASSED' as const),
     warnings: [],
     errors: [],
     durationMs: 3,

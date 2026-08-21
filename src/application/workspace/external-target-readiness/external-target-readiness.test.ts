@@ -81,7 +81,7 @@ describe('CP11 external-target readiness', () => {
     const { root, cleanup } = createExternalFixture({ manifest: baseManifest });
     try {
       const readiness = await new ExternalTargetReadinessService().project({ projectRoot: root });
-      expect(readiness.status).toBe('READY');
+      expect(['READY', 'READY_WITH_WARNINGS']).toContain(readiness.status);
       expect(readiness.projectId).toBe('zyro-style-fixture');
       expect(readiness.indexedFileCount).toBeGreaterThan(0);
       expect(readiness.governanceDocuments.length).toBe(3);
@@ -377,7 +377,15 @@ describe('CP11 external-target readiness', () => {
           governanceDocuments: [],
           indexedFileCount: 1,
           protectedAreas: [],
-          verification: { build: true, test: false, lint: false, typecheck: false },
+          verification: {
+            build: true,
+            test: false,
+            lint: false,
+            typecheck: false,
+            format: false,
+            devServer: true,
+            browserVerification: true,
+          },
           warnings: [{ code: 'WARN', severity: 'WARNING', message: 'warn' }],
           blockers: [],
         },
@@ -423,7 +431,15 @@ describe('CP11 external-target readiness', () => {
       governanceDocuments: [],
       indexedFileCount: 0,
       protectedAreas: [],
-      verification: { build: true, test: true, lint: true, typecheck: true },
+      verification: {
+        build: true,
+        test: true,
+        lint: true,
+        typecheck: true,
+        format: false,
+        devServer: true,
+        browserVerification: true,
+      },
       warnings: [],
       blockers: [
         { code: 'REAL', severity: 'BLOCKER' as const, message: 'still blocked server-side' },

@@ -1,5 +1,11 @@
 import type { FileApplyResult } from '../../file-apply';
 import type { ResponseMetadata } from '../../response-processor';
+import type { ExecutionCancellationToken } from '../../execution-engine';
+
+export interface VerificationExecutionControls {
+  readonly remainingWorkflowMs: number;
+  readonly cancellation?: ExecutionCancellationToken;
+}
 
 export const VERIFICATION_REPORT_SCHEMA_VERSION = 1 as const;
 export const VERIFICATION_STAGES = [
@@ -9,6 +15,7 @@ export const VERIFICATION_STAGES = [
   'TEST_VALIDATION',
   'LINT_VALIDATION',
   'TYPECHECK_VALIDATION',
+  'FORMAT_VALIDATION',
 ] as const;
 
 export const OPERATOR_VERIFICATION_FAILURE_CATEGORIES = [
@@ -23,7 +30,31 @@ export const OPERATOR_VERIFICATION_FAILURE_CATEGORIES = [
 export type OperatorVerificationFailureCategory =
   (typeof OPERATOR_VERIFICATION_FAILURE_CATEGORIES)[number];
 export const VERIFICATION_STATUSES = ['PASSED', 'FAILED', 'PARTIALLY_PASSED'] as const;
-export const VERIFICATION_STAGE_STATUSES = ['PASSED', 'FAILED'] as const;
+export const VERIFICATION_STAGE_STATUSES = [
+  'PASSED',
+  'FAILED',
+  'SKIPPED',
+  'TIMEOUT',
+  'CANCELLED',
+  'POLICY_BLOCKED',
+  'OUTPUT_LIMIT_EXCEEDED',
+  'PROCESS_FAILED',
+  'UNAVAILABLE',
+] as const;
+
+/** Stage outcomes that satisfy mandatory verification without operator acknowledgement. */
+export const VERIFICATION_STAGE_SUCCESS_OUTCOMES = ['PASSED', 'SKIPPED'] as const;
+
+/** Stage outcomes that block feature task completion. */
+export const VERIFICATION_STAGE_FAILURE_OUTCOMES = [
+  'FAILED',
+  'TIMEOUT',
+  'CANCELLED',
+  'POLICY_BLOCKED',
+  'OUTPUT_LIMIT_EXCEEDED',
+  'PROCESS_FAILED',
+  'UNAVAILABLE',
+] as const;
 
 export const VERIFICATION_VALIDATION_CODES = [
   'INVALID_APPLY_RESULT',
@@ -39,6 +70,8 @@ export const VERIFICATION_VALIDATION_CODES = [
 export type VerificationStage = (typeof VERIFICATION_STAGES)[number];
 export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 export type VerificationStageStatus = (typeof VERIFICATION_STAGE_STATUSES)[number];
+export type VerificationStageSuccessOutcome = (typeof VERIFICATION_STAGE_SUCCESS_OUTCOMES)[number];
+export type VerificationStageFailureOutcome = (typeof VERIFICATION_STAGE_FAILURE_OUTCOMES)[number];
 export type VerificationValidationCode = (typeof VERIFICATION_VALIDATION_CODES)[number];
 
 export interface VerificationMessage {
@@ -59,12 +92,16 @@ export interface VerificationStagePortResult {
 }
 
 export interface VerificationDiagnostic {
-  readonly commandLabel?: string;
+  readonly commandDescriptorId?: string;
   readonly exitCode?: number;
   readonly stdoutExcerpt?: string;
   readonly stderrExcerpt?: string;
   readonly truncated: boolean;
   readonly omittedBytes?: number;
+  readonly timedOut?: boolean;
+  readonly cancelled?: boolean;
+  readonly outputLimited?: boolean;
+  readonly policyBlocked?: boolean;
 }
 
 export interface VerificationStageResult extends VerificationStagePortResult {
@@ -80,6 +117,7 @@ export interface VerificationContext {
     readonly deleted: readonly string[];
   };
   readonly metadata: ResponseMetadata;
+  readonly execution?: VerificationExecutionControls;
 }
 
 export interface VerificationReport {

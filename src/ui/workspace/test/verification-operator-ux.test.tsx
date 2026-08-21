@@ -135,8 +135,9 @@ describe('Checkpoint 4 verification operator UX', () => {
     await screen.findByRole('heading', { name: 'Review before applying' });
     fireEvent.click(screen.getByLabelText(/explicitly approve/i));
     fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
+    expect(await screen.findByRole('button', { name: 'Start correction' })).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Fix verification failures' }),
+      await screen.findByRole('heading', { name: 'Fix verification failures' }),
     ).toBeInTheDocument();
     expect(
       screen.getAllByText(/file changes were applied, but verification failed/i).length,
@@ -165,9 +166,7 @@ describe('Checkpoint 4 verification operator UX', () => {
     expect(await screen.findByRole('button', { name: 'Start fresh prepare' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Apply Result' }));
     expect(await screen.findByText(/partial apply warning/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Fix verification failures' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start correction' })).not.toBeInTheDocument();
   });
 
   it('scenario 9 — verification correction returns to Gate 2', async () => {
@@ -196,7 +195,7 @@ describe('Checkpoint 4 verification operator UX', () => {
     await screen.findByRole('heading', { name: 'Review before applying' });
     fireEvent.click(screen.getByLabelText(/explicitly approve/i));
     fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Fix verification failures' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start correction' }));
     await screen.findByRole('heading', { name: 'Review before applying' });
     expect(prepare).toHaveBeenCalled();
     expect(screen.getByRole('checkbox', { name: /explicitly approve/i })).not.toBeChecked();
@@ -218,9 +217,7 @@ describe('Checkpoint 4 verification operator UX', () => {
     fireEvent.click(screen.getByRole('button', { name: /approve and apply/i }));
     fireEvent.click(await screen.findByRole('tab', { name: 'Apply Result' }));
     expect(screen.getAllByText(/baseline drift/i).length).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole('button', { name: 'Fix verification failures' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start correction' })).not.toBeInTheDocument();
   });
 
   it('scenario 11 — package.json changes show dependency guidance at Gate 2', async () => {

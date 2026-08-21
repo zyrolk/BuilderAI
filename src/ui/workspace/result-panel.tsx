@@ -10,6 +10,7 @@ import type {
 import type { FileApplyResult } from '../../core/file-apply';
 import type { ResponsePackage } from '../../core/response-processor';
 import type { VerificationDiagnostic, VerificationReport } from '../../core/verification';
+import type { RuntimeBrowserVerificationReport } from '../../core/runtime-verification';
 import type { KeyboardEvent } from 'react';
 import {
   formatPreservationFindingCode,
@@ -35,6 +36,11 @@ import {
   verificationInfrastructureGuidance,
   verificationTimeoutGuidance,
 } from './operator-recovery-guidance';
+import {
+  formatBrowserVerificationStatus,
+  formatRuntimeServerStatus,
+  runtimeBrowserVerificationFailed,
+} from './runtime-browser-verification-display';
 import {
   changePlanTouchesLockfile,
   changePlanTouchesPackageJson,
@@ -67,6 +73,7 @@ interface ResultPanelProps {
   readonly investigationMemorySaveState?: 'idle' | 'saving' | 'saved' | 'error';
   readonly applyResult?: FileApplyResult;
   readonly verificationReport?: VerificationReport;
+  readonly runtimeBrowserVerificationReport?: RuntimeBrowserVerificationReport;
 }
 
 export function ResultPanel({
@@ -80,6 +87,7 @@ export function ResultPanel({
   investigationMemorySaveState,
   applyResult,
   verificationReport,
+  runtimeBrowserVerificationReport,
 }: ResultPanelProps) {
   return (
     <aside className={styles.resultsPanel} aria-labelledby="results-title">
@@ -134,6 +142,7 @@ export function ResultPanel({
           <VerificationReportView
             applyResult={applyResult}
             verificationReport={verificationReport}
+            runtimeBrowserVerificationReport={runtimeBrowserVerificationReport}
           />
         )}
       </div>
@@ -400,25 +409,50 @@ function ApplyResultView({
 function VerificationReportView({
   verificationReport,
   applyResult,
+  runtimeBrowserVerificationReport,
 }: {
   readonly verificationReport?: VerificationReport;
   readonly applyResult?: FileApplyResult;
+  readonly runtimeBrowserVerificationReport?: RuntimeBrowserVerificationReport;
 }) {
-  if (!verificationReport) {
+  if (!verificationReport && !runtimeBrowserVerificationReport) {
     return (
       <EmptyResult message="Verification evidence appears after an eligible apply result (applied or partially applied)." />
     );
   }
 
-  const failureSummary = summarizeVerificationFailures(verificationReport);
+  const failureSummary =
+    verificationReport === undefined
+      ? { categories: [], failedStages: [], primaryCategory: undefined, primaryLabel: undefined }
+      : summarizeVerificationFailures(verificationReport);
   const appliedVerificationFailure = isAppliedWithVerificationFailure(
     applyResult,
     verificationReport,
   );
+  const browserVerificationFailed = runtimeBrowserVerificationFailed(
+    runtimeBrowserVerificationReport,
+  );
 
   return (
     <div className={styles.resultContent}>
-      <StatusHeading label="Verification status" status={formatLabel(verificationReport.status)} />
+      {verificationReport !== undefined && (
+        <StatusHeading
+          label="Verification status"
+          status={formatLabel(verificationReport.status)}
+        />
+      )}
+      {runtimeBrowserVerificationReport !== undefined && (
+        <RuntimeBrowserVerificationView report={runtimeBrowserVerificationReport} />
+      )}
+      {browserVerificationFailed && (
+        <section className={styles.operatorGuidance} role="status" aria-live="polite">
+          <h3>Browser verification failed</h3>
+          <p>
+            The dev server and browser checks did not pass. Review runtime and route evidence below
+            before requesting correction.
+          </p>
+        </section>
+      )}
       {appliedVerificationFailure && (
         <section className={styles.operatorGuidance} role="status" aria-live="polite">
           <h3>Applied with verification failure</h3>
@@ -428,7 +462,7 @@ function VerificationReportView({
           </p>
         </section>
       )}
-      {failureSummary.primaryLabel !== undefined && (
+      {verificationReport !== undefined && failureSummary.primaryLabel !== undefined && (
         <section className={styles.operatorGuidance} role="status">
           <h3>Failure classification</h3>
           <p>
@@ -443,23 +477,116 @@ function VerificationReportView({
           )}
         </section>
       )}
-      <div className={styles.stageList}>
-        {verificationReport.stages.map((stage) => (
-          <article key={stage.stage} className={styles.stageResult}>
-            <div>
-              <h3>{formatLabel(stage.stage)}</h3>
-              <p>{stage.durationMs} ms</p>
-            </div>
-            <span className={statusClass(stage.status)}>{formatLabel(stage.status)}</span>
-            <StageFailureGuidance stage={stage} failureSummary={failureSummary} />
-            <StageMetadata metadata={stage.metadata} compact={stage.status === 'PASSED'} />
-            <StageDiagnostic diagnostic={stage.diagnostic} stageStatus={stage.status} />
-            <Findings title="Errors" findings={stage.errors} compact />
-            <Findings title="Warnings" findings={stage.warnings} compact />
-          </article>
-        ))}
-      </div>
+      {verificationReport !== undefined && (
+        <div className={styles.stageList}>
+          {verificationReport.stages.map((stage) => (
+            <article key={stage.stage} className={styles.stageResult}>
+              <div>
+                <h3>{formatLabel(stage.stage)}</h3>
+                <p>{stage.durationMs} ms</p>
+              </div>
+              <span className={statusClass(stage.status)}>{formatLabel(stage.status)}</span>
+              <StageFailureGuidance stage={stage} failureSummary={failureSummary} />
+              <StageMetadata metadata={stage.metadata} compact={stage.status === 'PASSED'} />
+              <StageDiagnostic diagnostic={stage.diagnostic} stageStatus={stage.status} />
+              <Findings title="Errors" findings={stage.errors} compact />
+              <Findings title="Warnings" findings={stage.warnings} compact />
+            </article>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+function RuntimeBrowserVerificationView({
+  report,
+}: {
+  readonly report: RuntimeBrowserVerificationReport;
+}) {
+  return (
+    <section className={styles.stageList} aria-labelledby="runtime-browser-verification">
+      <h3 id="runtime-browser-verification">Runtime browser verification</h3>
+      <ResultSummary
+        items={[
+          ['Overall', formatLabel(report.status)],
+          ['Duration', `${report.durationMs} ms`],
+        ]}
+      />
+      <article className={styles.stageResult}>
+        <div>
+          <h4>Runtime server</h4>
+          <p>{report.server.startupDurationMs} ms startup</p>
+        </div>
+        <span className={statusClass(report.server.status)}>
+          {formatRuntimeServerStatus(report.server.status)}
+        </span>
+        {report.server.url !== undefined && (
+          <p className={styles.muted}>
+            URL: <code>{report.server.url}</code>
+          </p>
+        )}
+        {report.server.httpStatus !== undefined && (
+          <p className={styles.muted}>HTTP {report.server.httpStatus}</p>
+        )}
+      </article>
+      <article className={styles.stageResult}>
+        <div>
+          <h4>Browser</h4>
+          <p>{report.browser.durationMs} ms</p>
+        </div>
+        <span className={statusClass(report.browser.status)}>
+          {formatBrowserVerificationStatus(report.browser.status)}
+        </span>
+        <ResultSummary
+          items={[
+            ['Console errors', report.browser.consoleErrorCount],
+            ['Page exceptions', report.browser.pageExceptionCount],
+            ['Failed requests', report.browser.failedRequestCount],
+          ]}
+        />
+      </article>
+      {report.browser.routes.map((route) => (
+        <article key={route.path} className={styles.stageResult}>
+          <div>
+            <h4>{route.path}</h4>
+            <p>{route.durationMs} ms</p>
+          </div>
+          <span className={statusClass(route.status)}>{formatLabel(route.status)}</span>
+          {route.pageTitle !== undefined && (
+            <p className={styles.muted}>Title: {route.pageTitle}</p>
+          )}
+          {route.httpStatus !== undefined && (
+            <p className={styles.muted}>HTTP {route.httpStatus}</p>
+          )}
+          {route.consoleErrors.length > 0 && (
+            <Findings
+              title="Console"
+              findings={route.consoleErrors.map(({ message }) => ({
+                code: 'CONSOLE',
+                message,
+              }))}
+              compact
+            />
+          )}
+          {route.failedRequests.length > 0 && (
+            <Findings
+              title="Network"
+              findings={route.failedRequests.map(({ url, status, failureText }) => ({
+                code: status === undefined ? 'NETWORK' : `HTTP_${status}`,
+                message: failureText ?? url,
+              }))}
+              compact
+            />
+          )}
+          {route.screenshotArtifactId !== undefined && (
+            <p className={styles.muted}>
+              Screenshot: <code>{route.screenshotArtifactId}</code>
+            </p>
+          )}
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -518,7 +645,13 @@ function StageFailureGuidance({
   readonly stage: VerificationReport['stages'][number];
   readonly failureSummary: ReturnType<typeof summarizeVerificationFailures>;
 }) {
-  if (stage.status !== 'FAILED') return null;
+  if (
+    stage.status !== 'FAILED' &&
+    stage.status !== 'TIMEOUT' &&
+    stage.status !== 'PROCESS_FAILED'
+  ) {
+    return null;
+  }
   const hasTimeout = stage.errors.some(({ code }) => code === 'VERIFICATION_COMMAND_TIMEOUT');
   const hasInfrastructure = stage.errors.some(({ code }) =>
     ['STAGE_EXECUTION_FAILED', 'STAGE_CONTRACT_VIOLATION', 'DEPENDENCY_VALIDATION_FAILED'].includes(
@@ -577,19 +710,28 @@ function StageDiagnostic({
   readonly diagnostic?: VerificationDiagnostic;
   readonly stageStatus: VerificationReport['stages'][number]['status'];
 }) {
-  if (stageStatus !== 'FAILED' || diagnostic === undefined) return null;
+  if (
+    stageStatus !== 'FAILED' &&
+    stageStatus !== 'TIMEOUT' &&
+    stageStatus !== 'PROCESS_FAILED' &&
+    stageStatus !== 'OUTPUT_LIMIT_EXCEEDED' &&
+    stageStatus !== 'POLICY_BLOCKED'
+  ) {
+    return null;
+  }
+  if (diagnostic === undefined) return null;
   const stdout = diagnostic.stdoutExcerpt;
   const stderr = diagnostic.stderrExcerpt;
   const hasOutput =
     stdout !== undefined ||
     stderr !== undefined ||
-    diagnostic.commandLabel !== undefined ||
+    diagnostic.commandDescriptorId !== undefined ||
     diagnostic.exitCode !== undefined;
   if (!hasOutput) return null;
   return (
     <section className={styles.verificationDiagnostic} aria-label="Verification diagnostics">
-      {diagnostic.commandLabel !== undefined && (
-        <p className={styles.investigationMeta}>Command: {diagnostic.commandLabel}</p>
+      {diagnostic.commandDescriptorId !== undefined && (
+        <p className={styles.investigationMeta}>Stage: {diagnostic.commandDescriptorId}</p>
       )}
       {diagnostic.exitCode !== undefined && (
         <p className={styles.investigationMeta}>Exit code: {diagnostic.exitCode}</p>
@@ -671,8 +813,20 @@ function formatLabel(value: string): string {
     .join(' ');
 }
 
-function statusClass(status: 'PASSED' | 'FAILED'): string {
-  return status === 'PASSED' ? (styles.statusPassed ?? '') : (styles.statusFailed ?? '');
+function statusClass(status: string): string {
+  if (status === 'PASSED' || status === 'SKIPPED') return styles.statusPassed ?? '';
+  if (status === 'FAILED' || status === 'PARTIALLY_PASSED') return styles.statusFailed ?? '';
+  if (
+    status === 'TIMEOUT' ||
+    status === 'CANCELLED' ||
+    status === 'POLICY_BLOCKED' ||
+    status === 'OUTPUT_LIMIT_EXCEEDED' ||
+    status === 'PROCESS_FAILED' ||
+    status === 'UNAVAILABLE'
+  ) {
+    return styles.statusFailed ?? '';
+  }
+  return styles.statusFailed ?? '';
 }
 
 function handleTabKeyDown(
