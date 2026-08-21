@@ -26,7 +26,7 @@ import {
   type PromptOrchestratorService,
   type PromptPackage,
 } from '../../core/prompt-orchestrator';
-import type { ResponseProcessorService } from '../../core/response-processor';
+import type { ResponseProcessorService, ResponsePackage } from '../../core/response-processor';
 import { PrepareScopeService, type UpdateScopePlan } from '../../core/update-scope';
 import type { ContextPackage, SourceContextPolicy } from '../../core/context-builder';
 import type { VerificationEngineService, VerificationReport } from '../../core/verification';
@@ -565,6 +565,88 @@ export class WorkspaceRuntimeService {
         },
       });
       this.log(correlationId, 'PREPARE_FEATURE_TASK', 'FAILED', startedAt, safeCode(error));
+      throw error;
+    }
+  }
+
+  /**
+   * B3 / ADR-039: commit a server-built ResponsePackage into the existing preparation store
+   * (ChangePlanner → Gate2 → store). Does not mutate the target filesystem and does not approve.
+   */
+  async prepareFromResponsePackage(
+    responsePackage: ResponsePackage,
+  ): Promise<WorkspacePreparation> {
+    await this.assertExternalTargetWorkflowAllowed('PREPARE');
+    const correlationId = this.dependencies.ids.generate();
+    const startedAt = this.dependencies.clock.now();
+    this.log(correlationId, 'PREPARE_FROM_RESPONSE_PACKAGE', 'STARTED');
+    try {
+      if (
+        this.dependencies.workflowLedger !== undefined &&
+        this.dependencies.projectRoot !== undefined &&
+        this.dependencies.projectId !== undefined
+      ) {
+        await this.dependencies.workflowLedger.beginWorkflow({
+          workflowId: correlationId,
+          projectId: this.dependencies.projectId,
+          repositoryRoot: this.dependencies.projectRoot,
+          originalRequest: 'edit-proposal-commit',
+          normalizedRequest: 'edit-proposal-commit',
+        });
+      }
+
+      const changePlan = this.dependencies.changePlanner.plan(
+        responsePackage,
+        undefined,
+        this.dependencies.workspaceBaseline,
+      );
+      const gate2Review = this.gate2ReviewProjection.project(
+        changePlan,
+        this.dependencies.workspaceBaseline,
+      );
+      const expiresAt = new Date(startedAt.getTime() + this.configuration.preparationTtlMs);
+      const applyAuthorizationToken = this.issueApplyAuthorizationToken();
+      this.store.save(
+        correlationId,
+        changePlan,
+        gate2Review,
+        expiresAt,
+        undefined,
+        applyAuthorizationToken,
+      );
+      if (this.dependencies.workflowLedger !== undefined) {
+        await this.dependencies.workflowLedger.recordPrepareCompleted({
+          workflowId: correlationId,
+          preparationId: correlationId,
+          changePlan,
+          gate2Review,
+          providerIdentity: responsePackage.executionResult.executionId,
+          contextPackageDigest: this.dependencies.workflowLedger.digestContextPackage({
+            metadata: { sourceContextCharacters: 0 },
+          }),
+          promptPackageDigest: this.dependencies.workflowLedger.digestPromptPackage({
+            metadata: { templateId: 'edit-proposal' },
+          }),
+          providerAttemptSummary: '0',
+        });
+      }
+      this.log(correlationId, 'PREPARE_FROM_RESPONSE_PACKAGE', 'SUCCEEDED', startedAt);
+      return {
+        preparationId: correlationId,
+        expiresAt: expiresAt.toISOString(),
+        responsePackage,
+        changePlan,
+        gate2Review,
+        ...(applyAuthorizationToken === undefined ? {} : { applyAuthorizationToken }),
+      };
+    } catch (error: unknown) {
+      this.log(
+        correlationId,
+        'PREPARE_FROM_RESPONSE_PACKAGE',
+        'FAILED',
+        startedAt,
+        safeCode(error),
+      );
       throw error;
     }
   }

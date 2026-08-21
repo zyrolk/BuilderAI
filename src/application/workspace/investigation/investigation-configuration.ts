@@ -6,9 +6,9 @@ export interface InvestigationConfiguration {
    */
   readonly maximumFilesScanned: number;
   /**
-   * Maximum number of eligible paths scored during candidate selection. Bounds the cost of
-   * path-level scoring for very large repositories. All eligible paths up to this limit are
-   * scored; only the top `maximumFilesScanned` by path relevance have their content read.
+   * Maximum size of the ranked path inventory retained after scoring the full eligible set.
+   * Path-only scoring runs over all eligible paths (no lexicographic pre-truncation). Content
+   * reads remain capped by `maximumFilesScanned`.
    */
   readonly maximumCandidatePaths: number;
   readonly maximumMatches: number;

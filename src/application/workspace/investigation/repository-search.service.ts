@@ -9,11 +9,8 @@ import {
   INVESTIGATION_PROTECTED_SKIPPED_MESSAGE,
   type InvestigationConfiguration,
 } from './investigation-configuration';
-import {
-  buildInvestigationRankingContext,
-  rankSearchMatches,
-  selectCandidatePathsByRelevance,
-} from './investigation-path-ranking';
+import { selectInventoryByRelevance } from '../codebase-intelligence/inventory-selection';
+import { rankSearchMatches } from './investigation-path-ranking';
 import type { RepositorySearchMatch, RepositorySearchResult } from './investigation.types';
 
 const TEXTUAL_EXTENSIONS = new Set([
@@ -86,14 +83,17 @@ export class RepositorySearchService {
       limitationMessages.push(INVESTIGATION_PROTECTED_SKIPPED_MESSAGE);
     }
 
-    const rankingContext = buildInvestigationRankingContext({ requestText, queries });
-    const inventoryPaths = eligiblePaths.slice(0, this.configuration.maximumCandidatePaths);
-    const pathsToScan = selectCandidatePathsByRelevance(
-      inventoryPaths,
-      rankingContext,
-      this.configuration.maximumFilesScanned,
+    const inventory = selectInventoryByRelevance(
+      eligiblePaths,
+      { requestText, queries },
+      {
+        maximumContentScanPaths: this.configuration.maximumFilesScanned,
+        maximumRankedInventory: this.configuration.maximumCandidatePaths,
+      },
     );
-    let truncated = eligiblePaths.length > pathsToScan.length;
+    const rankingContext = inventory.rankingContext;
+    const pathsToScan = inventory.contentScanPaths;
+    let truncated = inventory.truncated;
     const candidateMatches: RepositorySearchMatch[] = [];
 
     for (const logicalPath of pathsToScan) {

@@ -294,20 +294,15 @@ describe('P0-5: deterministic tie ordering', () => {
 });
 
 describe('P0-5: large repository retrieval remains bounded', () => {
-  it('bounds candidate scoring to maximumCandidatePaths', () => {
+  it('bounds content-scan selection while scoring full eligible inventory by relevance', () => {
     const paths = generatePaddingFiles(10_000);
     paths.push('src/services/supplierSyncSettings.ts');
-    const sorted = paths.sort();
     const context = buildInvestigationRankingContext({
       requestText: 'Fix supplier regression',
       queries: ['supplier'],
     });
 
-    const selected = selectCandidatePathsByRelevance(
-      sorted.slice(0, DEFAULT_INVESTIGATION_CONFIGURATION.maximumCandidatePaths),
-      context,
-      400,
-    );
+    const selected = selectCandidatePathsByRelevance(paths, context, 400);
 
     expect(selected.length).toBeLessThanOrEqual(400);
     expect(selected).toContain('src/services/supplierSyncSettings.ts');
