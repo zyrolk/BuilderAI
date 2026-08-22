@@ -2,6 +2,7 @@ export * from './activity-history.service';
 export * from './activity-history.types';
 export * from './activity-history.schemas';
 export * from './agent-operating';
+export * from './agent-loop';
 export * from './tool-registry';
 export * from './codebase-intelligence';
 export * from './edit-proposal';
