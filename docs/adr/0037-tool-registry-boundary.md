@@ -69,8 +69,8 @@ becoming a second mutation path.
 
 1. Tool Registry **must not** depend on `FileApplyEngineService`, `FileSystemPort`, or any direct
    target mutation API.
-2. Registered B1 tools must be `readOnly: true`, `requiresGate2: false`, `approvalRequirement:
-   NONE`, and must not use authorization action `APPLY`.
+2. Registered B1 tools must be `readOnly: true`, `requiresGate2: false`,
+   `approvalRequirement: NONE`, and must not use authorization action `APPLY`.
 3. Capability classes `MUTATE`, terminal, Git write, WEB, and BROWSER are unavailable in B1.
 4. Provider adapters remain `toolCalling: false`; the registry is never invoked by provider SDKs.
 5. Tool results must not embed forbidden payloads (`fileContents`, `promptPackage`, raw

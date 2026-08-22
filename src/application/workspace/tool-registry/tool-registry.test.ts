@@ -86,6 +86,63 @@ describe('ToolRegistry registration policy', () => {
         execute: async () => ({ summary: 'no' }),
       }),
     ).toThrow(/APPLY/);
+
+    expect(() =>
+      registry.register({
+        definition: baseDefinition({
+          toolId: 'loose_verify',
+          capabilityClass: 'VERIFY',
+          riskLevel: 'LOW',
+          authorizationAction: 'PREPARE',
+        }),
+        execute: async () => ({ summary: 'no' }),
+      }),
+    ).toThrow(/catalog-only|HIGH|unavailable/i);
+
+    expect(() =>
+      registry.register({
+        definition: baseDefinition({
+          toolId: 'verify_gate',
+          capabilityClass: 'VERIFY',
+          riskLevel: 'HIGH',
+          authorizationAction: 'PREPARE',
+          requiresGate2: true,
+        }),
+        execute: async () => ({ summary: 'no' }),
+      }),
+    ).toThrow(/Gate 2|catalog-only/i);
+
+    expect(() =>
+      registry.register({
+        definition: baseDefinition({
+          toolId: 'verify_ok',
+          capabilityClass: 'VERIFY',
+          riskLevel: 'HIGH',
+          authorizationAction: 'PREPARE',
+        }),
+        execute: async () => ({ summary: 'ok' }),
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      registry.register({
+        definition: baseDefinition({
+          toolId: 'no_phases',
+          allowedPhases: [],
+        }),
+        execute: async () => ({ summary: 'no' }),
+      }),
+    ).toThrow(/allowedPhases/i);
+
+    expect(() =>
+      registry.register({
+        definition: baseDefinition({
+          toolId: 'not_scoped',
+          workspaceScoped: false,
+        }),
+        execute: async () => ({ summary: 'no' }),
+      }),
+    ).toThrow(/workspaceScoped/i);
   });
 
   it('rejects duplicate tool ids', () => {

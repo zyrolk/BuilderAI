@@ -24,8 +24,25 @@ export function isProposalOnlyPlanTool(definition: ToolDefinition): boolean {
   );
 }
 
+/**
+ * B4 catalog-only VERIFY tools (ADR-040): readOnly + HIGH + PREPARE + no Gate2 + NONE.
+ * readOnly means no FileApply/APPLY/Gate2 bypass — not zero process side effects.
+ */
+export function isCatalogOnlyVerifyTool(definition: ToolDefinition): boolean {
+  return (
+    definition.capabilityClass === 'VERIFY' &&
+    definition.readOnly === true &&
+    definition.riskLevel === 'HIGH' &&
+    definition.authorizationAction === 'PREPARE' &&
+    definition.requiresGate2 === false &&
+    definition.approvalRequirement === 'NONE'
+  );
+}
+
 function isRegistrableCapabilityClass(capabilityClass: ToolCapabilityClass): boolean {
-  return B1_CLASS_SET.has(capabilityClass) || capabilityClass === 'PLAN';
+  return (
+    B1_CLASS_SET.has(capabilityClass) || capabilityClass === 'PLAN' || capabilityClass === 'VERIFY'
+  );
 }
 
 /**
@@ -70,6 +87,12 @@ export class ToolPolicyGate {
       throw new ToolRegistryError(
         'INVALID_DEFINITION',
         `Tool ${definition.toolId} PLAN tools must be proposal-only (readOnly + PREPARE).`,
+      );
+    }
+    if (definition.capabilityClass === 'VERIFY' && !isCatalogOnlyVerifyTool(definition)) {
+      throw new ToolRegistryError(
+        'INVALID_DEFINITION',
+        `Tool ${definition.toolId} VERIFY tools must be catalog-only (readOnly + HIGH + PREPARE).`,
       );
     }
     if (!definition.workspaceScoped) {
