@@ -26,6 +26,7 @@ export const TOOL_CAPABILITY_CLASSES = [
   'BROWSER',
   'MUTATE',
   'GIT_READ',
+  'GIT_WRITE',
   'WEB',
 ] as const;
 

@@ -16,6 +16,9 @@ describe('workspace route errors', () => {
       403,
     );
     expect(
+      mapWorkspaceRuntimeErrorStatus(new WorkspaceRuntimeError('OPERATOR_APPROVAL_REQUIRED', 'x')),
+    ).toBe(403);
+    expect(
       mapWorkspaceRuntimeErrorStatus(new WorkspaceRuntimeError('CSRF_VALIDATION_FAILED', 'x')),
     ).toBe(403);
     expect(

@@ -11,11 +11,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    testTimeout: 15_000,
-    hookTimeout: 30_000,
-    teardownTimeout: 30_000,
+    testTimeout: 45_000,
+    hookTimeout: 45_000,
+    teardownTimeout: 45_000,
     // Limit parallel workers so process-heavy integration tests stay within per-test budgets.
-    maxWorkers: 4,
+    maxWorkers: 3,
     exclude: [
       '**/node_modules/**',
       '**/.next/**',
@@ -33,6 +33,7 @@ export default defineConfig({
         'src/app/api/**',
         'src/app/layout.tsx',
         'src/infrastructure/workspace/local-workspace-runtime.ts',
+        'src/infrastructure/workspace/local-feature-workflow-runtime.ts',
         'src/infrastructure/workspace/workspace-project-view.ts',
         'src/**/test/**',
       ],

@@ -39,9 +39,41 @@ export function isCatalogOnlyVerifyTool(definition: ToolDefinition): boolean {
   );
 }
 
+/**
+ * B5 GIT_READ tools (ADR-041): readOnly + no Gate2 + NONE + not APPLY.
+ */
+export function isGitReadTool(definition: ToolDefinition): boolean {
+  return (
+    definition.capabilityClass === 'GIT_READ' &&
+    definition.readOnly === true &&
+    definition.requiresGate2 === false &&
+    definition.approvalRequirement === 'NONE' &&
+    definition.authorizationAction !== 'APPLY' &&
+    definition.authorizationAction !== 'GIT_WRITE'
+  );
+}
+
+/**
+ * B5 GIT_WRITE tools (ADR-041): readOnly (no FileApply) + HIGH + OPERATOR + GIT_WRITE auth.
+ */
+export function isGitWriteTool(definition: ToolDefinition): boolean {
+  return (
+    definition.capabilityClass === 'GIT_WRITE' &&
+    definition.readOnly === true &&
+    definition.riskLevel === 'HIGH' &&
+    definition.authorizationAction === 'GIT_WRITE' &&
+    definition.requiresGate2 === false &&
+    definition.approvalRequirement === 'OPERATOR'
+  );
+}
+
 function isRegistrableCapabilityClass(capabilityClass: ToolCapabilityClass): boolean {
   return (
-    B1_CLASS_SET.has(capabilityClass) || capabilityClass === 'PLAN' || capabilityClass === 'VERIFY'
+    B1_CLASS_SET.has(capabilityClass) ||
+    capabilityClass === 'PLAN' ||
+    capabilityClass === 'VERIFY' ||
+    capabilityClass === 'GIT_READ' ||
+    capabilityClass === 'GIT_WRITE'
   );
 }
 
@@ -65,12 +97,6 @@ export class ToolPolicyGate {
         `Tool ${definition.toolId} must not require Gate 2 at registration.`,
       );
     }
-    if (definition.approvalRequirement !== 'NONE') {
-      throw new ToolRegistryError(
-        'INVALID_DEFINITION',
-        `Tool ${definition.toolId} must use approvalRequirement NONE.`,
-      );
-    }
     if (definition.authorizationAction === 'APPLY') {
       throw new ToolRegistryError(
         'INVALID_DEFINITION',
@@ -83,6 +109,21 @@ export class ToolPolicyGate {
         `Tool ${definition.toolId} capabilityClass ${definition.capabilityClass} is unavailable.`,
       );
     }
+
+    if (definition.capabilityClass === 'GIT_WRITE') {
+      if (!isGitWriteTool(definition)) {
+        throw new ToolRegistryError(
+          'INVALID_DEFINITION',
+          `Tool ${definition.toolId} GIT_WRITE tools must be HIGH + OPERATOR + GIT_WRITE auth.`,
+        );
+      }
+    } else if (definition.approvalRequirement !== 'NONE') {
+      throw new ToolRegistryError(
+        'INVALID_DEFINITION',
+        `Tool ${definition.toolId} must use approvalRequirement NONE.`,
+      );
+    }
+
     if (definition.capabilityClass === 'PLAN' && !isProposalOnlyPlanTool(definition)) {
       throw new ToolRegistryError(
         'INVALID_DEFINITION',
@@ -93,6 +134,12 @@ export class ToolPolicyGate {
       throw new ToolRegistryError(
         'INVALID_DEFINITION',
         `Tool ${definition.toolId} VERIFY tools must be catalog-only (readOnly + HIGH + PREPARE).`,
+      );
+    }
+    if (definition.capabilityClass === 'GIT_READ' && !isGitReadTool(definition)) {
+      throw new ToolRegistryError(
+        'INVALID_DEFINITION',
+        `Tool ${definition.toolId} GIT_READ tools must be read-only with approval NONE.`,
       );
     }
     if (!definition.workspaceScoped) {
@@ -136,6 +183,17 @@ export class ToolPolicyGate {
         ok: false,
         code: 'PHASE_NOT_ALLOWED',
         message: `Tool ${definition.toolId} is not allowed in phase ${context.phase}.`,
+      };
+    }
+
+    if (
+      definition.approvalRequirement === 'OPERATOR' &&
+      !context.securityEvidence.operatorApproved
+    ) {
+      return {
+        ok: false,
+        code: 'OPERATOR_APPROVAL_REQUIRED',
+        message: 'Explicit operator approval is required for this tool.',
       };
     }
 

@@ -7,6 +7,7 @@ export const WORKSPACE_AUTHORIZATION_ACTIONS = [
   'INVESTIGATE',
   'MEMORY_WRITE',
   'READINESS',
+  'GIT_WRITE',
 ] as const;
 export type WorkspaceAuthorizationAction = (typeof WORKSPACE_AUTHORIZATION_ACTIONS)[number];
 
@@ -46,6 +47,7 @@ export interface WorkspaceAuthorizationDecision {
     | 'UNAUTHORIZED'
     | 'CSRF_VALIDATION_FAILED'
     | 'APPLY_AUTHORIZATION_REQUIRED'
-    | 'APPROVAL_REQUIRED';
+    | 'APPROVAL_REQUIRED'
+    | 'OPERATOR_APPROVAL_REQUIRED';
   readonly message?: string;
 }

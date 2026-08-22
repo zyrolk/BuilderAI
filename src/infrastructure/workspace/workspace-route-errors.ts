@@ -20,6 +20,7 @@ export function mapWorkspaceRuntimeErrorStatus(
     case 'UNAUTHENTICATED':
       return 401;
     case 'UNAUTHORIZED':
+    case 'OPERATOR_APPROVAL_REQUIRED':
     case 'CSRF_VALIDATION_FAILED':
       return 403;
     case 'PREPARATION_NOT_FOUND':

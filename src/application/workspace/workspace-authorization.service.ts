@@ -61,6 +61,14 @@ export class WorkspaceAuthorizationService {
       };
     }
 
+    if (context.action === 'GIT_WRITE' && !context.evidence.operatorApproved) {
+      return {
+        outcome: 'REJECTED',
+        code: 'OPERATOR_APPROVAL_REQUIRED',
+        message: 'Explicit operator approval is required for Git write.',
+      };
+    }
+
     return { outcome: 'AUTHORIZED' };
   }
 
@@ -106,6 +114,14 @@ export class WorkspaceAuthorizationService {
         outcome: 'REJECTED',
         code: 'APPROVAL_REQUIRED',
         message: 'Explicit approval is required.',
+      };
+    }
+
+    if (context.action === 'GIT_WRITE' && !context.evidence.operatorApproved) {
+      return {
+        outcome: 'REJECTED',
+        code: 'OPERATOR_APPROVAL_REQUIRED',
+        message: 'Explicit operator approval is required for Git write.',
       };
     }
 

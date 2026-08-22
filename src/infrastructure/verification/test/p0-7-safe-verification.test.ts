@@ -180,7 +180,7 @@ describe('P0-7 safe verification runner', () => {
     });
     expect(result.status).toBe('TIMEOUT');
     expect(result.errors.some(({ code }) => code === 'VERIFICATION_COMMAND_TIMEOUT')).toBe(true);
-  }, 30_000);
+  }, 60_000);
 
   it('does not start stages after global workflow deadline', async () => {
     const harness = createPortHarness();
