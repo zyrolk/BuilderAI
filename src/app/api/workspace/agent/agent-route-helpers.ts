@@ -174,6 +174,22 @@ export function assertNoToolTurnAuthorityFields(body: object): void {
   }
 }
 
+/**
+ * ADR-046 provider-tool-turn: reject authority fields and client-supplied intents.
+ * Browser observation approval remains a distinct optional body flag (not Gate2/Git).
+ */
+export function assertNoProviderToolTurnAuthorityFields(body: object): void {
+  assertNoToolTurnAuthorityFields(body);
+  for (const key of ['intent', 'intents', 'toolId', 'arguments', 'args'] as const) {
+    if (Reflect.has(body, key)) {
+      throw new WorkspaceRuntimeError(
+        'INVALID_REQUEST',
+        `Client-supplied ${key} is not accepted on provider-tool-turn; provider proposes intents server-side.`,
+      );
+    }
+  }
+}
+
 export function readToolTurnIntents(body: unknown): readonly unknown[] {
   if (typeof body !== 'object' || body === null) {
     throw new WorkspaceRuntimeError('INVALID_REQUEST', 'Request body must be a JSON object.');

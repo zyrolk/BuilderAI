@@ -1320,6 +1320,12 @@
   color: #f2f4f8;
 }
 
+.agentToolTurnHint {
+  margin: 0.75rem 0 0.45rem !important;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
 .agentToolEvidence ul {
   margin: 0.5rem 0 0;
   padding-left: 1.1rem;

@@ -36,6 +36,7 @@ function createAgentApi(overrides: Partial<HttpAgentWorkflow> = {}): HttpAgentWo
     approve: vi.fn(),
     cancel: vi.fn(),
     toolTurn: vi.fn(),
+    providerToolTurn: vi.fn(),
     ...overrides,
   } as unknown as HttpAgentWorkflow;
 }
@@ -438,6 +439,7 @@ describe('AgentRunPanel', () => {
     expect(agentApi.approve).not.toHaveBeenCalled();
     expect(agentApi.cancel).not.toHaveBeenCalled();
     expect(agentApi.toolTurn).not.toHaveBeenCalled();
+    expect(agentApi.providerToolTurn).not.toHaveBeenCalled();
   });
 
   it('invokes authorized tool turns only via toolTurn API with runId binding', async () => {
@@ -774,5 +776,66 @@ describe('AgentRunPanel', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('PHASE_TOOLS_FORBIDDEN');
     });
     expect(screen.queryByText(/Tool evidence/i)).not.toBeInTheDocument();
+  });
+
+  it('invokes provider-assisted tool turn via providerToolTurn without client intents', async () => {
+    const awaiting = createRun({
+      phase: 'AWAITING_GATE2',
+      status: 'AWAITING_GATE2',
+      awaitingGate2: true,
+    });
+    const providerToolTurn = vi.fn().mockResolvedValue({
+      run: awaiting,
+      budget: {
+        toolCalls: 1,
+        providerTurns: 1,
+        b4VerificationCalls: 0,
+        browserObservationCalls: 0,
+      },
+      evidence: [
+        {
+          toolId: 'search_repository',
+          intentId: 'psi-1',
+          phase: 'AWAITING_GATE2',
+          status: 'SUCCEEDED',
+          recordedAt: NOW,
+          summaryDigest: 'providerdigest0123',
+        },
+      ],
+      turn: {},
+      emission: { source: 'provider-structured-intent', toolCalling: false },
+    });
+    const agentApi = createAgentApi({
+      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
+      plan: vi.fn().mockResolvedValue({
+        run: awaiting,
+        preparationId: 'prep-1',
+        expiresAt: NOW,
+        awaitingGate2: true,
+        gate2Review: {
+          schemaVersion: 1,
+          totalCharacterCount: 10,
+          truncated: false,
+          operationCount: 1,
+        },
+      }),
+      providerToolTurn,
+    });
+
+    render(<AgentRunPanel agentApi={agentApi} />);
+    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
+      target: { value: 'Goal' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
+    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    fireEvent.click(screen.getByRole('button', { name: /Run provider-assisted tool turn/i }));
+
+    await waitFor(() => {
+      expect(providerToolTurn).toHaveBeenCalledTimes(1);
+    });
+    expect(providerToolTurn).toHaveBeenCalledWith('agent-run-001', {});
+    expect(agentApi.toolTurn).not.toHaveBeenCalled();
+    expect(screen.getByText(/providerdigest01/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Tool evidence/i })).toBeInTheDocument();
   });
 });

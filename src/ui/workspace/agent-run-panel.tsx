@@ -345,6 +345,45 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     }
   }
 
+  async function handleProviderAssistedToolTurn(): Promise<void> {
+    if (run === undefined || disabled || busy || toolTurnBusy) return;
+    if (!canOfferToolTurn(run.phase)) {
+      setError('Tool turns are not available in this phase (server remains authoritative).');
+      return;
+    }
+    if (toolTurnInFlight.current) {
+      setError('A tool turn is already in progress for this run.');
+      return;
+    }
+    toolTurnInFlight.current = true;
+    setToolTurnBusy(true);
+    setError(undefined);
+    try {
+      const result = await agentApi.providerToolTurn(run.runId, {
+        ...(browserObservationApproved ? { browserObservationApproved: true } : {}),
+      });
+      setRun(result.run);
+      setToolLoop({
+        evidence: result.evidence,
+        budget: result.budget,
+      });
+      // Never auto-continue: operator must explicitly request another turn.
+      setBrowserObservationApproved(false);
+    } catch (toolError: unknown) {
+      setError(
+        toolError instanceof Error ? toolError.message : 'Provider-assisted tool turn failed.',
+      );
+      try {
+        await refreshStatus(run.runId);
+      } catch {
+        // Keep prior snapshot if refresh fails.
+      }
+    } finally {
+      toolTurnInFlight.current = false;
+      setToolTurnBusy(false);
+    }
+  }
+
   const lifecycle = run
     ? buildAgentLifecycleSteps({
         phase: run.phase,
@@ -535,6 +574,35 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                   {toolTurnBusy ? 'Running tool turn…' : 'Run tool turn'}
                 </button>
               </form>
+              <p className={styles.agentToolTurnHint}>
+                Provider-assisted turn (ADR-046): provider may propose soft intents with
+                toolCalling:false; server validates and executes via the same AgentLoop. Explicit
+                only — no auto-continue.
+              </p>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={busy || toolTurnBusy}
+                onClick={() => void handleProviderAssistedToolTurn()}
+              >
+                {toolTurnBusy
+                  ? 'Running provider-assisted turn…'
+                  : 'Run provider-assisted tool turn'}
+              </button>
+              {(run.phase === 'VERIFYING' || run.phase === 'DIAGNOSING') &&
+                !selectedPreset.needsBrowserApproval && (
+                  <label className={styles.approvalCheck} htmlFor={`${browserApprovalId}-provider`}>
+                    <input
+                      id={`${browserApprovalId}-provider`}
+                      type="checkbox"
+                      checked={browserObservationApproved}
+                      disabled={busy || toolTurnBusy}
+                      onChange={(event) => setBrowserObservationApproved(event.target.checked)}
+                    />
+                    Optional: approve localhost browser observation for provider-assisted turn
+                    (distinct from Gate 2 and Git; never inferred from provider output)
+                  </label>
+                )}
             </section>
           )}
 

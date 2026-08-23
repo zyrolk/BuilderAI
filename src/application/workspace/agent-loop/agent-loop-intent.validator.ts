@@ -38,7 +38,14 @@ export function parseProviderStructuredToolIntent(raw: unknown): ProviderStructu
       'FileApply / approveAndApply cannot be invoked as tools.',
     );
   }
-  if (toolId === 'git_push' || toolId === 'run_shell' || toolId === 'push') {
+  if (
+    toolId === 'git_push' ||
+    toolId === 'run_shell' ||
+    toolId === 'push' ||
+    toolId === 'open_web' ||
+    toolId === 'http_fetch' ||
+    toolId.startsWith('mcp_')
+  ) {
     throw new AgentLoopError('FORBIDDEN_TOOL', `Tool "${toolId}" is not available.`);
   }
 

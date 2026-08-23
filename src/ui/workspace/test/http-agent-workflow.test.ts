@@ -110,4 +110,18 @@ describe('HttpAgentWorkflow', () => {
       }),
     );
   });
+
+  it('posts providerToolTurn only to provider-tool-turn without client intents', async () => {
+    const client = new HttpAgentWorkflow();
+    await client.providerToolTurn('run-3', { browserObservationApproved: true });
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspace/agent/run/run-3/provider-tool-turn',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+        body: JSON.stringify({ browserObservationApproved: true }),
+      }),
+    );
+  });
 });

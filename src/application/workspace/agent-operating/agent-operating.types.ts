@@ -6,7 +6,11 @@ import type {
   WorkspaceRequestSecurityEvidence,
   WorkspaceSecurityConfiguration,
 } from '../workspace-authorization.types';
-import type { WorkspaceCompletion, WorkspacePreparation } from '../workspace-runtime.types';
+import type {
+  WorkspaceCompletion,
+  WorkspacePreparation,
+  ProviderExecutionPort,
+} from '../workspace-runtime.types';
 import type { AgentLoopService } from '../agent-loop/agent-loop.service';
 import type {
   AgentLoopBudgetSnapshot,
@@ -107,6 +111,12 @@ export interface AgentOperatingDependencies {
    * Tool turns fail closed when absent.
    */
   readonly loop?: AgentLoopService;
+  /**
+   * B10 / ADR-046: optional for legacy fixtures; production must supply ProviderExecutionPort.
+   * Provider-assisted turns fail closed when absent. Never enables toolCalling.
+   */
+  readonly providerExecution?: ProviderExecutionPort;
+  readonly providerTimeoutMs?: number;
   readonly projectRoot?: string;
   readonly security?: WorkspaceSecurityConfiguration;
 }

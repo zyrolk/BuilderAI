@@ -43,6 +43,7 @@ export const PROVIDER_AUTHORITY_FIELD_NAMES = [
   'changePlan',
   'gate2Review',
   'operatorApproved',
+  'browserObservationApproved',
   'repositoryRoot',
   'gitExecutable',
   'cwd',
@@ -54,6 +55,11 @@ export const PROVIDER_AUTHORITY_FIELD_NAMES = [
   'csrfToken',
   'accessToken',
   'baselineDigest',
+  // Binding / lifecycle forgery (ADR-046) — server-owned only.
+  'projectId',
+  'runId',
+  'phase',
+  'principalId',
 ] as const;
 
 export type AgentLoopTurnStatus =

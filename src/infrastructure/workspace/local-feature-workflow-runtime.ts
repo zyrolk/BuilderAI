@@ -17,6 +17,7 @@ import {
   WorkspaceRuntimeService,
   ProjectMemoryService,
 } from '../../application/workspace';
+import type { ProviderExecutionPort } from '../../application/workspace/workspace-runtime.types';
 import { InMemoryInvestigationHandoffStore } from '../../application/workspace/investigation';
 import {
   createDefaultInvestigationService,
@@ -85,6 +86,9 @@ type LocalWorkspaceServices = {
   readonly activityHistory: ActivityHistoryService;
   readonly projectMemory?: ProjectMemoryService;
   readonly security: WorkspaceSecurityConfiguration;
+  /** Shared provider execution port (toolCalling:false) for investigation / B10 emission. */
+  readonly providerExecution: ProviderExecutionPort;
+  readonly providerTimeoutMs: number;
 };
 
 let singleton: LocalWorkspaceServices | undefined;
@@ -335,6 +339,8 @@ function createLocalWorkspaceServices(): LocalWorkspaceServices {
     activityHistory,
     projectMemory,
     security: configuration.security,
+    providerExecution,
+    providerTimeoutMs: configuration.workspace.providerTimeoutMs,
   };
 }
 
@@ -488,6 +494,8 @@ function createAgentOperatingService(services: LocalWorkspaceServices): AgentOpe
     loop: agentLoop.loop,
     projectRoot: configuration.projectRoot,
     security: services.security,
+    providerExecution: services.providerExecution,
+    providerTimeoutMs: services.providerTimeoutMs,
   });
 }
 

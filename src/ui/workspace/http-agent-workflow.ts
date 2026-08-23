@@ -114,6 +114,10 @@ export interface AgentToolTurnResponse {
     readonly errorCode?: string;
   }[];
   readonly turn: Record<string, unknown>;
+  readonly emission?: {
+    readonly source: string;
+    readonly toolCalling: boolean;
+  };
 }
 
 /**
@@ -174,6 +178,26 @@ export class HttpAgentWorkflow {
       ...(body.browserObservationApproved === true ? { browserObservationApproved: true } : {}),
     };
     return post(`/api/workspace/agent/run/${encodeURIComponent(runId)}/tool-turn`, safeBody);
+  }
+
+  /**
+   * ADR-046: explicit provider-assisted tool turn. Never sends client intents;
+   * server proposes via toolCalling:false provider output then executes via AgentLoop.
+   */
+  async providerToolTurn(
+    runId: string,
+    body: {
+      /** Distinct B7 OPERATOR signal — never inferred from Gate2/Git or provider output. */
+      readonly browserObservationApproved?: boolean;
+    } = {},
+  ): Promise<AgentToolTurnResponse> {
+    const safeBody: { readonly browserObservationApproved?: boolean } = {
+      ...(body.browserObservationApproved === true ? { browserObservationApproved: true } : {}),
+    };
+    return post(
+      `/api/workspace/agent/run/${encodeURIComponent(runId)}/provider-tool-turn`,
+      safeBody,
+    );
   }
 }
 

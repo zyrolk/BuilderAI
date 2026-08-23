@@ -28,6 +28,7 @@ import type {
 import type { AgentLoopExecuteContext } from '../agent-loop/agent-loop.service';
 import { AgentLoopError } from '../agent-loop/agent-loop.types';
 import { createWorkspaceAuthorizationContext } from '../workspace-authorization.service';
+import { ProviderStructuredIntentEmissionService } from './provider-structured-intent-emission.service';
 
 const EXPLAIN_SUMMARY_MAX = 1_200;
 
@@ -125,6 +126,66 @@ export class AgentOperatingService {
       }
       throw error;
     }
+  }
+
+  /**
+   * B10 / ADR-046: provider proposes structured intents (toolCalling:false); server executes
+   * exclusively via existing executeToolTurn / AgentLoop. Explicit trigger only — no auto-continue.
+   */
+  async executeProviderAssistedToolTurn(
+    runId: string,
+    input: {
+      readonly securityEvidence?: WorkspaceRequestSecurityEvidence;
+      readonly cancellation?: ExecutionCancellationToken;
+    } = {},
+  ): Promise<AgentOperatingToolTurnResult> {
+    await this.whenReady();
+    this.requireLoop();
+    const providerExecution = this.dependencies.providerExecution;
+    if (providerExecution === undefined) {
+      throw new AgentRunError(
+        'INVALID_REFERENCE',
+        'Provider structured-intent emission is not composed for this AgentOperating instance.',
+      );
+    }
+    const run = await this.dependencies.agentRuns.require(runId);
+    this.assertRunProjectBinding(run.projectId);
+    if (
+      run.phase === 'COMPLETED' ||
+      run.phase === 'FAILED' ||
+      run.phase === 'CANCELLED' ||
+      run.phase === 'EXPLAINING'
+    ) {
+      throw new AgentRunError(
+        'INVALID_TRANSITION',
+        `Tool turns are not allowed in phase ${run.phase}.`,
+      );
+    }
+    if (run.phase === 'EXECUTING') {
+      throw new AgentRunError(
+        'INVALID_TRANSITION',
+        'EXECUTING is tool-free; Gate2 → approveAndApply → FileApply is the sole source mutation path.',
+      );
+    }
+
+    const emission = new ProviderStructuredIntentEmissionService({
+      providerExecution,
+      ids: this.dependencies.ids,
+      clock: this.dependencies.clock,
+      ...(this.dependencies.providerTimeoutMs === undefined
+        ? {}
+        : { providerTimeoutMs: this.dependencies.providerTimeoutMs }),
+    });
+    const intents = await emission.proposeIntents({
+      run,
+      ...(input.cancellation === undefined ? {} : { cancellation: input.cancellation }),
+    });
+    // Never auto-continue: execute exactly one assisted turn through the existing path.
+    return this.executeToolTurn(runId, {
+      intents,
+      ...(input.securityEvidence === undefined ? {} : { securityEvidence: input.securityEvidence }),
+      ...(input.cancellation === undefined ? {} : { cancellation: input.cancellation }),
+    });
   }
 
   /** Bounded tool-loop digests for operator visibility (hydrate-only; never auto-continues). */

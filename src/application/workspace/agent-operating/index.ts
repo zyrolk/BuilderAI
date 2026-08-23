@@ -8,3 +8,6 @@ export * from './agent-operating.service';
 export * from './explain-artifact.types';
 export * from './explain-artifact.assembler';
 export * from './explain-artifact.persistence';
+export * from './provider-structured-intent-emission.service';
+export * from './provider-structured-intent-output-contract';
+export * from './provider-structured-intent-prompt';
