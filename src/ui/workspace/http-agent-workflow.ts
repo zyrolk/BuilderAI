@@ -36,8 +36,30 @@ export interface AgentStartResponse {
   readonly investigationId: string;
 }
 
+export interface AgentToolEvidenceItem {
+  readonly toolId: string;
+  readonly intentId: string;
+  readonly phase: string;
+  readonly status: string;
+  readonly recordedAt: string;
+  readonly summaryDigest: string;
+  readonly errorCode?: string;
+}
+
+export interface AgentToolLoopStatus {
+  readonly evidence: readonly AgentToolEvidenceItem[];
+  readonly budget?: {
+    readonly toolCalls: number;
+    readonly providerTurns: number;
+    readonly b4VerificationCalls: number;
+    readonly browserObservationCalls: number;
+  };
+}
+
 export interface AgentStatusResponse {
   readonly run: AgentRunHttpView;
+  /** Bounded AgentLoop digests from B8 status projection (ADR-044/045). */
+  readonly toolLoop?: AgentToolLoopStatus;
 }
 
 export interface AgentPlanResponse {
@@ -137,10 +159,21 @@ export class HttpAgentWorkflow {
     body: {
       readonly intent?: unknown;
       readonly intents?: readonly unknown[];
+      /** Distinct B7 OPERATOR signal — never inferred from Gate2/Git. */
       readonly browserObservationApproved?: boolean;
     },
   ): Promise<AgentToolTurnResponse> {
-    return post(`/api/workspace/agent/run/${encodeURIComponent(runId)}/tool-turn`, body);
+    // Strip accidental authority keys client-side; server still rejects them.
+    const safeBody: {
+      readonly intent?: unknown;
+      readonly intents?: readonly unknown[];
+      readonly browserObservationApproved?: boolean;
+    } = {
+      ...(body.intent === undefined ? {} : { intent: body.intent }),
+      ...(body.intents === undefined ? {} : { intents: body.intents }),
+      ...(body.browserObservationApproved === true ? { browserObservationApproved: true } : {}),
+    };
+    return post(`/api/workspace/agent/run/${encodeURIComponent(runId)}/tool-turn`, safeBody);
   }
 }
 

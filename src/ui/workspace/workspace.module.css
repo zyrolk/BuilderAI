@@ -1284,6 +1284,49 @@
   gap: 0.5rem;
 }
 
+.agentToolTurnCard,
+.agentToolEvidence {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.agentToolTurnCard h3,
+.agentToolEvidence h3,
+.agentToolTurnCard p,
+.agentToolEvidence p {
+  margin: 0.35rem 0 0;
+}
+
+.agentToolTurnForm {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.agentToolTurnForm label {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.agentToolTurnForm select,
+.agentToolTurnForm input[type='text'] {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0c1018;
+  color: #f2f4f8;
+}
+
+.agentToolEvidence ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.85rem;
+}
+
 .agentGate2Summary {
   margin: 0.5rem 0 0.75rem;
   padding-left: 1.1rem;

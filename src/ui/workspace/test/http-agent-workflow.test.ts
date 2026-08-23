@@ -64,4 +64,50 @@ describe('HttpAgentWorkflow', () => {
     expect('apply' in client).toBe(false);
     expect(Object.getOwnPropertyNames(Object.getPrototypeOf(client))).not.toContain('apply');
   });
+
+  it('posts toolTurn only to the B8 tool-turn route and strips authority fields', async () => {
+    const client = new HttpAgentWorkflow();
+    await client.toolTurn('run-1', {
+      intent: { toolId: 'search_repository', intentId: 'i1', arguments: { query: 'a' } },
+      browserObservationApproved: true,
+      approved: true,
+      applyAuthorizationToken: 'tok',
+      operatorApproved: true,
+      phase: 'EXECUTING',
+      projectId: 'evil',
+    } as {
+      readonly intent: unknown;
+      readonly browserObservationApproved?: boolean;
+    });
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspace/agent/run/run-1/tool-turn',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          intent: { toolId: 'search_repository', intentId: 'i1', arguments: { query: 'a' } },
+          browserObservationApproved: true,
+        }),
+      }),
+    );
+  });
+
+  it('does not invent browserObservationApproved when false/absent', async () => {
+    const client = new HttpAgentWorkflow();
+    await client.toolTurn('run-2', {
+      intent: { toolId: 'inspect_readiness', intentId: 'i2', arguments: {} },
+      browserObservationApproved: false,
+    });
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const call = fetchMock.mock.calls.find((entry) => String(entry[0]).includes('/tool-turn'));
+    expect(call?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          intent: { toolId: 'inspect_readiness', intentId: 'i2', arguments: {} },
+        }),
+      }),
+    );
+  });
 });

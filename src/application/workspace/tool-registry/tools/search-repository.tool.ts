@@ -49,7 +49,8 @@ const DEFINITION: ToolDefinition = {
   supportsCancellation: true,
   evidencePolicy: 'SUMMARY',
   auditPolicy: 'DIGEST',
-  allowedPhases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
+  // AWAITING_GATE2: align with AUTONOMOUS_LOOP SEARCH allowlist (ADR-042/045); read-only only.
+  allowedPhases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
 };
 
 export function createSearchRepositoryTool(deps: SearchRepositoryToolDeps): ToolHandler {

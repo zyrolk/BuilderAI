@@ -42,7 +42,15 @@ const DEFINITION: ToolDefinition = {
   supportsCancellation: true,
   evidencePolicy: 'SUMMARY',
   auditPolicy: 'DIGEST',
-  allowedPhases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING', 'FAILED'],
+  // AWAITING_GATE2: align with AUTONOMOUS_LOOP INSPECT allowlist (ADR-042/045); read-only only.
+  allowedPhases: [
+    'UNDERSTANDING',
+    'PLANNING',
+    'AWAITING_GATE2',
+    'DIAGNOSING',
+    'CORRECTING',
+    'FAILED',
+  ],
 };
 
 export function createInspectReadinessTool(deps: InspectReadinessToolDeps): ToolHandler {

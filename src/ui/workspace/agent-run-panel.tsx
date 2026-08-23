@@ -14,11 +14,53 @@ import {
   type AgentApproveSuccessResponse,
   type AgentGate2Summary,
   type AgentRunHttpView,
+  type AgentToolLoopStatus,
   type ExplainArtifact,
 } from './http-agent-workflow';
 import styles from './workspace.module.css';
 
 const POLL_INTERVAL_MS = 2_000;
+
+/** Client UX hint only — server AgentOperating/AgentLoop remain authoritative (ADR-045). */
+const TOOL_TURN_UI_PHASES = new Set([
+  'UNDERSTANDING',
+  'PLANNING',
+  'AWAITING_GATE2',
+  'VERIFYING',
+  'DIAGNOSING',
+  'CORRECTING',
+]);
+
+const TOOL_PRESETS = [
+  {
+    id: 'search_repository',
+    label: 'Search repository (read-only)',
+    needsQuery: true,
+    needsBrowserApproval: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'inspect_readiness',
+    label: 'Inspect readiness (read-only)',
+    needsQuery: false,
+    needsBrowserApproval: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'inspect_browser_verification_catalog',
+    label: 'Inspect browser catalog (read-only)',
+    needsQuery: false,
+    needsBrowserApproval: false,
+    phases: ['VERIFYING', 'DIAGNOSING'],
+  },
+  {
+    id: 'run_local_browser_observation',
+    label: 'Local browser observation (requires distinct browser approval)',
+    needsQuery: false,
+    needsBrowserApproval: true,
+    phases: ['VERIFYING', 'DIAGNOSING'],
+  },
+] as const;
 
 interface AgentRunPanelProps {
   readonly agentApi?: HttpAgentWorkflow;
@@ -35,12 +77,34 @@ function shouldLoadExplain(run: AgentRunHttpView): boolean {
   );
 }
 
+function canOfferToolTurn(phase: string): boolean {
+  // Server rejects by AgentRun phase (not HTTP status). EXECUTING / terminal / EXPLAINING stay tool-free.
+  if (phase === 'EXECUTING' || phase === 'EXPLAINING') return false;
+  if (phase === 'COMPLETED' || phase === 'FAILED' || phase === 'CANCELLED') return false;
+  return TOOL_TURN_UI_PHASES.has(phase);
+}
+
+function presetsForPhase(phase: string): readonly (typeof TOOL_PRESETS)[number][] {
+  return TOOL_PRESETS.filter((preset) => (preset.phases as readonly string[]).includes(phase));
+}
+
+function createIntentId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `ui-${crypto.randomUUID()}`;
+  }
+  return `ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: AgentRunPanelProps) {
   const agentApi = useMemo(() => injectedApi ?? new HttpAgentWorkflow(), [injectedApi]);
   const goalId = useId();
   const approvalId = useId();
+  const toolPresetId = useId();
+  const toolQueryId = useId();
+  const browserApprovalId = useId();
   const [goal, setGoal] = useState('');
   const [busy, setBusy] = useState(false);
+  const [toolTurnBusy, setToolTurnBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [run, setRun] = useState<AgentRunHttpView>();
   const [gate2Summary, setGate2Summary] = useState<AgentGate2Summary>();
@@ -48,7 +112,13 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   const [approved, setApproved] = useState(false);
   const [approveResult, setApproveResult] = useState<AgentApproveSuccessResponse>();
   const [explain, setExplain] = useState<ExplainArtifact>();
+  const [toolLoop, setToolLoop] = useState<AgentToolLoopStatus>();
+  const [toolPreset, setToolPreset] =
+    useState<(typeof TOOL_PRESETS)[number]['id']>('search_repository');
+  const [toolQuery, setToolQuery] = useState('');
+  const [browserObservationApproved, setBrowserObservationApproved] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const toolTurnInFlight = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current !== undefined) {
@@ -72,6 +142,9 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     async (runId: string): Promise<AgentRunHttpView> => {
       const status = await agentApi.getStatus(runId);
       setRun(status.run);
+      if (status.toolLoop !== undefined) {
+        setToolLoop(status.toolLoop);
+      }
       if (shouldLoadExplain(status.run)) {
         try {
           await loadExplain(runId);
@@ -107,7 +180,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   async function handleStart(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const normalized = goal.trim();
-    if (normalized.length === 0 || disabled || busy) return;
+    if (normalized.length === 0 || disabled || busy || toolTurnBusy) return;
     setBusy(true);
     setError(undefined);
     setApproveResult(undefined);
@@ -115,6 +188,8 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     setGate2Summary(undefined);
     setApplyAuthorizationToken(undefined);
     setExplain(undefined);
+    setToolLoop(undefined);
+    setBrowserObservationApproved(false);
     stopPolling();
     try {
       const started = await agentApi.start(normalized);
@@ -131,7 +206,9 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   }
 
   async function handleApprove(): Promise<void> {
-    if (run === undefined || !approved || disabled || busy || !run.awaitingGate2) return;
+    if (run === undefined || !approved || disabled || busy || toolTurnBusy || !run.awaitingGate2) {
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
@@ -165,7 +242,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   }
 
   async function handleCancel(): Promise<void> {
-    if (run === undefined || disabled || busy) return;
+    if (run === undefined || disabled || busy || toolTurnBusy) return;
     if (!isAgentRunCancellable(run.phase, run.status)) return;
     setBusy(true);
     setError(undefined);
@@ -187,7 +264,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   }
 
   async function handleRefresh(): Promise<void> {
-    if (run === undefined || busy) return;
+    if (run === undefined || busy || toolTurnBusy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -196,6 +273,75 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
       setError(refreshError instanceof Error ? refreshError.message : 'Status refresh failed.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleToolTurn(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (run === undefined || disabled || busy || toolTurnBusy) return;
+    if (!canOfferToolTurn(run.phase)) {
+      setError('Tool turns are not available in this phase (server remains authoritative).');
+      return;
+    }
+    if (toolTurnInFlight.current) {
+      setError('A tool turn is already in progress for this run.');
+      return;
+    }
+    const preset =
+      presetsForPhase(run.phase).find((entry) => entry.id === toolPreset) ??
+      presetsForPhase(run.phase)[0];
+    if (preset === undefined) {
+      setError('No bounded tools are available in this phase.');
+      return;
+    }
+    if (preset.needsQuery && toolQuery.trim().length === 0) {
+      setError('A search query is required for this tool.');
+      return;
+    }
+    if (preset.needsBrowserApproval && !browserObservationApproved) {
+      setError(
+        'Local browser observation requires explicit browser OPERATOR approval (distinct from Gate 2 and Git).',
+      );
+      return;
+    }
+
+    const intent = {
+      toolId: preset.id,
+      intentId: createIntentId(),
+      arguments: preset.needsQuery
+        ? { query: toolQuery.trim() }
+        : preset.id === 'run_local_browser_observation'
+          ? { routeIds: ['home'] }
+          : {},
+    };
+
+    toolTurnInFlight.current = true;
+    setToolTurnBusy(true);
+    setError(undefined);
+    try {
+      const result = await agentApi.toolTurn(run.runId, {
+        intent,
+        ...(preset.needsBrowserApproval && browserObservationApproved
+          ? { browserObservationApproved: true }
+          : {}),
+      });
+      setRun(result.run);
+      setToolLoop({
+        evidence: result.evidence,
+        budget: result.budget,
+      });
+      // Never auto-continue: operator must explicitly request another turn.
+      setBrowserObservationApproved(false);
+    } catch (toolError: unknown) {
+      setError(toolError instanceof Error ? toolError.message : 'Tool turn failed.');
+      try {
+        await refreshStatus(run.runId);
+      } catch {
+        // Keep prior snapshot if refresh fails.
+      }
+    } finally {
+      toolTurnInFlight.current = false;
+      setToolTurnBusy(false);
     }
   }
 
@@ -209,9 +355,22 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
       })
     : [];
 
-  const canApprove = Boolean(run?.awaitingGate2) && approved && !disabled && !busy;
+  const canApprove = Boolean(run?.awaitingGate2) && approved && !disabled && !busy && !toolTurnBusy;
   const canCancel =
-    run !== undefined && isAgentRunCancellable(run.phase, run.status) && !disabled && !busy;
+    run !== undefined &&
+    isAgentRunCancellable(run.phase, run.status) &&
+    !disabled &&
+    !busy &&
+    !toolTurnBusy;
+  const showToolTurn = run !== undefined && canOfferToolTurn(run.phase) && !disabled;
+  const availablePresets = useMemo(
+    () => (run !== undefined ? presetsForPhase(run.phase) : TOOL_PRESETS),
+    [run],
+  );
+  const selectedPreset =
+    availablePresets.find((entry) => entry.id === toolPreset) ??
+    availablePresets[0] ??
+    TOOL_PRESETS[0];
 
   return (
     <section className={styles.featurePanel} aria-labelledby="agent-run-title">
@@ -219,7 +378,8 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
         <h2 id="agent-run-title">Agent run</h2>
         <p>
           Gated agent workflow over existing prepare / Gate 2 / apply. The server remains
-          authoritative — no automatic approval or mutation.
+          authoritative — no automatic approval or mutation. Tool turns use the existing B8
+          tool-turn API only.
         </p>
       </header>
 
@@ -230,13 +390,16 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
           value={goal}
           maxLength={4_000}
           rows={3}
-          disabled={disabled || busy}
+          disabled={disabled || busy || toolTurnBusy}
           placeholder="Describe the outcome you want BuilderAI to understand, plan, and execute…"
           onChange={(event) => setGoal(event.target.value)}
         />
         <div className={styles.formFooter}>
           <span>{goal.length.toLocaleString()} / 4,000</span>
-          <button type="submit" disabled={disabled || busy || goal.trim().length === 0}>
+          <button
+            type="submit"
+            disabled={disabled || busy || toolTurnBusy || goal.trim().length === 0}
+          >
             {busy && run === undefined ? 'Starting…' : 'Start agent run'}
           </button>
         </div>
@@ -292,7 +455,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
             <button
               type="button"
               className={styles.secondaryButton}
-              disabled={busy}
+              disabled={busy || toolTurnBusy}
               onClick={() => void handleRefresh()}
             >
               Refresh status
@@ -306,6 +469,103 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
               Cancel run
             </button>
           </div>
+
+          {showToolTurn && (
+            <section className={styles.agentToolTurnCard} aria-labelledby="agent-tool-turn-title">
+              <h3 id="agent-tool-turn-title">Bounded tool turn</h3>
+              <p>
+                Explicit operator action only. Calls the existing authenticated B8 tool-turn API.
+                Does not approve Gate 2, apply files, write Git, or invent browser approval.
+              </p>
+              <form
+                className={styles.agentToolTurnForm}
+                onSubmit={(event) => void handleToolTurn(event)}
+              >
+                <label htmlFor={toolPresetId}>Tool</label>
+                <select
+                  id={toolPresetId}
+                  value={selectedPreset.id}
+                  disabled={busy || toolTurnBusy || availablePresets.length === 0}
+                  onChange={(event) => {
+                    setToolPreset(event.target.value as (typeof TOOL_PRESETS)[number]['id']);
+                    setBrowserObservationApproved(false);
+                  }}
+                >
+                  {availablePresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedPreset.needsQuery && (
+                  <>
+                    <label htmlFor={toolQueryId}>Search query</label>
+                    <input
+                      id={toolQueryId}
+                      type="text"
+                      value={toolQuery}
+                      maxLength={200}
+                      disabled={busy || toolTurnBusy}
+                      onChange={(event) => setToolQuery(event.target.value)}
+                      placeholder="Bounded repository search…"
+                    />
+                  </>
+                )}
+
+                {selectedPreset.needsBrowserApproval && (
+                  <label className={styles.approvalCheck} htmlFor={browserApprovalId}>
+                    <input
+                      id={browserApprovalId}
+                      type="checkbox"
+                      checked={browserObservationApproved}
+                      disabled={busy || toolTurnBusy}
+                      onChange={(event) => setBrowserObservationApproved(event.target.checked)}
+                    />
+                    I explicitly approve localhost browser observation for this turn (distinct from
+                    Gate 2 and Git approval)
+                  </label>
+                )}
+
+                <button
+                  type="submit"
+                  className={styles.secondaryButton}
+                  disabled={busy || toolTurnBusy}
+                >
+                  {toolTurnBusy ? 'Running tool turn…' : 'Run tool turn'}
+                </button>
+              </form>
+            </section>
+          )}
+
+          {toolLoop !== undefined && (
+            <section
+              className={styles.agentToolEvidence}
+              aria-labelledby="agent-tool-evidence-title"
+            >
+              <h3 id="agent-tool-evidence-title">Tool evidence (bounded digests)</h3>
+              {toolLoop.budget !== undefined && (
+                <p>
+                  Budget: {toolLoop.budget.toolCalls} tool calls · {toolLoop.budget.providerTurns}{' '}
+                  provider turns · {toolLoop.budget.b4VerificationCalls} verification ·{' '}
+                  {toolLoop.budget.browserObservationCalls} browser
+                </p>
+              )}
+              {toolLoop.evidence.length === 0 ? (
+                <p>No digests yet.</p>
+              ) : (
+                <ul>
+                  {toolLoop.evidence.map((item) => (
+                    <li key={`${item.intentId}-${item.toolId}-${item.recordedAt}`}>
+                      <strong>{item.toolId}</strong> · {item.status} · {item.phase} ·{' '}
+                      {item.summaryDigest.slice(0, 16)}…
+                      {item.errorCode !== undefined ? ` · ${item.errorCode}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           {run.awaitingGate2 && (
             <section className={styles.approvalCard} aria-labelledby="agent-gate2-title">
@@ -336,7 +596,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                   id={approvalId}
                   type="checkbox"
                   checked={approved}
-                  disabled={disabled || busy}
+                  disabled={disabled || busy || toolTurnBusy}
                   onChange={(event) => setApproved(event.target.checked)}
                 />
                 I reviewed the planned changes and approve applying them
