@@ -67,13 +67,44 @@ export function isGitWriteTool(definition: ToolDefinition): boolean {
   );
 }
 
+/**
+ * B7 catalog tool (ADR-043): BROWSER + LOW + NONE + no APPLY/GIT_WRITE.
+ */
+export function isBrowserCatalogTool(definition: ToolDefinition): boolean {
+  return (
+    definition.capabilityClass === 'BROWSER' &&
+    definition.readOnly === true &&
+    definition.riskLevel === 'LOW' &&
+    definition.requiresGate2 === false &&
+    definition.approvalRequirement === 'NONE' &&
+    definition.authorizationAction !== 'APPLY' &&
+    definition.authorizationAction !== 'GIT_WRITE' &&
+    definition.authorizationAction !== 'BROWSER_OBSERVE'
+  );
+}
+
+/**
+ * B7 observation tool (ADR-043): BROWSER + HIGH + OPERATOR + BROWSER_OBSERVE.
+ */
+export function isBrowserObservationTool(definition: ToolDefinition): boolean {
+  return (
+    definition.capabilityClass === 'BROWSER' &&
+    definition.readOnly === true &&
+    definition.riskLevel === 'HIGH' &&
+    definition.authorizationAction === 'BROWSER_OBSERVE' &&
+    definition.requiresGate2 === false &&
+    definition.approvalRequirement === 'OPERATOR'
+  );
+}
+
 function isRegistrableCapabilityClass(capabilityClass: ToolCapabilityClass): boolean {
   return (
     B1_CLASS_SET.has(capabilityClass) ||
     capabilityClass === 'PLAN' ||
     capabilityClass === 'VERIFY' ||
     capabilityClass === 'GIT_READ' ||
-    capabilityClass === 'GIT_WRITE'
+    capabilityClass === 'GIT_WRITE' ||
+    capabilityClass === 'BROWSER'
   );
 }
 
@@ -116,6 +147,22 @@ export class ToolPolicyGate {
           'INVALID_DEFINITION',
           `Tool ${definition.toolId} GIT_WRITE tools must be HIGH + OPERATOR + GIT_WRITE auth.`,
         );
+      }
+    } else if (definition.capabilityClass === 'BROWSER') {
+      if (!isBrowserCatalogTool(definition) && !isBrowserObservationTool(definition)) {
+        throw new ToolRegistryError(
+          'INVALID_DEFINITION',
+          `Tool ${definition.toolId} BROWSER tools must be catalog (LOW+NONE) or observation (HIGH+OPERATOR+BROWSER_OBSERVE).`,
+        );
+      }
+      const phases = new Set(definition.allowedPhases);
+      for (const phase of phases) {
+        if (phase !== 'VERIFYING' && phase !== 'DIAGNOSING') {
+          throw new ToolRegistryError(
+            'INVALID_DEFINITION',
+            `Tool ${definition.toolId} BROWSER tools may only allow VERIFYING/DIAGNOSING.`,
+          );
+        }
       }
     } else if (definition.approvalRequirement !== 'NONE') {
       throw new ToolRegistryError(
@@ -186,15 +233,23 @@ export class ToolPolicyGate {
       };
     }
 
-    if (
-      definition.approvalRequirement === 'OPERATOR' &&
-      !context.securityEvidence.operatorApproved
-    ) {
-      return {
-        ok: false,
-        code: 'OPERATOR_APPROVAL_REQUIRED',
-        message: 'Explicit operator approval is required for this tool.',
-      };
+    if (definition.approvalRequirement === 'OPERATOR') {
+      if (definition.authorizationAction === 'BROWSER_OBSERVE') {
+        if (context.securityEvidence.browserObservationApproved !== true) {
+          return {
+            ok: false,
+            code: 'BROWSER_OPERATOR_APPROVAL_REQUIRED',
+            message:
+              'Explicit browser observation approval is required (distinct from Gate2 and Git).',
+          };
+        }
+      } else if (!context.securityEvidence.operatorApproved) {
+        return {
+          ok: false,
+          code: 'OPERATOR_APPROVAL_REQUIRED',
+          message: 'Explicit operator approval is required for this tool.',
+        };
+      }
     }
 
     const decision = this.authorization.authorize({

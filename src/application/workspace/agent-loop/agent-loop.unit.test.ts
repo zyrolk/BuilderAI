@@ -71,6 +71,18 @@ describe('ADR-042 agent-loop unit matrix', () => {
     expect(
       assertAutonomousLoopToolAllowed(
         'VERIFYING',
+        def({ toolId: 'run_local_browser_observation', capabilityClass: 'BROWSER' }),
+      ).ok,
+    ).toBe(true);
+    expect(
+      assertAutonomousLoopToolAllowed(
+        'UNDERSTANDING',
+        def({ toolId: 'run_local_browser_observation', capabilityClass: 'BROWSER' }),
+      ),
+    ).toMatchObject({ ok: false, code: 'PHASE_CAPABILITY_DENIED' });
+    expect(
+      assertAutonomousLoopToolAllowed(
+        'VERIFYING',
         def({ toolId: 'stage_git_paths', capabilityClass: 'GIT_WRITE' }),
       ),
     ).toMatchObject({ ok: false, code: 'GIT_WRITE_OUTSIDE_AUTONOMOUS_LOOP' });

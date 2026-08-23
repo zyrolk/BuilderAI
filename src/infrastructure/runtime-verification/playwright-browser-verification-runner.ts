@@ -61,7 +61,10 @@ export class PlaywrightBrowserVerificationRunner implements BrowserVerificationR
     let failedRequestCount = 0;
     let screenshotCount = 0;
     const browser = await playwright.chromium.launch({ headless: true });
-    const context = await browser.newContext({});
+    const context = await browser.newContext({
+      // ADR-043: ephemeral context only — never load/save storageState.
+      acceptDownloads: false,
+    });
     try {
       for (const route of request.plan.routes) {
         if (request.cancellation?.cancelled) break;
@@ -76,6 +79,10 @@ export class PlaywrightBrowserVerificationRunner implements BrowserVerificationR
         const consoleErrors: BrowserConsoleEvidence[] = [];
         const pageExceptions: string[] = [];
         const failedRequests: BrowserNetworkEvidence[] = [];
+        let downloadAttempted = false;
+        page.on('download', () => {
+          downloadAttempted = true;
+        });
         page.on('console', (message: { type: () => string; text: () => string }) => {
           const level = message.type();
           const text = message.text().slice(0, 500);
@@ -131,6 +138,22 @@ export class PlaywrightBrowserVerificationRunner implements BrowserVerificationR
           }
         } catch {
           routeStatus = 'TIMEOUT';
+        }
+        // Fail closed if navigation left localhost (cross-origin redirect / external egress).
+        try {
+          assertBrowserUrlAllowed(page.url(), '127.0.0.1');
+        } catch {
+          routeStatus = 'NETWORK_ERROR';
+          failedRequests.push({
+            url: sanitizeUrlForEvidence(page.url()),
+            failureText: 'EXTERNAL_ORIGIN_OR_CROSS_ORIGIN_REDIRECT',
+          });
+          failedRequestCount += 1;
+        }
+        if (downloadAttempted) {
+          routeStatus = 'FAILED';
+          pageExceptions.push('DOWNLOAD_FORBIDDEN');
+          pageExceptionCount += 1;
         }
         if (pageExceptions.length > 0) routeStatus = 'PAGE_ERROR';
         else if (consoleErrors.some(({ level }) => level === 'error'))

@@ -15,6 +15,8 @@ export const DEFAULT_AGENT_LOOP_BUDGETS = {
   /** Hard wall-clock: 15 minutes (within ADR-042 15–20 minute band). */
   hardWallClockMs: 15 * 60 * 1_000,
   maxB4VerificationCallsPerRun: 6,
+  /** ADR-043: dedicated browser observation call budget. */
+  maxBrowserObservationCallsPerRun: 3,
   concurrentToolExecutions: 1,
 } as const;
 
@@ -24,6 +26,7 @@ export type AgentLoopBudgets = {
   readonly maxProviderTurnsPerRun: number;
   readonly hardWallClockMs: number;
   readonly maxB4VerificationCallsPerRun: number;
+  readonly maxBrowserObservationCallsPerRun: number;
   readonly concurrentToolExecutions: number;
 };
 
@@ -66,6 +69,7 @@ export interface AgentLoopBudgetSnapshot {
   readonly toolCalls: number;
   readonly providerTurns: number;
   readonly b4VerificationCalls: number;
+  readonly browserObservationCalls: number;
   readonly startedAtMs: number;
   readonly identicalRepeatCounts: Readonly<Record<string, number>>;
   readonly completedIntentIds: readonly string[];
@@ -135,8 +139,8 @@ export const AUTONOMOUS_LOOP_PHASE_CAPABILITIES: Readonly<
   PLANNING: ['SEARCH', 'READ', 'INSPECT', 'PLAN'],
   AWAITING_GATE2: ['SEARCH', 'READ', 'INSPECT', 'GIT_READ'],
   EXECUTING: null,
-  VERIFYING: ['VERIFY', 'INSPECT', 'GIT_READ'],
-  DIAGNOSING: ['SEARCH', 'READ', 'INSPECT', 'VERIFY'],
+  VERIFYING: ['VERIFY', 'INSPECT', 'GIT_READ', 'BROWSER'],
+  DIAGNOSING: ['SEARCH', 'READ', 'INSPECT', 'VERIFY', 'BROWSER'],
   CORRECTING: ['SEARCH', 'READ', 'INSPECT', 'PLAN'],
   EXPLAINING: null,
   COMPLETED: null,

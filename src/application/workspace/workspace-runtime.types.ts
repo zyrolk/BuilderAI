@@ -116,6 +116,7 @@ export class WorkspaceRuntimeError extends Error {
       | 'PREPARATION_EXPIRED'
       | 'APPROVAL_REQUIRED'
       | 'OPERATOR_APPROVAL_REQUIRED'
+      | 'BROWSER_OPERATOR_APPROVAL_REQUIRED'
       | 'UNAUTHENTICATED'
       | 'UNAUTHORIZED'
       | 'CSRF_VALIDATION_FAILED'

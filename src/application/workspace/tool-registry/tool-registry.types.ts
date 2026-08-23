@@ -2,8 +2,8 @@
  * P1-B B1 Tool Registry contracts (ADR-037).
  *
  * Capability catalog + execution shapes. B1–B3 remain read-only / proposal-only.
- * B4 adds catalog-only VERIFY (ADR-040). No unrestricted shell, Git write, MCP, browser,
- * or provider tool-calling loop.
+ * B4 adds catalog-only VERIFY (ADR-040). B5 adds GIT_READ/GIT_WRITE (ADR-041).
+ * B7 enables BROWSER observation only (ADR-043). WEB / MCP / unrestricted shell remain unavailable.
  */
 
 import type { ExecutionCancellationToken } from '../../../core/execution-engine';

@@ -8,6 +8,7 @@ export function createInitialBudgetSnapshot(nowMs: number): AgentLoopBudgetSnaps
     toolCalls: 0,
     providerTurns: 0,
     b4VerificationCalls: 0,
+    browserObservationCalls: 0,
     startedAtMs: nowMs,
     identicalRepeatCounts: {},
     completedIntentIds: [],

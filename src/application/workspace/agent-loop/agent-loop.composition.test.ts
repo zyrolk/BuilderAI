@@ -30,6 +30,7 @@ import { ControlledTerminalService } from '../controlled-terminal/controlled-ter
 import { EditProposalService } from '../edit-proposal/edit-proposal.service';
 import { WorkspaceAuthorizationService } from '../workspace-authorization.service';
 import { createControlledGitService } from '../tool-registry/create-b5-git-registry';
+import { createControlledLocalBrowserService } from '../tool-registry/create-b7-browser-registry';
 import { ToolExecutor } from '../tool-registry/tool-executor';
 import { ToolPolicyGate } from '../tool-registry/tool-policy';
 import { ToolRegistry } from '../tool-registry/tool-registry';
@@ -147,6 +148,27 @@ function createLoopFixture() {
   });
   const bindings = new InMemoryAppliedFileApplyBindingStore();
   const controlledGit = createControlledGitService({ appliedBindings: bindings });
+  const controlledBrowser = createControlledLocalBrowserService({
+    serverManagerFactory: () => ({
+      start: async () => ({
+        descriptorId: 'npm-run-dev',
+        status: 'UNAVAILABLE',
+        startupDurationMs: 0,
+        policyBlockCode: 'TEST_STUB',
+      }),
+      shutdown: async () => undefined,
+    }),
+    browserRunner: {
+      verify: async () => ({
+        status: 'UNAVAILABLE',
+        durationMs: 0,
+        routes: [],
+        consoleErrorCount: 0,
+        pageExceptionCount: 0,
+        failedRequestCount: 0,
+      }),
+    },
+  });
   const persistence = new InMemoryAgentLoopEvidencePersistence('builder-ai');
   const composed = createAgentLoopComposition({
     projectId: 'builder-ai',
@@ -163,6 +185,7 @@ function createLoopFixture() {
     editProposals,
     controlledTerminal,
     controlledGit,
+    controlledBrowser,
     persistence,
   });
   return { ...composed, persistence };
@@ -495,6 +518,7 @@ describe('ADR-042 AgentLoopService matrix', { timeout: 120_000 }, () => {
             toolCalls: 0,
             providerTurns: 0,
             b4VerificationCalls: 0,
+            browserObservationCalls: 0,
             startedAtMs: 1,
             identicalRepeatCounts: {},
             completedIntentIds: [],

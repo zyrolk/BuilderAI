@@ -69,6 +69,15 @@ export class WorkspaceAuthorizationService {
       };
     }
 
+    if (context.action === 'BROWSER_OBSERVE' && !context.evidence.browserObservationApproved) {
+      return {
+        outcome: 'REJECTED',
+        code: 'BROWSER_OPERATOR_APPROVAL_REQUIRED',
+        message:
+          'Explicit browser observation approval is required (distinct from Gate2 and Git approval).',
+      };
+    }
+
     return { outcome: 'AUTHORIZED' };
   }
 
@@ -122,6 +131,15 @@ export class WorkspaceAuthorizationService {
         outcome: 'REJECTED',
         code: 'OPERATOR_APPROVAL_REQUIRED',
         message: 'Explicit operator approval is required for Git write.',
+      };
+    }
+
+    if (context.action === 'BROWSER_OBSERVE' && !context.evidence.browserObservationApproved) {
+      return {
+        outcome: 'REJECTED',
+        code: 'BROWSER_OPERATOR_APPROVAL_REQUIRED',
+        message:
+          'Explicit browser observation approval is required (distinct from Gate2 and Git approval).',
       };
     }
 

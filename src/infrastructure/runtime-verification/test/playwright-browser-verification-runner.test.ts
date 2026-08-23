@@ -17,12 +17,14 @@ type ResponseListener = (response: {
   status: () => number;
   request: () => { resourceType: () => string };
 }) => void;
+type DownloadListener = () => void;
 
 interface PageListeners {
   console: ConsoleListener[];
   pageerror: PageErrorListener[];
   requestfailed: RequestFailedListener[];
   response: ResponseListener[];
+  download: DownloadListener[];
 }
 
 interface PageMock {
@@ -44,6 +46,7 @@ function createPage(
     pageerror: [],
     requestfailed: [],
     response: [],
+    download: [],
   };
   const page: PageMock = {
     listeners,

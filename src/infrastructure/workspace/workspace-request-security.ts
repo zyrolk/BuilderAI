@@ -31,6 +31,12 @@ export function readWorkspaceRequestSecurityEvidence(
       action === 'READINESS'
         ? true
         : approved,
+    // Distinct from Gate2 apply tokens and Git `approved` (ADR-043).
+    browserObservationApproved:
+      Reflect.get(
+        typeof body === 'object' && body !== null ? body : {},
+        'browserObservationApproved',
+      ) === true,
     applyAuthorizationToken,
   };
 }

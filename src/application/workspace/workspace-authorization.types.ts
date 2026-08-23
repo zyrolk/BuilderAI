@@ -8,6 +8,7 @@ export const WORKSPACE_AUTHORIZATION_ACTIONS = [
   'MEMORY_WRITE',
   'READINESS',
   'GIT_WRITE',
+  'BROWSER_OBSERVE',
 ] as const;
 export type WorkspaceAuthorizationAction = (typeof WORKSPACE_AUTHORIZATION_ACTIONS)[number];
 
@@ -28,6 +29,8 @@ export interface WorkspaceRequestSecurityEvidence {
   readonly bearerToken?: string;
   readonly csrfToken?: string;
   readonly operatorApproved: boolean;
+  /** Distinct from Gate2 apply tokens and Git operatorApproved (ADR-043). */
+  readonly browserObservationApproved?: boolean;
   readonly applyAuthorizationToken?: string;
 }
 
@@ -48,6 +51,7 @@ export interface WorkspaceAuthorizationDecision {
     | 'CSRF_VALIDATION_FAILED'
     | 'APPLY_AUTHORIZATION_REQUIRED'
     | 'APPROVAL_REQUIRED'
-    | 'OPERATOR_APPROVAL_REQUIRED';
+    | 'OPERATOR_APPROVAL_REQUIRED'
+    | 'BROWSER_OPERATOR_APPROVAL_REQUIRED';
   readonly message?: string;
 }

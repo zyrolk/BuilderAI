@@ -84,7 +84,9 @@ export class AgentLoopService {
   async hydrate(runId: string): Promise<AgentLoopPersistedState | undefined> {
     const loaded = await this.deps.persistence.load(runId);
     if (loaded !== undefined) {
-      this.states.set(runId, loaded);
+      const normalized = normalizePersistedState(loaded);
+      this.states.set(runId, normalized);
+      return normalized;
     }
     return loaded;
   }
@@ -220,13 +222,6 @@ export class AgentLoopService {
       });
     }
 
-    if (state.stoppedReason !== undefined) {
-      return this.rejectWithoutBudget(context, 'unknown', 'unknown', {
-        code: 'LOOP_STOPPED',
-        message: `Loop previously stopped: ${state.stoppedReason}`,
-      });
-    }
-
     let intent: ProviderStructuredToolIntent;
     try {
       intent = parseProviderStructuredToolIntent(rawIntent);
@@ -240,6 +235,7 @@ export class AgentLoopService {
       });
     }
 
+    // Idempotent replay remains available after budget stop (no re-execution).
     if (state.budget.completedIntentIds.includes(intent.intentId)) {
       const prior = state.evidence.filter((entry) => entry.intentId === intent.intentId).at(-1);
       const evidence =
@@ -255,6 +251,13 @@ export class AgentLoopService {
         errorCode: 'IDEMPOTENT_REPLAY',
         errorMessage: 'Intent already completed for this run.',
       };
+    }
+
+    if (state.stoppedReason !== undefined) {
+      return this.rejectWithoutBudget(context, intent.intentId, intent.toolId, {
+        code: 'LOOP_STOPPED',
+        message: `Loop previously stopped: ${state.stoppedReason}`,
+      });
     }
 
     if (state.budget.toolCalls >= this.budgets.maxToolCallsPerRun) {
@@ -310,6 +313,19 @@ export class AgentLoopService {
       });
     }
 
+    const isBrowserObservation = intent.toolId === 'run_local_browser_observation';
+    if (
+      isBrowserObservation &&
+      state.budget.browserObservationCalls >= this.budgets.maxBrowserObservationCallsPerRun
+    ) {
+      return this.persistRejection(state, context, intent.intentId, intent.toolId, {
+        status: 'BUDGET_EXHAUSTED',
+        code: 'BROWSER_OBSERVATION_BUDGET_EXHAUSTED',
+        message: 'Maximum browser observation calls for this run exceeded.',
+        stop: true,
+      });
+    }
+
     if (context.cancellation.cancelled) {
       return this.persistRejection(state, context, intent.intentId, intent.toolId, {
         status: 'CANCELLED',
@@ -351,6 +367,8 @@ export class AgentLoopService {
       ...state.budget,
       toolCalls: state.budget.toolCalls + 1,
       b4VerificationCalls: state.budget.b4VerificationCalls + (isB4Verify ? 1 : 0),
+      browserObservationCalls:
+        state.budget.browserObservationCalls + (isBrowserObservation ? 1 : 0),
       identicalRepeatCounts: nextIdentical,
       completedIntentIds: [...state.budget.completedIntentIds, intent.intentId],
     };
@@ -382,8 +400,9 @@ export class AgentLoopService {
     if (existing !== undefined) return existing;
     const loaded = await this.deps.persistence.load(context.runId);
     if (loaded !== undefined) {
-      this.states.set(context.runId, loaded);
-      return loaded;
+      const normalized = normalizePersistedState(loaded);
+      this.states.set(context.runId, normalized);
+      return normalized;
     }
     const created: AgentLoopPersistedState = {
       schemaVersion: AGENT_LOOP_SCHEMA_VERSION,
@@ -552,4 +571,15 @@ function mapToolStatus(result: ToolResult): AgentLoopTurnStatus {
     default:
       return 'FAILED';
   }
+}
+
+function normalizePersistedState(state: AgentLoopPersistedState): AgentLoopPersistedState {
+  return {
+    ...state,
+    budget: {
+      ...state.budget,
+      browserObservationCalls: state.budget.browserObservationCalls ?? 0,
+      b4VerificationCalls: state.budget.b4VerificationCalls ?? 0,
+    },
+  };
 }
