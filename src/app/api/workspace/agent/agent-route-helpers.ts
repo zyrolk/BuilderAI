@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { AgentRunError, type AgentRun } from '../../../../application/workspace/agent-operating';
+import { AgentLoopError } from '../../../../application/workspace/agent-loop';
+import type { BoundedToolEvidenceRecord } from '../../../../application/workspace/agent-loop';
 import { WorkspaceRuntimeError } from '../../../../application/workspace';
 import {
   LocalRequestRejectedError,
@@ -45,6 +47,26 @@ export function toAgentRunHttpView(run: AgentRun): AgentRunHttpView {
   };
 }
 
+export function toBoundedToolEvidenceHttpView(record: BoundedToolEvidenceRecord): {
+  readonly toolId: string;
+  readonly intentId: string;
+  readonly phase: string;
+  readonly status: string;
+  readonly recordedAt: string;
+  readonly summaryDigest: string;
+  readonly errorCode?: string;
+} {
+  return {
+    toolId: record.toolId,
+    intentId: record.intentId,
+    phase: record.phase,
+    status: record.status,
+    recordedAt: record.recordedAt,
+    summaryDigest: record.summaryDigest,
+    ...(record.errorCode === undefined ? {} : { errorCode: record.errorCode }),
+  };
+}
+
 export function agentJson(value: unknown, status: number): NextResponse {
   return NextResponse.json(value, { status, headers: SAFE_HEADERS });
 }
@@ -55,6 +77,12 @@ export function mapAgentRouteError(error: unknown): NextResponse {
   }
   if (error instanceof AgentRunError) {
     return agentJson({ code: error.code, message: error.message }, mapAgentRunErrorStatus(error));
+  }
+  if (error instanceof AgentLoopError) {
+    return agentJson(
+      { code: error.code, message: error.message },
+      error.code === 'CONCURRENT_EXECUTION_REJECTED' ? 409 : 400,
+    );
   }
   if (error instanceof WorkspaceRuntimeError) {
     const mapped = mapWorkspaceRuntimeErrorStatus(error);
@@ -117,6 +145,54 @@ export function assertNoClientAuthorityFields(body: object): void {
       );
     }
   }
+}
+
+/** Extra reject list for tool-turn — never mint Gate2 / Git / apply authority from the client. */
+export function assertNoToolTurnAuthorityFields(body: object): void {
+  const forbidden = [
+    'applyAuthorizationToken',
+    'approved',
+    'operatorApproved',
+    'changePlan',
+    'repositoryRoot',
+    'gitExecutable',
+    'cwd',
+    'env',
+    'argv',
+    'command',
+    'shell',
+    'bearerToken',
+    'accessToken',
+  ] as const;
+  for (const key of forbidden) {
+    if (Reflect.has(body, key)) {
+      throw new WorkspaceRuntimeError(
+        'INVALID_REQUEST',
+        `Client-supplied ${key} is not accepted on tool-turn; server authorization is authoritative.`,
+      );
+    }
+  }
+}
+
+export function readToolTurnIntents(body: unknown): readonly unknown[] {
+  if (typeof body !== 'object' || body === null) {
+    throw new WorkspaceRuntimeError('INVALID_REQUEST', 'Request body must be a JSON object.');
+  }
+  const intents = Reflect.get(body, 'intents');
+  if (Array.isArray(intents)) {
+    if (intents.length === 0) {
+      throw new WorkspaceRuntimeError('INVALID_REQUEST', 'intents must not be empty.');
+    }
+    if (intents.length > 12) {
+      throw new WorkspaceRuntimeError('INVALID_REQUEST', 'Too many intents in one provider turn.');
+    }
+    return intents;
+  }
+  const intent = Reflect.get(body, 'intent');
+  if (intent === undefined) {
+    throw new WorkspaceRuntimeError('INVALID_REQUEST', 'intent or intents is required.');
+  }
+  return [intent];
 }
 
 export function readRunIdParam(value: string | undefined): string {

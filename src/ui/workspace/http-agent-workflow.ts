@@ -74,6 +74,26 @@ export interface AgentExplainResponse {
   readonly persisted: boolean;
 }
 
+export interface AgentToolTurnResponse {
+  readonly run: AgentRunHttpView;
+  readonly budget: {
+    readonly toolCalls: number;
+    readonly providerTurns: number;
+    readonly b4VerificationCalls: number;
+    readonly browserObservationCalls: number;
+  };
+  readonly evidence: readonly {
+    readonly toolId: string;
+    readonly intentId: string;
+    readonly phase: string;
+    readonly status: string;
+    readonly recordedAt: string;
+    readonly summaryDigest: string;
+    readonly errorCode?: string;
+  }[];
+  readonly turn: Record<string, unknown>;
+}
+
 /**
  * Thin HTTP client for P1-A Agent Operating routes.
  * Server remains authoritative for Gate 2 / APPLY.
@@ -110,6 +130,17 @@ export class HttpAgentWorkflow {
     return post(`/api/workspace/agent/run/${encodeURIComponent(runId)}/cancel`, {
       ...(reason === undefined || reason.trim().length === 0 ? {} : { reason: reason.trim() }),
     });
+  }
+
+  async toolTurn(
+    runId: string,
+    body: {
+      readonly intent?: unknown;
+      readonly intents?: readonly unknown[];
+      readonly browserObservationApproved?: boolean;
+    },
+  ): Promise<AgentToolTurnResponse> {
+    return post(`/api/workspace/agent/run/${encodeURIComponent(runId)}/tool-turn`, body);
   }
 }
 

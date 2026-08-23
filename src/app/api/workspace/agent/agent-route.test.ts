@@ -10,6 +10,7 @@ const pauseAtGate2 = vi.fn();
 const executeAfterApproval = vi.fn();
 const explain = vi.fn();
 const getExplainArtifact = vi.fn();
+const getToolEvidence = vi.fn();
 const cancel = vi.fn();
 const whenReady = vi.fn(async () => undefined);
 
@@ -23,6 +24,7 @@ vi.mock('../../../../infrastructure/workspace/local-feature-workflow-runtime', (
     executeAfterApproval,
     explain,
     getExplainArtifact,
+    getToolEvidence,
     cancel,
   }),
   getLocalWorkspaceSecurityConfiguration: () => ({
@@ -79,6 +81,8 @@ describe('Agent Operating HTTP API', () => {
     executeAfterApproval.mockReset();
     explain.mockReset();
     getExplainArtifact.mockReset();
+    getToolEvidence.mockReset();
+    getToolEvidence.mockResolvedValue({ evidence: [] });
     cancel.mockReset();
     whenReady.mockClear();
   });
@@ -395,6 +399,7 @@ describe('Agent Operating HTTP API', () => {
         failures: [],
         corrections: { availability: { status: 'UNAVAILABLE', reason: 'none' } },
         approvals: { availability: { status: 'UNAVAILABLE', reason: 'none' } },
+        toolLoop: { availability: { status: 'UNAVAILABLE', reason: 'none' } },
         finalResult: { runPhase: 'COMPLETED', runStatus: 'COMPLETED' },
         evidence: {},
         summary: 'Completed.',

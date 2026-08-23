@@ -75,6 +75,7 @@ import {
   AgentRunService,
   ExplainArtifactPersistence,
 } from '../../application/workspace/agent-operating';
+import { createProductionAgentLoopComposition } from '../../application/workspace/agent-loop';
 
 type LocalWorkspaceServices = {
   readonly runtime: WorkspaceRuntimeService;
@@ -430,16 +431,51 @@ function createCorrectionLoopService(): CorrectionLoopService {
 function createAgentOperatingService(services: LocalWorkspaceServices): AgentOperatingService {
   const configuration = loadLocalWorkspaceRuntimeConfiguration();
   const projectId = readWorkspaceProjectId(configuration.projectRoot, configuration.projectProfile);
-  const persistence = new AgentRunPersistence(
-    DEFAULT_WORKFLOW_STATE_ROOT_CONFIGURATION.stateRoot,
-    projectId,
-  );
-  const explainArtifacts = new ExplainArtifactPersistence(
-    DEFAULT_WORKFLOW_STATE_ROOT_CONFIGURATION.stateRoot,
-    projectId,
-  );
+  const stateRoot = DEFAULT_WORKFLOW_STATE_ROOT_CONFIGURATION.stateRoot;
+  const persistence = new AgentRunPersistence(stateRoot, projectId);
+  const explainArtifacts = new ExplainArtifactPersistence(stateRoot, projectId);
   const agentRuns = new AgentRunService(persistence, () => new Date());
   void agentRuns.hydratePersistedRuns();
+
+  const sourceIndexOptions = {
+    extraScanRoots: configuration.extraSourceScanRoots,
+    ...loadExternalTargetSourceIndexOptions(
+      configuration.projectRoot,
+      configuration.projectProfile,
+    ),
+  };
+  const pathProtection = loadWorkspacePathProtectionPolicy(
+    configuration.projectRoot,
+    configuration.projectProfile,
+  );
+  const sourceFiles = new NodeProjectFileSource(configuration.projectRoot, sourceIndexOptions);
+  const readinessService = new ExternalTargetReadinessService();
+  const agentLoop = createProductionAgentLoopComposition({
+    projectId,
+    projectRoot: configuration.projectRoot,
+    stateRoot,
+    security: services.security,
+    sourceFiles,
+    prepareFromResponsePackage: (responsePackage) =>
+      services.runtime.prepareFromResponsePackage(responsePackage),
+    readiness: {
+      project: async ({ projectRoot }) => {
+        if (configuration.projectProfile === 'EXTERNAL_TARGET') {
+          return readinessService.project({
+            projectRoot,
+            extraSourceScanRoots: configuration.extraSourceScanRoots,
+            runtimeConnected: true,
+          });
+        }
+        return selfHostedReadinessStub(projectId, projectRoot);
+      },
+    },
+    pathProtection,
+    builderAiRoot: path.resolve(process.cwd()),
+    ids: { generate: randomUUID },
+    clock: { now: () => new Date() },
+  });
+
   return new AgentOperatingService({
     projectId,
     agentRuns,
@@ -449,7 +485,38 @@ function createAgentOperatingService(services: LocalWorkspaceServices): AgentOpe
     correction: getLocalCorrectionLoopService(),
     ids: { generate: randomUUID },
     clock: { now: () => new Date() },
+    loop: agentLoop.loop,
+    projectRoot: configuration.projectRoot,
+    security: services.security,
   });
+}
+
+function selfHostedReadinessStub(projectId: string, projectRoot: string): ExternalTargetReadiness {
+  return {
+    schemaVersion: 1,
+    status: 'READY',
+    profile: 'EXTERNAL_TARGET',
+    projectId,
+    projectName: 'BuilderAI',
+    projectRootDisplay: projectRoot,
+    runtimeConnected: true,
+    sourceRoots: ['src'],
+    testRoots: [],
+    governanceDocuments: [],
+    indexedFileCount: 0,
+    protectedAreas: [],
+    verification: {
+      build: true,
+      test: true,
+      lint: true,
+      typecheck: true,
+      format: true,
+      devServer: false,
+      browserVerification: false,
+    },
+    warnings: [],
+    blockers: [],
+  };
 }
 
 function createProjectMemoryService(

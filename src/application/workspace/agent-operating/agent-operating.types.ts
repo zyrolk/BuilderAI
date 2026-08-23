@@ -2,8 +2,18 @@ import type { ExecutionCancellationToken } from '../../../core/execution-engine'
 import type { Gate2ReviewProjection } from '../gate2-review';
 import type { CorrectionLoopService } from '../correction-loop';
 import type { WorkspaceInvestigation } from '../investigation/investigation.types';
-import type { WorkspaceRequestSecurityEvidence } from '../workspace-authorization.types';
+import type {
+  WorkspaceRequestSecurityEvidence,
+  WorkspaceSecurityConfiguration,
+} from '../workspace-authorization.types';
 import type { WorkspaceCompletion, WorkspacePreparation } from '../workspace-runtime.types';
+import type { AgentLoopService } from '../agent-loop/agent-loop.service';
+import type {
+  AgentLoopBudgetSnapshot,
+  AgentLoopProviderTurnResult,
+  AgentLoopTurnResult,
+  BoundedToolEvidenceRecord,
+} from '../agent-loop/agent-loop.types';
 import type { AgentRun, AgentRunPhase, AgentRunStatus } from './agent-run.types';
 import type { AgentRunService } from './agent-run.service';
 import type { ExplainArtifact } from './explain-artifact.types';
@@ -92,6 +102,27 @@ export interface AgentOperatingDependencies {
   readonly correction: CorrectionLoopService;
   readonly ids: { generate(): string };
   readonly clock: { now(): Date };
+  /**
+   * B8: optional for legacy unit fixtures; production must compose AgentLoop.
+   * Tool turns fail closed when absent.
+   */
+  readonly loop?: AgentLoopService;
+  readonly projectRoot?: string;
+  readonly security?: WorkspaceSecurityConfiguration;
+}
+
+/** Bounded product projection of a tool turn — digests only. */
+export interface AgentOperatingToolTurnResult {
+  readonly run: AgentRun;
+  readonly turn: AgentLoopProviderTurnResult | AgentLoopTurnResult;
+  readonly evidence: readonly BoundedToolEvidenceRecord[];
+  readonly budget: AgentLoopBudgetSnapshot;
+}
+
+export interface AgentOperatingToolEvidenceResult {
+  readonly run: AgentRun;
+  readonly evidence: readonly BoundedToolEvidenceRecord[];
+  readonly budget?: AgentLoopBudgetSnapshot;
 }
 
 /** Process-local Gate 2 / completion evidence — never persisted on AgentRun. */

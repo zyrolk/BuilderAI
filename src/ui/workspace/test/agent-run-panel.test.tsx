@@ -203,6 +203,9 @@ describe('AgentRunPanel', () => {
           availability: { status: 'UNAVAILABLE', reason: 'none' },
         },
         approvals: { availability: { status: 'AVAILABLE' }, gate2CyclesObserved: 1 },
+        toolLoop: {
+          availability: { status: 'UNAVAILABLE', reason: 'No tool digests.' },
+        },
         finalResult: {
           runPhase: 'COMPLETED',
           runStatus: 'COMPLETED',
@@ -379,6 +382,9 @@ describe('AgentRunPanel', () => {
           state: 'CORRECTION_DIAGNOSING',
         },
         approvals: { availability: { status: 'AVAILABLE' }, gate2CyclesObserved: 1 },
+        toolLoop: {
+          availability: { status: 'UNAVAILABLE', reason: 'No tool digests.' },
+        },
         finalResult: {
           runPhase: 'CORRECTING',
           runStatus: 'FAILED',

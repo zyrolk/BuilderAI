@@ -11,6 +11,7 @@ import {
   mapAgentRouteError,
   readRunIdParam,
   toAgentRunHttpView,
+  toBoundedToolEvidenceHttpView,
 } from '../../agent-route-helpers';
 
 export const runtime = 'nodejs';
@@ -37,7 +38,26 @@ export async function GET(
     if (run.projectId !== security.projectId) {
       return agentJson({ code: 'NOT_FOUND', message: 'AgentRun not found.' }, 404);
     }
-    return agentJson({ run: toAgentRunHttpView(run) }, 200);
+    const tool = await agent.getToolEvidence(runId);
+    return agentJson(
+      {
+        run: toAgentRunHttpView(run),
+        toolLoop: {
+          evidence: tool.evidence.map(toBoundedToolEvidenceHttpView),
+          ...(tool.budget === undefined
+            ? {}
+            : {
+                budget: {
+                  toolCalls: tool.budget.toolCalls,
+                  providerTurns: tool.budget.providerTurns,
+                  b4VerificationCalls: tool.budget.b4VerificationCalls,
+                  browserObservationCalls: tool.budget.browserObservationCalls,
+                },
+              }),
+        },
+      },
+      200,
+    );
   } catch (error: unknown) {
     return mapAgentRouteError(error);
   }

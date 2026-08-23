@@ -83,6 +83,25 @@ export interface ExplainApprovalsSection {
   readonly gate2CyclesObserved?: number;
 }
 
+/** Bounded AgentLoop digests — never raw tool payloads (ADR-044). */
+export interface ExplainToolLoopEvidenceItem {
+  readonly toolId: string;
+  readonly intentId: string;
+  readonly phase: AgentRunPhase;
+  readonly status: string;
+  readonly recordedAt: string;
+  readonly summaryDigest: string;
+  readonly errorCode?: string;
+}
+
+export interface ExplainToolLoopSection {
+  readonly availability: ExplainAvailability;
+  readonly evidenceCount?: number;
+  readonly toolCalls?: number;
+  readonly providerTurns?: number;
+  readonly items?: readonly ExplainToolLoopEvidenceItem[];
+}
+
 export interface ExplainFinalResult {
   readonly runPhase: AgentRunPhase;
   readonly runStatus: AgentRunStatus;
@@ -117,6 +136,7 @@ export interface ExplainArtifact {
   readonly failures: readonly ExplainFailureItem[];
   readonly corrections: ExplainCorrectionsSection;
   readonly approvals: ExplainApprovalsSection;
+  readonly toolLoop: ExplainToolLoopSection;
   readonly finalResult: ExplainFinalResult;
   readonly evidence: ExplainEvidenceReferences;
   /** Deterministic short text derived from fields above — not provider narrative. */

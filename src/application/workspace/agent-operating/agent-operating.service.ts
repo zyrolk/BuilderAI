@@ -10,6 +10,8 @@ import type {
   AgentOperatingGate2PauseResult,
   AgentOperatingPlanResult,
   AgentOperatingStartResult,
+  AgentOperatingToolEvidenceResult,
+  AgentOperatingToolTurnResult,
   AgentRunEphemeralEvidence,
   AgentRunExplanation,
 } from './agent-operating.types';
@@ -19,6 +21,13 @@ import { isCorrectionEligibleCompletion } from '../correction-loop/correction-fa
 import { buildIterationFeedbackFromCompletion } from '../iteration-feedback.service';
 import { assembleExplainArtifact } from './explain-artifact.assembler';
 import type { ExplainArtifact } from './explain-artifact.types';
+import type {
+  AgentLoopBudgetSnapshot,
+  BoundedToolEvidenceRecord,
+} from '../agent-loop/agent-loop.types';
+import type { AgentLoopExecuteContext } from '../agent-loop/agent-loop.service';
+import { AgentLoopError } from '../agent-loop/agent-loop.types';
+import { createWorkspaceAuthorizationContext } from '../workspace-authorization.service';
 
 const EXPLAIN_SUMMARY_MAX = 1_200;
 
@@ -39,6 +48,100 @@ export class AgentOperatingService {
 
   async getRun(runId: string) {
     return this.dependencies.agentRuns.require(runId);
+  }
+
+  /**
+   * B8: run-bound, phase-gated tool turn via existing AgentLoopService.
+   * Does not transition AgentRun phase and never applies FileApply / Gate2.
+   */
+  async executeToolTurn(
+    runId: string,
+    input: {
+      readonly intents: readonly unknown[];
+      readonly securityEvidence?: WorkspaceRequestSecurityEvidence;
+      readonly cancellation?: ExecutionCancellationToken;
+    },
+  ): Promise<AgentOperatingToolTurnResult> {
+    await this.whenReady();
+    const loop = this.requireLoop();
+    const run = await this.dependencies.agentRuns.require(runId);
+    this.assertRunProjectBinding(run.projectId);
+    if (
+      run.phase === 'COMPLETED' ||
+      run.phase === 'FAILED' ||
+      run.phase === 'CANCELLED' ||
+      run.phase === 'EXPLAINING'
+    ) {
+      throw new AgentRunError(
+        'INVALID_TRANSITION',
+        `Tool turns are not allowed in phase ${run.phase}.`,
+      );
+    }
+    if (run.phase === 'EXECUTING') {
+      throw new AgentRunError(
+        'INVALID_TRANSITION',
+        'EXECUTING is tool-free; Gate2 → approveAndApply → FileApply is the sole source mutation path.',
+      );
+    }
+
+    const context = this.buildLoopContext(run, input.securityEvidence, input.cancellation);
+    await loop.hydrate(runId);
+
+    try {
+      if (input.intents.length === 0) {
+        throw new AgentRunError('INVALID_GOAL', 'At least one structured tool intent is required.');
+      }
+      const turn =
+        input.intents.length === 1
+          ? await loop.executeIntent(input.intents[0], context)
+          : await loop.executeProviderTurn(input.intents, context);
+      const budget =
+        'budget' in turn && turn.budget !== undefined
+          ? turn.budget
+          : (loop.getBudget(runId) ?? {
+              toolCalls: 0,
+              providerTurns: 0,
+              b4VerificationCalls: 0,
+              browserObservationCalls: 0,
+              startedAtMs: this.dependencies.clock.now().getTime(),
+              identicalRepeatCounts: {},
+              completedIntentIds: [],
+            });
+      return {
+        run,
+        turn,
+        evidence: loop.listEvidence(runId),
+        budget,
+      };
+    } catch (error: unknown) {
+      if (error instanceof AgentLoopError) {
+        if (error.code === 'CONCURRENT_EXECUTION_REJECTED') {
+          throw new AgentRunError('INVALID_TRANSITION', error.message);
+        }
+        if (error.code === 'PROJECT_MISMATCH') {
+          throw new AgentRunError('NOT_FOUND', error.message);
+        }
+        throw new AgentRunError('INVALID_TRANSITION', error.message);
+      }
+      throw error;
+    }
+  }
+
+  /** Bounded tool-loop digests for operator visibility (hydrate-only; never auto-continues). */
+  async getToolEvidence(runId: string): Promise<AgentOperatingToolEvidenceResult> {
+    await this.whenReady();
+    const run = await this.dependencies.agentRuns.require(runId);
+    this.assertRunProjectBinding(run.projectId);
+    const loop = this.dependencies.loop;
+    if (loop === undefined) {
+      return { run, evidence: [] };
+    }
+    await loop.hydrate(runId);
+    return {
+      run,
+      evidence: loop.listEvidence(runId),
+      ...(loop.getBudget(runId) === undefined ? {} : { budget: loop.getBudget(runId) }),
+    };
   }
 
   /**
@@ -527,7 +630,28 @@ export class AgentOperatingService {
       ...(evidence?.gate2CyclesObserved === undefined
         ? {}
         : { gate2CyclesObserved: evidence.gate2CyclesObserved }),
+      ...(await this.toolLoopExplainProjection(run.runId)),
     });
+  }
+
+  private async toolLoopExplainProjection(runId: string): Promise<{
+    readonly toolEvidence?: readonly BoundedToolEvidenceRecord[];
+    readonly toolBudget?: AgentLoopBudgetSnapshot;
+  }> {
+    const loop = this.dependencies.loop;
+    if (loop === undefined) {
+      return {};
+    }
+    await loop.hydrate(runId);
+    const evidence = loop.listEvidence(runId);
+    const budget = loop.getBudget(runId);
+    if (evidence.length === 0 && budget === undefined) {
+      return {};
+    }
+    return {
+      ...(evidence.length === 0 ? {} : { toolEvidence: evidence }),
+      ...(budget === undefined ? {} : { toolBudget: budget }),
+    };
   }
 
   private requireEphemeral(runId: string): AgentRunEphemeralEvidence {
@@ -539,6 +663,74 @@ export class AgentOperatingService {
       );
     }
     return evidence;
+  }
+
+  private requireLoop() {
+    const loop = this.dependencies.loop;
+    if (loop === undefined) {
+      throw new AgentRunError(
+        'INVALID_REFERENCE',
+        'AgentLoop is not composed for this AgentOperatingService (B8 required).',
+      );
+    }
+    return loop;
+  }
+
+  private assertRunProjectBinding(projectId: string): void {
+    if (projectId !== this.dependencies.projectId) {
+      throw new AgentRunError('NOT_FOUND', 'AgentRun not found.');
+    }
+  }
+
+  private buildLoopContext(
+    run: Awaited<ReturnType<AgentRunService['require']>>,
+    securityEvidence: WorkspaceRequestSecurityEvidence | undefined,
+    cancellation: ExecutionCancellationToken | undefined,
+  ): AgentLoopExecuteContext {
+    const projectRoot = this.dependencies.projectRoot;
+    const security = this.dependencies.security;
+    if (projectRoot === undefined || security === undefined) {
+      throw new AgentRunError(
+        'INVALID_REFERENCE',
+        'AgentOperating projectRoot/security are required for tool turns.',
+      );
+    }
+    const authContext = createWorkspaceAuthorizationContext({
+      configuration: security,
+      action: 'INVESTIGATE',
+      evidence: {
+        // Soft tools authorize via profile; never invent Gate2 / Git APPLY approval from tool turns.
+        operatorApproved: false,
+        browserObservationApproved: securityEvidence?.browserObservationApproved === true,
+        ...(securityEvidence?.bearerToken === undefined
+          ? {}
+          : { bearerToken: securityEvidence.bearerToken }),
+        ...(securityEvidence?.csrfToken === undefined
+          ? {}
+          : { csrfToken: securityEvidence.csrfToken }),
+        // Never forward applyAuthorizationToken / forged Gate2 fields into the loop.
+      },
+    });
+    return {
+      runId: run.runId,
+      projectId: run.projectId,
+      phase: run.phase,
+      projectRoot,
+      principal: authContext.principal,
+      securityProfile: security.profile,
+      securityEvidence: authContext.evidence,
+      cancellation: cancellation ?? { cancelled: false, subscribe: () => () => undefined },
+      ...(run.references.preparationId === undefined
+        ? {}
+        : { preparationId: run.references.preparationId }),
+      ...(run.references.workflowId === undefined ? {} : { workflowId: run.references.workflowId }),
+      ...(run.references.investigationId === undefined
+        ? {}
+        : { investigationId: run.references.investigationId }),
+      ...(run.references.correctionWorkflowId === undefined
+        ? {}
+        : { correctionWorkflowId: run.references.correctionWorkflowId }),
+    };
   }
 }
 

@@ -1,6 +1,10 @@
 import type { CorrectionLoopSession } from '../correction-loop';
 import type { Gate2ReviewProjection } from '../gate2-review';
 import type { WorkspaceCompletion } from '../workspace-runtime.types';
+import type {
+  AgentLoopBudgetSnapshot,
+  BoundedToolEvidenceRecord,
+} from '../agent-loop/agent-loop.types';
 import type { AgentRun } from './agent-run.types';
 import {
   EXPLAIN_ARTIFACT_SCHEMA_VERSION,
@@ -8,12 +12,14 @@ import {
   type ExplainAvailability,
   type ExplainEvidenceAvailability,
   type ExplainFailureItem,
+  type ExplainToolLoopSection,
 } from './explain-artifact.types';
 
 const SUMMARY_MAX = 1_200;
 const MESSAGE_MAX = 240;
 const PATH_LIST_MAX = 40;
 const FINDING_CODE_MAX = 40;
+const TOOL_LOOP_ITEMS_MAX = 40;
 
 export interface AssembleExplainArtifactInput {
   readonly run: AgentRun;
@@ -24,6 +30,8 @@ export interface AssembleExplainArtifactInput {
   readonly correctionSession?: CorrectionLoopSession;
   readonly correctionCanPrepare?: boolean;
   readonly gate2CyclesObserved?: number;
+  readonly toolEvidence?: readonly BoundedToolEvidenceRecord[];
+  readonly toolBudget?: AgentLoopBudgetSnapshot;
 }
 
 /** Pure deterministic assembly — no I/O, no provider calls. */
@@ -151,6 +159,7 @@ export function assembleExplainArtifact(input: AssembleExplainArtifactInput): Ex
 
   const corrections = buildCorrectionsSection(run, session, input.correctionCanPrepare);
   const approvals = buildApprovalsSection(input.gate2CyclesObserved);
+  const toolLoop = buildToolLoopSection(input.toolEvidence, input.toolBudget);
   const failures = collectFailures(run, apply, verification, browser, session);
 
   const finalResult = {
@@ -191,6 +200,7 @@ export function assembleExplainArtifact(input: AssembleExplainArtifactInput): Ex
     failures,
     corrections,
     approvals,
+    toolLoop,
     finalResult,
     evidence,
     summary: buildSummary({
@@ -202,6 +212,7 @@ export function assembleExplainArtifact(input: AssembleExplainArtifactInput): Ex
       correctionState: session?.state ?? corrections.state,
       gate2Cycles: input.gate2CyclesObserved,
       failureCount: failures.length,
+      toolEvidenceCount: toolLoop.evidenceCount,
     }),
   };
 
@@ -262,6 +273,37 @@ function buildApprovalsSection(
   return {
     availability: { status: 'AVAILABLE' },
     gate2CyclesObserved,
+  };
+}
+
+function buildToolLoopSection(
+  toolEvidence: readonly BoundedToolEvidenceRecord[] | undefined,
+  toolBudget: AgentLoopBudgetSnapshot | undefined,
+): ExplainToolLoopSection {
+  if ((toolEvidence === undefined || toolEvidence.length === 0) && toolBudget === undefined) {
+    return {
+      availability: {
+        status: 'UNAVAILABLE',
+        reason: 'No bounded AgentLoop tool evidence is available for this AgentRun.',
+      },
+    };
+  }
+  const items = (toolEvidence ?? []).slice(-TOOL_LOOP_ITEMS_MAX).map((item) => ({
+    toolId: item.toolId,
+    intentId: item.intentId,
+    phase: item.phase,
+    status: item.status,
+    recordedAt: item.recordedAt,
+    summaryDigest: item.summaryDigest,
+    ...(item.errorCode === undefined ? {} : { errorCode: item.errorCode }),
+  }));
+  return {
+    availability: { status: 'AVAILABLE' },
+    evidenceCount: toolEvidence?.length ?? 0,
+    ...(toolBudget === undefined
+      ? {}
+      : { toolCalls: toolBudget.toolCalls, providerTurns: toolBudget.providerTurns }),
+    ...(items.length === 0 ? {} : { items }),
   };
 }
 
@@ -372,6 +414,7 @@ function buildSummary(input: {
   readonly correctionState?: string;
   readonly gate2Cycles?: number;
   readonly failureCount: number;
+  readonly toolEvidenceCount?: number;
 }): string {
   const parts = [
     `Agent run ${input.run.runId} status ${input.run.status} (phase ${input.run.phase}).`,
@@ -388,6 +431,9 @@ function buildSummary(input: {
       : 'Browser verification: unavailable.',
     input.correctionState !== undefined ? `Correction: ${input.correctionState}.` : undefined,
     input.gate2Cycles !== undefined ? `Gate 2 cycles observed: ${input.gate2Cycles}.` : undefined,
+    input.toolEvidenceCount !== undefined && input.toolEvidenceCount > 0
+      ? `Tool-loop digests: ${input.toolEvidenceCount}.`
+      : undefined,
     input.failureCount > 0 ? `Failures recorded: ${input.failureCount}.` : 'No failures recorded.',
     input.run.references.preparationId !== undefined
       ? `Preparation: ${input.run.references.preparationId}.`

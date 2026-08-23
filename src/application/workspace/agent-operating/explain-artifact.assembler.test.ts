@@ -255,4 +255,59 @@ describe('assembleExplainArtifact', () => {
     expect(serialized).not.toMatch(/super-secret|abc\.def|password=leak/);
     expect(serialized).toMatch(/\[redacted\]/);
   });
+
+  it('projects bounded toolLoop digests when present', () => {
+    const explain = assembleExplainArtifact({
+      run: baseRun({ phase: 'UNDERSTANDING' }),
+      generatedAt: NOW,
+      toolEvidence: [
+        {
+          schemaVersion: 1,
+          runId: 'run-1',
+          projectId: 'builder-ai',
+          phase: 'UNDERSTANDING',
+          toolId: 'search_repository',
+          intentId: 'i1',
+          status: 'SUCCEEDED',
+          recordedAt: NOW,
+          summaryDigest: 'deadbeefdeadbeefdeadbeef',
+          errorCode: undefined,
+        },
+        {
+          schemaVersion: 1,
+          runId: 'run-1',
+          projectId: 'builder-ai',
+          phase: 'UNDERSTANDING',
+          toolId: 'read_source_file',
+          intentId: 'i2',
+          status: 'FAILED',
+          recordedAt: NOW,
+          summaryDigest: 'cafebabecafebabecafebabe',
+          errorCode: 'NOT_FOUND',
+        },
+      ],
+      toolBudget: {
+        toolCalls: 2,
+        providerTurns: 1,
+        b4VerificationCalls: 0,
+        browserObservationCalls: 0,
+        startedAtMs: 1,
+        identicalRepeatCounts: {},
+        completedIntentIds: ['i1', 'i2'],
+      },
+    });
+    expect(explain.toolLoop.availability.status).toBe('AVAILABLE');
+    expect(explain.toolLoop.evidenceCount).toBe(2);
+    expect(explain.toolLoop.toolCalls).toBe(2);
+    expect(explain.toolLoop.items?.[1]?.errorCode).toBe('NOT_FOUND');
+    expect(explain.summary).toMatch(/Tool-loop digests: 2/);
+  });
+
+  it('marks toolLoop unavailable when digests are absent', () => {
+    const explain = assembleExplainArtifact({
+      run: baseRun(),
+      generatedAt: NOW,
+    });
+    expect(explain.toolLoop.availability.status).toBe('UNAVAILABLE');
+  });
 });

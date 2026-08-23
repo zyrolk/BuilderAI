@@ -156,6 +156,33 @@ export function AgentExplainView({ explain }: AgentExplainViewProps) {
           )}
         </ExplainBlock>
 
+        <ExplainBlock title="Tool loop">
+          <p>
+            {availabilityLabel(
+              explain.toolLoop.availability.status,
+              explain.toolLoop.availability.reason,
+            )}
+          </p>
+          {explain.toolLoop.evidenceCount !== undefined && (
+            <p>Digest count: {explain.toolLoop.evidenceCount}</p>
+          )}
+          {explain.toolLoop.toolCalls !== undefined && (
+            <p>
+              Budget: {explain.toolLoop.toolCalls} tool calls /{' '}
+              {explain.toolLoop.providerTurns ?? 0} provider turns
+            </p>
+          )}
+          {explain.toolLoop.items !== undefined && explain.toolLoop.items.length > 0 && (
+            <ul>
+              {explain.toolLoop.items.map((item) => (
+                <li key={`${item.intentId}-${item.toolId}`}>
+                  {item.toolId} · {item.status} · {item.summaryDigest.slice(0, 12)}…
+                </li>
+              ))}
+            </ul>
+          )}
+        </ExplainBlock>
+
         <ExplainBlock title="Evidence">
           <ul>
             {Object.entries(explain.evidence).map(([key, value]) =>

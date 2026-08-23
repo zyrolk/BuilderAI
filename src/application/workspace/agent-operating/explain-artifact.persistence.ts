@@ -96,5 +96,16 @@ export function parsePersistedExplainArtifact(
   if (artifact.projectId !== projectId || artifact.runId !== runId) {
     throw new AgentRunError('CORRUPT_STATE', 'ExplainArtifact identity mismatch.');
   }
+  if (artifact.toolLoop === undefined) {
+    return {
+      ...artifact,
+      toolLoop: {
+        availability: {
+          status: 'UNAVAILABLE',
+          reason: 'No bounded AgentLoop tool evidence is available for this AgentRun.',
+        },
+      },
+    };
+  }
   return artifact;
 }
