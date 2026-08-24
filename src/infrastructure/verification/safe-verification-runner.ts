@@ -1,6 +1,4 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 
 import type { ExecutionCancellationToken } from '../../core/execution-engine';
 import type { VerificationCommandDescriptor } from '../../core/verification/policy';
@@ -18,6 +16,7 @@ import {
 } from '../../core/verification/policy';
 import { BoundedStreamCapture } from './bounded-output-capture';
 import { forceTerminateProcessTree, terminateProcessTree } from './process-tree-termination';
+import { resolveNpmInvocation } from './resolve-npm-invocation';
 
 export interface SafeVerificationExecutionResult {
   readonly exitCode: number | null;
@@ -177,20 +176,6 @@ export class SafeVerificationRunner {
 function resolveStageTimeout(stageTimeoutMs: number, remainingWorkflowMs?: number): number {
   if (remainingWorkflowMs === undefined) return stageTimeoutMs;
   return Math.min(stageTimeoutMs, remainingWorkflowMs);
-}
-
-function resolveNpmInvocation(arguments_: readonly string[]): {
-  readonly executable: string;
-  readonly arguments: readonly string[];
-} {
-  if (process.platform !== 'win32') {
-    return { executable: 'npm', arguments: arguments_ };
-  }
-  const installed = path.resolve(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-  if (existsSync(installed)) {
-    return { executable: process.execPath, arguments: [installed, ...arguments_] };
-  }
-  return { executable: 'npm.cmd', arguments: arguments_ };
 }
 
 function cancelledResult(): SafeVerificationExecutionResult {

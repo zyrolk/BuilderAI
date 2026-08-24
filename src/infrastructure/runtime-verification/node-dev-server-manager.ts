@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import type {
@@ -15,6 +14,7 @@ import {
 } from '../../core/verification/policy';
 import { validateRuntimeServerDescriptor } from '../../core/runtime-verification/policy';
 import { BoundedStreamCapture } from '../verification/bounded-output-capture';
+import { resolveNpmInvocation } from '../verification/resolve-npm-invocation';
 import {
   forceTerminateProcessTree,
   terminateProcessTree,
@@ -200,18 +200,6 @@ function buildDevServerEnvironment(port: number, host: string): NodeJS.ProcessEn
     HOST: host,
     HOSTNAME: host,
   };
-}
-
-function resolveNpmInvocation(arguments_: readonly string[]): {
-  readonly executable: string;
-  readonly arguments: readonly string[];
-} {
-  if (process.platform !== 'win32') return { executable: 'npm', arguments: arguments_ };
-  const installed = path.resolve(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-  if (existsSync(installed)) {
-    return { executable: process.execPath, arguments: [installed, ...arguments_] };
-  }
-  return { executable: 'npm.cmd', arguments: arguments_ };
 }
 
 function buildDiagnostic(stdout: BoundedStreamCapture, stderr: BoundedStreamCapture) {
