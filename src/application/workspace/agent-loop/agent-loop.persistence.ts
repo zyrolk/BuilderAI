@@ -7,9 +7,18 @@ import {
 } from '../../../infrastructure/workflow-ledger/filesystem-safe-write';
 import { WorkflowLedgerError } from '../../../core/workflow-ledger';
 import {
+  assertNoForbiddenProjectionKeys,
+  validateProjectionForPersistence,
+} from './operator-tool-planning-projection';
+import {
   AgentLoopError,
+  AGENT_LOOP_LEGACY_SCHEMA_VERSION,
   AGENT_LOOP_SCHEMA_VERSION,
+  OPERATOR_TOOL_PLANNING_PROJECTION_SCHEMA_VERSION,
+  type AgentLoopPersistedSchemaVersion,
   type AgentLoopPersistedState,
+  type BoundedToolEvidenceRecord,
+  type OperatorToolPlanningProjection,
 } from './agent-loop.types';
 
 const EVIDENCE_FILE = 'tool-loop-evidence.json';
@@ -21,7 +30,7 @@ export interface AgentLoopEvidenceStore {
 }
 
 /**
- * Bounded tool-loop evidence under the AgentRun directory (ADR-042).
+ * Bounded tool-loop evidence under the AgentRun directory (ADR-042 / ADR-047).
  * Path: {stateRoot}/workflows/{projectId}/agent-runs/{runId}/tool-loop-evidence.json
  */
 export class AgentLoopEvidencePersistence implements AgentLoopEvidenceStore {
@@ -93,7 +102,7 @@ export class AgentLoopEvidencePersistence implements AgentLoopEvidenceStore {
   }
 }
 
-function parsePersistedAgentLoopState(
+export function parsePersistedAgentLoopState(
   raw: unknown,
   projectId: string,
   runId: string,
@@ -102,14 +111,119 @@ function parsePersistedAgentLoopState(
     throw new AgentLoopError('CORRUPT_STATE', 'Agent loop evidence must be an object.');
   }
   const record = raw as Record<string, unknown>;
-  if (record.schemaVersion !== AGENT_LOOP_SCHEMA_VERSION) {
+  const schemaVersion = record.schemaVersion;
+  if (
+    schemaVersion !== AGENT_LOOP_SCHEMA_VERSION &&
+    schemaVersion !== AGENT_LOOP_LEGACY_SCHEMA_VERSION
+  ) {
     throw new AgentLoopError('INVALID_SCHEMA', 'Unsupported agent loop evidence schema.');
   }
   if (record.runId !== runId || record.projectId !== projectId) {
     throw new AgentLoopError('CORRUPT_STATE', 'Agent loop evidence identity mismatch.');
   }
-  assertNoForbiddenPersistedKeys(record);
-  return raw as AgentLoopPersistedState;
+  assertNoForbiddenPersistedKeysExceptEvidenceProjections(record);
+
+  const evidence = parseEvidenceRecords(record.evidence, runId, projectId);
+
+  const parsed: AgentLoopPersistedState = {
+    schemaVersion: schemaVersion as AgentLoopPersistedSchemaVersion,
+    runId,
+    projectId,
+    budget: record.budget as AgentLoopPersistedState['budget'],
+    evidence,
+    ...(record.stoppedReason === undefined ? {} : { stoppedReason: String(record.stoppedReason) }),
+    updatedAt: String(record.updatedAt),
+  };
+  assertNoForbiddenPersistedKeys(parsed);
+  return parsed;
+}
+
+function parseEvidenceRecords(
+  raw: unknown,
+  runId: string,
+  projectId: string,
+): readonly BoundedToolEvidenceRecord[] {
+  if (!Array.isArray(raw)) {
+    throw new AgentLoopError('CORRUPT_STATE', 'Agent loop evidence records must be an array.');
+  }
+  return raw.map((entry, index) => parseEvidenceRecord(entry, runId, projectId, index));
+}
+
+function parseEvidenceRecord(
+  raw: unknown,
+  runId: string,
+  projectId: string,
+  index: number,
+): BoundedToolEvidenceRecord {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new AgentLoopError('CORRUPT_STATE', `Evidence record ${index} must be an object.`);
+  }
+  const record = raw as Record<string, unknown>;
+  const schemaVersion = record.schemaVersion;
+  if (
+    schemaVersion !== AGENT_LOOP_SCHEMA_VERSION &&
+    schemaVersion !== AGENT_LOOP_LEGACY_SCHEMA_VERSION
+  ) {
+    throw new AgentLoopError('CORRUPT_STATE', `Evidence record ${index} has unsupported schema.`);
+  }
+
+  const planningProjection = parsePlanningProjection(record.planningProjection);
+
+  return {
+    schemaVersion: schemaVersion as AgentLoopPersistedSchemaVersion,
+    runId: typeof record.runId === 'string' ? record.runId : runId,
+    projectId: typeof record.projectId === 'string' ? record.projectId : projectId,
+    phase: record.phase as BoundedToolEvidenceRecord['phase'],
+    toolId: String(record.toolId),
+    intentId: String(record.intentId),
+    status: record.status as BoundedToolEvidenceRecord['status'],
+    recordedAt: String(record.recordedAt),
+    summaryDigest: String(record.summaryDigest),
+    ...(planningProjection === undefined ? {} : { planningProjection }),
+    ...(record.resultStatus === undefined
+      ? {}
+      : { resultStatus: record.resultStatus as BoundedToolEvidenceRecord['resultStatus'] }),
+    ...(record.errorCode === undefined ? {} : { errorCode: String(record.errorCode) }),
+    ...(record.preparationId === undefined ? {} : { preparationId: String(record.preparationId) }),
+    ...(record.workflowId === undefined ? {} : { workflowId: String(record.workflowId) }),
+  };
+}
+
+/** Malformed projections degrade gracefully — record loads without projection. */
+function parsePlanningProjection(raw: unknown): OperatorToolPlanningProjection | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  if (record.projectionSchemaVersion !== OPERATOR_TOOL_PLANNING_PROJECTION_SCHEMA_VERSION) {
+    return undefined;
+  }
+  try {
+    assertNoForbiddenProjectionKeys(record);
+  } catch {
+    return undefined;
+  }
+  const projection = record as unknown as OperatorToolPlanningProjection;
+  if (!validateProjectionForPersistence(projection)) {
+    return undefined;
+  }
+  return projection;
+}
+
+function assertNoForbiddenPersistedKeysExceptEvidenceProjections(
+  record: Record<string, unknown>,
+): void {
+  const { evidence, ...rest } = record;
+  assertNoForbiddenPersistedKeys(rest);
+  if (!Array.isArray(evidence)) return;
+  for (const entry of evidence) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const evidenceRecord = entry as Record<string, unknown>;
+    const recordRest = { ...evidenceRecord };
+    delete recordRest.planningProjection;
+    assertNoForbiddenPersistedKeys(recordRest);
+  }
 }
 
 function assertNoForbiddenPersistedKeys(value: unknown): void {
@@ -124,6 +238,20 @@ function assertNoForbiddenPersistedKeys(value: unknown): void {
     'password',
     'apiKey',
     'secret',
+    'preview',
+    'content',
+    'excerpt',
+    'lineText',
+    'cookie',
+    'cookies',
+    'env',
+    'cwd',
+    'shell',
+    'command',
+    'argv',
+    'approved',
+    'operatorApproved',
+    'browserObservationApproved',
   ];
   walk(value, (key) => {
     if (forbidden.some((entry) => entry.toLowerCase() === key.toLowerCase())) {

@@ -3,7 +3,7 @@
 Trusted-local operator guide for **bounded tool turns** on an existing AgentRun. Complements
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
-**Frozen stack:** B1–B10 / ADR-037–046 + D+B digest observability + P1-C investigate-before-plan UI.
+**Frozen stack:** B1–B10 / ADR-037–047 + D+B digest observability + P1-C investigate-before-plan UI.
 Ops baseline HEAD: `79588be2aeff9918557eb8a28e3f0ba478c83c54` (P1-B A+D benchmark closure). See
 `docs/p1b-b1-b10-production-freeze.md`.
 
@@ -17,7 +17,9 @@ auto-runs.
 2. Optional: run one or more **Investigate — bounded tool turn** presets (B1/B2 read-only tools) or
    **Run provider-assisted tool turn** (B10). Review **Tool evidence (bounded digests)** only.
 3. When ready, click **Plan** — this calls the existing `POST …/plan` route (prepare + pause at
-   Gate 2). Investigation digests are **operator context only**; they are not injected into prepare.
+   Gate 2). When operator B1/B2 investigation turns ran in UNDERSTANDING, bounded planning
+   projections (ADR-047) are merged server-side into prepare context; the client cannot supply
+   planning hints on the plan route.
 4. Continue with Gate 2 review and explicit approval as before.
 
 Nothing auto-continues between investigation turns or from investigation into plan.

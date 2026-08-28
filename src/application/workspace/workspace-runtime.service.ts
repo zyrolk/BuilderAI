@@ -73,6 +73,7 @@ import {
   extractInvestigationHandoffPathHints,
   isInvestigationHandoffFeedback,
 } from './investigation/investigation-handoff';
+import { isOperatorToolPlanningMergeInput } from './agent-operating/operator-tool-planning-prepare-input';
 import type { ProjectMemoryService } from './project-memory/project-memory.service';
 import {
   extractIterationPathHints,
@@ -177,11 +178,21 @@ export class WorkspaceRuntimeService {
   ): Promise<WorkspacePreparation> {
     await this.assertExternalTargetWorkflowAllowed('PREPARE');
     const normalizedRequest = validateRequest(request);
-    const investigationHandoff = isInvestigationHandoffFeedback(iterationFeedbackInput)
-      ? this.prepareConfidentiality.filterInvestigationHandoff(iterationFeedbackInput)
+    const operatorPlanningMerge = isOperatorToolPlanningMergeInput(iterationFeedbackInput)
+      ? iterationFeedbackInput
       : undefined;
+    const investigationHandoff =
+      operatorPlanningMerge !== undefined
+        ? this.prepareConfidentiality.filterInvestigationHandoff(
+            operatorPlanningMerge.mergedHandoff,
+          )
+        : isInvestigationHandoffFeedback(iterationFeedbackInput)
+          ? this.prepareConfidentiality.filterInvestigationHandoff(iterationFeedbackInput)
+          : undefined;
     const normalizedFeedback =
-      investigationHandoff === undefined && iterationFeedbackInput !== undefined
+      investigationHandoff === undefined &&
+      operatorPlanningMerge === undefined &&
+      iterationFeedbackInput !== undefined
         ? normalizeIterationFeedback(iterationFeedbackInput, {
             priorRequestSummary: readOptionalPriorSummary(iterationFeedbackInput),
           })

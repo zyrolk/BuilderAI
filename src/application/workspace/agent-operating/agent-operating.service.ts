@@ -29,6 +29,9 @@ import type { AgentLoopExecuteContext } from '../agent-loop/agent-loop.service';
 import { AgentLoopError } from '../agent-loop/agent-loop.types';
 import { createWorkspaceAuthorizationContext } from '../workspace-authorization.service';
 import { ProviderStructuredIntentEmissionService } from './provider-structured-intent-emission.service';
+import { isInvestigationHandoffFeedback } from '../investigation/investigation-handoff';
+import { buildOperatorToolPlanningContext } from './operator-tool-planning-context';
+import { mergeOperatorToolPlanningWithHandoff } from './operator-tool-planning-merge';
 
 const EXPLAIN_SUMMARY_MAX = 1_200;
 
@@ -249,16 +252,28 @@ export class AgentOperatingService {
       );
     }
 
-    const handoff =
+    const rawHandoff =
       run.references.investigationId === undefined
         ? undefined
         : this.dependencies.investigation.resolveInvestigationHandoff(
             run.references.investigationId,
           );
+    const handoff = isInvestigationHandoffFeedback(rawHandoff) ? rawHandoff : undefined;
+
+    let prepareInput: unknown = handoff;
+    const loop = this.dependencies.loop;
+    if (loop !== undefined) {
+      await loop.hydrate(runId);
+      const operatorContext = buildOperatorToolPlanningContext(loop.listEvidence(runId));
+      const merged = mergeOperatorToolPlanningWithHandoff({ handoff, operatorContext });
+      if (merged !== undefined) {
+        prepareInput = merged;
+      }
+    }
 
     const preparation = await this.dependencies.runtime.prepare(
       run.goal,
-      handoff,
+      prepareInput,
       options.cancellation,
     );
 

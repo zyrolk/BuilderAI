@@ -17,6 +17,7 @@ import {
 import { parseProviderStructuredToolIntent } from './agent-loop-intent.validator';
 import { assertAutonomousLoopToolAllowed } from './agent-loop-phase-policy';
 import type { AgentLoopEvidenceStore } from './agent-loop.persistence';
+import { extractOperatorToolPlanningProjection } from './operator-tool-planning-projection';
 import {
   AGENT_LOOP_SCHEMA_VERSION,
   AgentLoopError,
@@ -538,6 +539,22 @@ export class AgentLoopService {
     summary: string,
     toolResult?: ToolResult,
   ): BoundedToolEvidenceRecord {
+    const recordedAt = this.clock.now().toISOString();
+    const summaryDigest = digestSummary(summary);
+    const planningProjection =
+      toolResult?.structured !== undefined
+        ? extractOperatorToolPlanningProjection({
+            runId: context.runId,
+            toolId: intent.toolId,
+            intentId: intent.intentId,
+            phase: context.phase,
+            status,
+            recordedAt,
+            summaryDigest,
+            structured: toolResult.structured,
+          })
+        : undefined;
+
     return {
       schemaVersion: AGENT_LOOP_SCHEMA_VERSION,
       runId: context.runId,
@@ -546,8 +563,9 @@ export class AgentLoopService {
       toolId: intent.toolId,
       intentId: intent.intentId,
       status,
-      recordedAt: this.clock.now().toISOString(),
-      summaryDigest: digestSummary(summary),
+      recordedAt,
+      summaryDigest,
+      ...(planningProjection === undefined ? {} : { planningProjection }),
       ...(toolResult !== undefined ? { resultStatus: toolResult.status } : {}),
       ...(toolResult?.errorCode !== undefined ? { errorCode: toolResult.errorCode } : {}),
       ...(context.preparationId !== undefined ? { preparationId: context.preparationId } : {}),

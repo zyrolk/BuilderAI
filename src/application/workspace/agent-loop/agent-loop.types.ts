@@ -6,7 +6,39 @@
 import type { AgentRunPhase } from '../agent-operating/agent-run.types';
 import type { ToolCapabilityClass, ToolResult } from '../tool-registry/tool-registry.types';
 
-export const AGENT_LOOP_SCHEMA_VERSION = 1 as const;
+/** Current persisted agent-loop evidence schema (ADR-047 v2 adds optional planningProjection). */
+export const AGENT_LOOP_SCHEMA_VERSION = 2 as const;
+
+/** Legacy v1 evidence remains readable without planningProjection. */
+export const AGENT_LOOP_LEGACY_SCHEMA_VERSION = 1 as const;
+
+export type AgentLoopPersistedSchemaVersion =
+  typeof AGENT_LOOP_SCHEMA_VERSION | typeof AGENT_LOOP_LEGACY_SCHEMA_VERSION;
+
+export const OPERATOR_TOOL_PLANNING_PROJECTION_SCHEMA_VERSION = 1 as const;
+
+/** Bounded server-derived planning extract (ADR-047). DATA only — never authority. */
+export interface OperatorToolPlanningProjection {
+  readonly projectionSchemaVersion: typeof OPERATOR_TOOL_PLANNING_PROJECTION_SCHEMA_VERSION;
+  readonly sourceRunId: string;
+  readonly toolId: string;
+  readonly intentId: string;
+  readonly phase: AgentRunPhase;
+  readonly status: AgentLoopTurnStatus;
+  readonly recordedAt: string;
+
+  readonly pathHints?: readonly string[];
+  readonly existingPathHints?: readonly string[];
+  readonly candidatePathHints?: readonly string[];
+
+  readonly searchHitCount?: number;
+  readonly relevantFileCount?: number;
+  readonly readinessStatus?: string;
+  readonly truncated?: boolean;
+
+  readonly provenance: 'OPERATOR_TOOL_TURN';
+  readonly summaryDigest: string;
+}
 
 export const DEFAULT_AGENT_LOOP_BUDGETS = {
   maxToolCallsPerRun: 40,
@@ -82,7 +114,7 @@ export interface AgentLoopBudgetSnapshot {
 }
 
 export interface BoundedToolEvidenceRecord {
-  readonly schemaVersion: typeof AGENT_LOOP_SCHEMA_VERSION;
+  readonly schemaVersion: AgentLoopPersistedSchemaVersion;
   readonly runId: string;
   readonly projectId: string;
   readonly phase: AgentRunPhase;
@@ -91,6 +123,7 @@ export interface BoundedToolEvidenceRecord {
   readonly status: AgentLoopTurnStatus;
   readonly recordedAt: string;
   readonly summaryDigest: string;
+  readonly planningProjection?: OperatorToolPlanningProjection;
   readonly resultStatus?: ToolResult['status'];
   readonly errorCode?: string;
   readonly preparationId?: string;
@@ -98,7 +131,7 @@ export interface BoundedToolEvidenceRecord {
 }
 
 export interface AgentLoopPersistedState {
-  readonly schemaVersion: typeof AGENT_LOOP_SCHEMA_VERSION;
+  readonly schemaVersion: AgentLoopPersistedSchemaVersion;
   readonly runId: string;
   readonly projectId: string;
   readonly budget: AgentLoopBudgetSnapshot;

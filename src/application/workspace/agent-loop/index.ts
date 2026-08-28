@@ -4,5 +4,6 @@ export * from './agent-loop-intent.validator';
 export * from './agent-loop-phase-policy';
 export * from './agent-loop.persistence';
 export * from './agent-loop.service';
+export * from './operator-tool-planning-projection';
 export * from './create-agent-loop';
 export * from './create-production-agent-loop';

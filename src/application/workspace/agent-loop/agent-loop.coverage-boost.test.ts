@@ -341,7 +341,7 @@ describe('ADR-042 coverage boost', () => {
 
       await expect(
         persistence.save({
-          schemaVersion: 2 as 1,
+          schemaVersion: 99 as never,
           runId: 'x',
           projectId: 'builder-ai',
           budget: {
