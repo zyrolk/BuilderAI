@@ -2,7 +2,7 @@
  * @vitest-environment node
  *
  * P1-B B1–B10 production hardening smoke matrix.
- * Freeze tip: 16c9790 (ancestry efd4a7b → 326507d → 16c9790).
+ * Freeze tip: 76d12de (ancestry efd4a7b → 326507d → 16c9790 → 7a3d16b → 76d12de).
  * Asserts frozen security/architecture invariants without redesigning B1–B10.
  */
 import { describe, expect, it } from 'vitest';
