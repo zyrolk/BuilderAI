@@ -1,11 +1,29 @@
 # P1-B B1–B10 Production Freeze
 
 - **Status:** Frozen for production hardening
-- **Baseline HEAD:** `efd4a7bedec1155bd1b3d7aac4258e1ba3a57960`
-- **Baseline commit:** `P1-B: Add Provider Structured-Intent Emission Boundary`
+- **Freeze tip (ops baseline):** `16c97905b80ef04cf23c999636aacaa5583a5484`
+- **Freeze tip commit:** `P1-B: Freeze B1-B10 Production Hardening`
+- **Feature-complete B10 tip:** `efd4a7bedec1155bd1b3d7aac4258e1ba3a57960`
+  (`P1-B: Add Provider Structured-Intent Emission Boundary`)
+- **Windows npm spawn EINVAL fix:** `326507d4a840de9f0a9087a2dd5351cfcae15c1d`
+  (`P1-B: Fix Windows npm process resolution`)
 - **ADRs frozen:** ADR-037 through ADR-046
 - **Implementations frozen:** B1 through B10
-- **Date:** 2026-08-23
+- **Date:** 2026-08-23 (freeze docs authored); ops closure works **FROM** tip `16c9790`
+
+## Ancestry (frozen baseline chain)
+
+```
+efd4a7b  B10 provider structured-intent emission
+   ↓
+326507d  Windows npm process resolution (spawn EINVAL fix)
+   ↓
+16c9790  Freeze documentation (production freeze tip / ops baseline)
+```
+
+Ops closure / hardening proceeds from freeze tip `16c9790`. Until an ops-closure commit
+lands, **current HEAD remains** `16c9790`. After that later commit, HEAD will move; the frozen
+product baseline stays B1–B10 / ADR-037–046 with the ancestry above.
 
 ## Freeze statement
 
@@ -41,7 +59,7 @@ open-web/WEB, unbounded auto-continue, or provider-native `toolCalling: true`.
 
 ## Hardening checklist (operators / release)
 
-- [ ] `npm run ci` green on freeze HEAD (or authorized successor)
+- [ ] `npm run ci` green on freeze tip `16c9790` (or authorized ops-closure successor)
 - [ ] Operator tool-turn smoke (UNDERSTANDING / AWAITING_GATE2 soft tool)
 - [ ] Provider-assisted tool-turn smoke (`toolCalling:false`, no client intents)
 - [ ] Cross-project runId → 404 / NOT_FOUND
@@ -49,6 +67,8 @@ open-web/WEB, unbounded auto-continue, or provider-native `toolCalling: true`.
 - [ ] Authority forgery rejected (approved / apply token / browser on intent / projectId / runId / phase)
 - [ ] Cancel aborts; restart shows digests only (no auto-continue)
 - [ ] Gate2 checkbox never enables browser observation
+- [ ] Hardening smoke suite:
+      `src/application/workspace/agent-operating/p1b-b1-b10-production-hardening.smoke.test.ts`
 
 ## Explicit non-goals under this freeze
 
@@ -59,6 +79,7 @@ open-web/WEB, unbounded auto-continue, or provider-native `toolCalling: true`.
 - New Tool Registry capability classes
 - Autonomous Git write / push
 - Merging CorrectionLoop into AgentLoop
+- B11 feature implementation under ops closure
 
 ## Related operator docs
 

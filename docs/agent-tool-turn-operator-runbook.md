@@ -3,8 +3,9 @@
 Trusted-local operator guide for **bounded tool turns** on an existing AgentRun. Complements
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
-**Frozen stack:** B1–B10 / ADR-037–046. Baseline:
-`efd4a7bedec1155bd1b3d7aac4258e1ba3a57960`.
+**Frozen stack:** B1–B10 / ADR-037–046. Ops baseline tip:
+`16c97905b80ef04cf23c999636aacaa5583a5484` (ancestry: `efd4a7b` B10 → `326507d`
+Windows npm fix → `16c9790` freeze docs). See `docs/p1b-b1-b10-production-freeze.md`.
 
 ## What tool turns are (and are not)
 
