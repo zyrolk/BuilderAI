@@ -12,6 +12,16 @@ import type {
 
 const NOW = '2026-08-20T10:00:00.000Z';
 
+const EMPTY_TOOL_LOOP = {
+  evidence: [] as const,
+  budget: {
+    toolCalls: 0,
+    providerTurns: 0,
+    b4VerificationCalls: 0,
+    browserObservationCalls: 0,
+  },
+};
+
 function createRun(overrides: Partial<AgentRunHttpView> = {}): AgentRunHttpView {
   return {
     runId: 'agent-run-001',
@@ -41,52 +51,160 @@ function createAgentApi(overrides: Partial<HttpAgentWorkflow> = {}): HttpAgentWo
   } as unknown as HttpAgentWorkflow;
 }
 
+function createGate2PlanResponse(overrides: Partial<AgentPlanResponse> = {}): AgentPlanResponse {
+  return {
+    run: createRun({
+      phase: 'AWAITING_GATE2',
+      status: 'AWAITING_GATE2',
+      awaitingGate2: true,
+      references: { investigationId: 'inv-1', preparationId: 'prep-1' },
+    }),
+    preparationId: 'prep-1',
+    expiresAt: NOW,
+    awaitingGate2: true,
+    gate2Review: {
+      schemaVersion: 1,
+      totalCharacterCount: 120,
+      truncated: false,
+      operationCount: 2,
+    },
+    ...overrides,
+  };
+}
+
+async function submitGoal(goal = 'Add health endpoint'): Promise<void> {
+  fireEvent.change(screen.getByLabelText(/Agent goal/i), {
+    target: { value: goal },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
+  await waitFor(() => {
+    expect(screen.getByText(/Goal:/)).toBeInTheDocument();
+  });
+}
+
+async function clickPlan(): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: /^Plan$/i }));
+  await screen.findByText(/Paused at Gate 2/i);
+}
+
 describe('AgentRunPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('starts an agent run and plans to Gate 2', async () => {
+  it('starts an agent run in UNDERSTANDING without auto-planning', async () => {
     const started: AgentStartResponse = {
       run: createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' }),
       investigationId: 'inv-1',
     };
-    const planned: AgentPlanResponse = {
-      run: createRun({
-        phase: 'AWAITING_GATE2',
-        status: 'AWAITING_GATE2',
-        awaitingGate2: true,
-        references: { investigationId: 'inv-1', preparationId: 'prep-1' },
-      }),
-      preparationId: 'prep-1',
-      expiresAt: NOW,
-      awaitingGate2: true,
-      gate2Review: {
-        schemaVersion: 1,
-        totalCharacterCount: 120,
-        truncated: false,
-        operationCount: 2,
-      },
-    };
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue(started),
+      getStatus: vi.fn().mockResolvedValue({
+        run: started.run,
+        toolLoop: EMPTY_TOOL_LOOP,
+      }),
+    });
+
+    render(<AgentRunPanel agentApi={agentApi} />);
+    await submitGoal();
+
+    expect(agentApi.start).toHaveBeenCalledWith('Add health endpoint');
+    expect(agentApi.plan).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: /Investigate before plan/i })).toBeInTheDocument();
+    expect(screen.getByText(/Understanding the project/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Tool evidence/i })).toBeInTheDocument();
+    expect(screen.getByText(/No digests yet/i)).toBeInTheDocument();
+    expect(agentApi.getStatus).toHaveBeenCalledWith('agent-run-001');
+  });
+
+  it('plans to Gate 2 only after explicit Plan action', async () => {
+    const started: AgentStartResponse = {
+      run: createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' }),
+      investigationId: 'inv-1',
+    };
+    const planned = createGate2PlanResponse();
+    const agentApi = createAgentApi({
+      start: vi.fn().mockResolvedValue(started),
+      getStatus: vi.fn().mockResolvedValue({
+        run: started.run,
+        toolLoop: EMPTY_TOOL_LOOP,
+      }),
       plan: vi.fn().mockResolvedValue(planned),
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Add health endpoint' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
+    await submitGoal();
+    await clickPlan();
 
-    await waitFor(() => {
-      expect(screen.getByText(/Paused at Gate 2/i)).toBeInTheDocument();
-    });
-    expect(agentApi.start).toHaveBeenCalledWith('Add health endpoint');
     expect(agentApi.plan).toHaveBeenCalledWith('agent-run-001');
     expect(screen.getByText(/Planned operations: 2/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Approve and execute/i })).toBeDisabled();
     expect(agentApi.approve).not.toHaveBeenCalled();
+  });
+
+  it('runs investigate → tool turn → explicit plan → Gate 2', async () => {
+    const understanding = createRun({
+      phase: 'UNDERSTANDING',
+      status: 'RUNNING',
+      goal: 'Goal',
+    });
+    const toolTurn = vi.fn().mockResolvedValue({
+      run: understanding,
+      budget: {
+        toolCalls: 1,
+        providerTurns: 0,
+        b4VerificationCalls: 0,
+        browserObservationCalls: 0,
+      },
+      evidence: [
+        {
+          toolId: 'retrieve_relevant_context',
+          intentId: 'ui-intent-1',
+          phase: 'UNDERSTANDING',
+          status: 'SUCCEEDED',
+          recordedAt: NOW,
+          summaryDigest: 'contextdigest012345',
+        },
+      ],
+      turn: { toolId: 'retrieve_relevant_context', status: 'SUCCEEDED' },
+    });
+    const planned = createGate2PlanResponse();
+    const agentApi = createAgentApi({
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({
+        run: understanding,
+        toolLoop: EMPTY_TOOL_LOOP,
+      }),
+      toolTurn,
+      plan: vi.fn().mockResolvedValue(planned),
+    });
+
+    render(<AgentRunPanel agentApi={agentApi} />);
+    await submitGoal('Goal');
+
+    fireEvent.change(screen.getByLabelText(/^Tool$/i), {
+      target: { value: 'retrieve_relevant_context' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Run tool turn/i }));
+
+    await waitFor(() => {
+      expect(toolTurn).toHaveBeenCalledTimes(1);
+    });
+    expect(toolTurn).toHaveBeenCalledWith(
+      'agent-run-001',
+      expect.objectContaining({
+        intent: expect.objectContaining({
+          toolId: 'retrieve_relevant_context',
+          arguments: { goal: 'Goal' },
+        }),
+      }),
+    );
+    expect(screen.getByText(/contextdigest01/i)).toBeInTheDocument();
+    expect(agentApi.plan).not.toHaveBeenCalled();
+
+    await clickPlan();
+    expect(agentApi.plan).toHaveBeenCalledWith('agent-run-001');
+    expect(screen.getByText(/Planned operations: 2/i)).toBeInTheDocument();
   });
 
   it('shows loading and error states without auto-approving', async () => {
@@ -105,26 +223,9 @@ describe('AgentRunPanel', () => {
   });
 
   it('refreshes status from the server', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-      references: { preparationId: 'prep-1' },
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
       getStatus: vi.fn().mockResolvedValue({
         run: createRun({
           phase: 'EXECUTING',
@@ -136,11 +237,7 @@ describe('AgentRunPanel', () => {
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByText(/Paused at Gate 2/i);
+    await submitGoal('Goal');
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh status/i }));
     await waitFor(() => {
@@ -220,6 +317,7 @@ describe('AgentRunPanel', () => {
     };
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: createRun(), toolLoop: EMPTY_TOOL_LOOP }),
       plan: vi.fn().mockResolvedValue({
         run: awaiting,
         preparationId: 'prep-1',
@@ -237,11 +335,8 @@ describe('AgentRunPanel', () => {
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByText(/Paused at Gate 2/i);
+    await submitGoal('Goal');
+    await clickPlan();
 
     const approveButton = screen.getByRole('button', { name: /Approve and execute/i });
     expect(approveButton).toBeDisabled();
@@ -271,6 +366,10 @@ describe('AgentRunPanel', () => {
     });
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({
+        run: createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' }),
+        toolLoop: EMPTY_TOOL_LOOP,
+      }),
       plan: vi.fn().mockResolvedValue({
         run: awaiting,
         preparationId: 'prep-1',
@@ -284,15 +383,11 @@ describe('AgentRunPanel', () => {
         },
       }),
       approve: vi.fn().mockRejectedValue(new Error('Approval rejected by server')),
-      getStatus: vi.fn().mockResolvedValue({ run: awaiting }),
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByText(/Paused at Gate 2/i);
+    await submitGoal('Goal');
+    await clickPlan();
     fireEvent.click(screen.getByLabelText(/I reviewed the planned changes/i));
     fireEvent.click(screen.getByRole('button', { name: /Approve and execute/i }));
 
@@ -311,6 +406,10 @@ describe('AgentRunPanel', () => {
     });
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({
+        run: createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' }),
+        toolLoop: EMPTY_TOOL_LOOP,
+      }),
       plan: vi.fn().mockResolvedValue({
         run: awaiting,
         preparationId: 'prep-1',
@@ -333,11 +432,8 @@ describe('AgentRunPanel', () => {
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByText(/Paused at Gate 2/i);
+    await submitGoal('Goal');
+    await clickPlan();
     fireEvent.click(screen.getByRole('button', { name: /Cancel run/i }));
 
     await waitFor(() => {
@@ -399,6 +495,10 @@ describe('AgentRunPanel', () => {
     };
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({
+        run: createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' }),
+        toolLoop: EMPTY_TOOL_LOOP,
+      }),
       plan: vi.fn().mockResolvedValue({
         run: awaiting,
         preparationId: 'prep-1',
@@ -415,11 +515,8 @@ describe('AgentRunPanel', () => {
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByText(/Paused at Gate 2/i);
+    await submitGoal('Goal');
+    await clickPlan();
     fireEvent.click(screen.getByLabelText(/I reviewed the planned changes/i));
     fireEvent.click(screen.getByRole('button', { name: /Approve and execute/i }));
 
@@ -443,14 +540,9 @@ describe('AgentRunPanel', () => {
   });
 
   it('invokes authorized tool turns only via toolTurn API with runId binding', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-      references: { preparationId: 'prep-1' },
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const toolTurn = vi.fn().mockResolvedValue({
-      run: awaiting,
+      run: understanding,
       budget: {
         toolCalls: 1,
         providerTurns: 0,
@@ -461,7 +553,7 @@ describe('AgentRunPanel', () => {
         {
           toolId: 'search_repository',
           intentId: 'ui-intent-1',
-          phase: 'AWAITING_GATE2',
+          phase: 'UNDERSTANDING',
           status: 'SUCCEEDED',
           recordedAt: NOW,
           summaryDigest: 'abcdef0123456789digest',
@@ -470,28 +562,14 @@ describe('AgentRunPanel', () => {
       turn: { toolId: 'search_repository', status: 'SUCCEEDED' },
     });
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: understanding, toolLoop: EMPTY_TOOL_LOOP }),
       toolTurn,
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
 
     fireEvent.change(screen.getByLabelText(/Search query/i), {
       target: { value: 'health' },
@@ -525,11 +603,7 @@ describe('AgentRunPanel', () => {
   });
 
   it('prevents concurrent tool-turn submissions and does not auto-loop', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     let resolveTurn: ((value: unknown) => void) | undefined;
     const toolTurn = vi.fn().mockImplementation(
       () =>
@@ -538,28 +612,14 @@ describe('AgentRunPanel', () => {
         }),
     );
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: understanding, toolLoop: EMPTY_TOOL_LOOP }),
       toolTurn,
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
     fireEvent.change(screen.getByLabelText(/Search query/i), {
       target: { value: 'health' },
     });
@@ -569,7 +629,7 @@ describe('AgentRunPanel', () => {
     expect(toolTurn).toHaveBeenCalledTimes(1);
 
     resolveTurn?.({
-      run: awaiting,
+      run: understanding,
       budget: {
         toolCalls: 1,
         providerTurns: 0,
@@ -586,45 +646,31 @@ describe('AgentRunPanel', () => {
   });
 
   it('hides tool turns in EXECUTING and does not call toolTurn from status refresh', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
-      getStatus: vi.fn().mockResolvedValue({
-        run: createRun({
-          phase: 'EXECUTING',
-          status: 'RUNNING',
-          awaitingGate2: false,
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi
+        .fn()
+        .mockResolvedValueOnce({ run: understanding, toolLoop: EMPTY_TOOL_LOOP })
+        .mockResolvedValueOnce({
+          run: createRun({
+            phase: 'EXECUTING',
+            status: 'RUNNING',
+            awaitingGate2: false,
+          }),
         }),
-      }),
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
     fireEvent.click(screen.getByRole('button', { name: /Refresh status/i }));
     await waitFor(() => {
       expect(screen.getByText(/Executing approved changes/i)).toBeInTheDocument();
     });
-    expect(screen.queryByRole('heading', { name: /Bounded tool turn/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /Investigate — bounded tool turn/i }),
+    ).not.toBeInTheDocument();
     expect(agentApi.toolTurn).not.toHaveBeenCalled();
   });
 
@@ -647,27 +693,13 @@ describe('AgentRunPanel', () => {
     });
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: diagnosing,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: false,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 0,
-          truncated: false,
-          operationCount: 0,
-        },
-      }),
+      getStatus: vi.fn().mockResolvedValue({ run: diagnosing, toolLoop: EMPTY_TOOL_LOOP }),
       toolTurn,
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /^Bounded tool turn$/i });
 
     fireEvent.change(screen.getByLabelText(/^Tool$/i), {
       target: { value: 'run_local_browser_observation' },
@@ -698,37 +730,26 @@ describe('AgentRunPanel', () => {
   });
 
   it('does not offer FileApply, shell, Git write, WEB, or MCP tools in the UI', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: understanding, toolLoop: EMPTY_TOOL_LOOP }),
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
     const options = Array.from(screen.getByLabelText(/^Tool$/i).querySelectorAll('option')).map(
       (option) => option.getAttribute('value'),
     );
-    expect(options).toEqual(['search_repository', 'inspect_readiness']);
+    expect(options).toEqual([
+      'search_repository',
+      'inspect_readiness',
+      'retrieve_relevant_context',
+      'find_related_files',
+      'inspect_file_outline',
+      'inspect_imports',
+    ]);
     expect(options).not.toContain('file_apply');
     expect(options).not.toContain('approve_and_apply');
     expect(options).not.toContain('commit_git_snapshot');
@@ -739,35 +760,16 @@ describe('AgentRunPanel', () => {
   });
 
   it('surfaces tool-turn rejection without inventing success digests', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: understanding, toolLoop: EMPTY_TOOL_LOOP }),
       toolTurn: vi.fn().mockRejectedValue(new Error('PHASE_TOOLS_FORBIDDEN')),
-      getStatus: vi.fn().mockResolvedValue({ run: awaiting }),
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
     fireEvent.change(screen.getByLabelText(/Search query/i), {
       target: { value: 'x' },
     });
@@ -775,17 +777,14 @@ describe('AgentRunPanel', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('PHASE_TOOLS_FORBIDDEN');
     });
-    expect(screen.queryByText(/Tool evidence/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Tool evidence/i })).toBeInTheDocument();
+    expect(screen.getByText(/No digests yet/i)).toBeInTheDocument();
   });
 
   it('invokes provider-assisted tool turn via providerToolTurn without client intents', async () => {
-    const awaiting = createRun({
-      phase: 'AWAITING_GATE2',
-      status: 'AWAITING_GATE2',
-      awaitingGate2: true,
-    });
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const providerToolTurn = vi.fn().mockResolvedValue({
-      run: awaiting,
+      run: understanding,
       budget: {
         toolCalls: 1,
         providerTurns: 1,
@@ -796,7 +795,7 @@ describe('AgentRunPanel', () => {
         {
           toolId: 'search_repository',
           intentId: 'psi-1',
-          phase: 'AWAITING_GATE2',
+          phase: 'UNDERSTANDING',
           status: 'SUCCEEDED',
           recordedAt: NOW,
           summaryDigest: 'providerdigest0123',
@@ -813,28 +812,14 @@ describe('AgentRunPanel', () => {
       },
     });
     const agentApi = createAgentApi({
-      start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
-      plan: vi.fn().mockResolvedValue({
-        run: awaiting,
-        preparationId: 'prep-1',
-        expiresAt: NOW,
-        awaitingGate2: true,
-        gate2Review: {
-          schemaVersion: 1,
-          totalCharacterCount: 10,
-          truncated: false,
-          operationCount: 1,
-        },
-      }),
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: understanding, toolLoop: EMPTY_TOOL_LOOP }),
       providerToolTurn,
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
     fireEvent.click(screen.getByRole('button', { name: /Run provider-assisted tool turn/i }));
 
     await waitFor(() => {
@@ -871,15 +856,13 @@ describe('AgentRunPanel', () => {
     );
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: awaiting, investigationId: 'inv-1' }),
+      getStatus: vi.fn().mockResolvedValue({ run: awaiting, toolLoop: EMPTY_TOOL_LOOP }),
       providerToolTurn,
     });
 
     render(<AgentRunPanel agentApi={agentApi} />);
-    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
-      target: { value: 'Goal' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
-    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    await submitGoal('Goal');
+    await screen.findByRole('heading', { name: /Investigate — bounded tool turn/i });
     fireEvent.click(screen.getByRole('button', { name: /Run provider-assisted tool turn/i }));
 
     await waitFor(() => {

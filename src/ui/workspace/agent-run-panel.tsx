@@ -42,6 +42,8 @@ const TOOL_PRESETS = [
     id: 'search_repository',
     label: 'Search repository (read-only)',
     needsQuery: true,
+    needsLogicalPath: false,
+    needsGoal: false,
     needsBrowserApproval: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
   },
@@ -49,13 +51,53 @@ const TOOL_PRESETS = [
     id: 'inspect_readiness',
     label: 'Inspect readiness (read-only)',
     needsQuery: false,
+    needsLogicalPath: false,
+    needsGoal: false,
     needsBrowserApproval: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'retrieve_relevant_context',
+    label: 'Retrieve relevant context (read-only)',
+    needsQuery: false,
+    needsLogicalPath: false,
+    needsGoal: true,
+    needsBrowserApproval: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'find_related_files',
+    label: 'Find related files (read-only)',
+    needsQuery: false,
+    needsLogicalPath: true,
+    needsGoal: false,
+    needsBrowserApproval: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'inspect_file_outline',
+    label: 'Inspect file outline (read-only)',
+    needsQuery: false,
+    needsLogicalPath: true,
+    needsGoal: false,
+    needsBrowserApproval: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'inspect_imports',
+    label: 'Inspect imports (read-only)',
+    needsQuery: false,
+    needsLogicalPath: true,
+    needsGoal: false,
+    needsBrowserApproval: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
   },
   {
     id: 'inspect_browser_verification_catalog',
     label: 'Inspect browser catalog (read-only)',
     needsQuery: false,
+    needsLogicalPath: false,
+    needsGoal: false,
     needsBrowserApproval: false,
     phases: ['VERIFYING', 'DIAGNOSING'],
   },
@@ -63,6 +105,8 @@ const TOOL_PRESETS = [
     id: 'run_local_browser_observation',
     label: 'Local browser observation (requires distinct browser approval)',
     needsQuery: false,
+    needsLogicalPath: false,
+    needsGoal: false,
     needsBrowserApproval: true,
     phases: ['VERIFYING', 'DIAGNOSING'],
   },
@@ -101,12 +145,35 @@ function createIntentId(): string {
   return `ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function buildToolPresetArguments(
+  preset: (typeof TOOL_PRESETS)[number],
+  input: { readonly query: string; readonly logicalPath: string; readonly goal: string },
+): Record<string, string | readonly string[]> {
+  if (preset.needsQuery) {
+    return { query: input.query };
+  }
+  if (preset.needsLogicalPath) {
+    return preset.id === 'find_related_files' && input.goal.length > 0
+      ? { logicalPath: input.logicalPath, goal: input.goal }
+      : { logicalPath: input.logicalPath };
+  }
+  if (preset.needsGoal) {
+    return { goal: input.goal };
+  }
+  if (preset.id === 'run_local_browser_observation') {
+    return { routeIds: ['home'] };
+  }
+  return {};
+}
+
 export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: AgentRunPanelProps) {
   const agentApi = useMemo(() => injectedApi ?? new HttpAgentWorkflow(), [injectedApi]);
   const goalId = useId();
   const approvalId = useId();
   const toolPresetId = useId();
   const toolQueryId = useId();
+  const toolLogicalPathId = useId();
+  const toolGoalId = useId();
   const browserApprovalId = useId();
   const [goal, setGoal] = useState('');
   const [busy, setBusy] = useState(false);
@@ -124,6 +191,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   const [toolPreset, setToolPreset] =
     useState<(typeof TOOL_PRESETS)[number]['id']>('search_repository');
   const [toolQuery, setToolQuery] = useState('');
+  const [toolLogicalPath, setToolLogicalPath] = useState('');
   const [browserObservationApproved, setBrowserObservationApproved] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const toolTurnInFlight = useRef(false);
@@ -203,12 +271,31 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     try {
       const started = await agentApi.start(normalized);
       setRun(started.run);
-      const planned = await agentApi.plan(started.run.runId);
+      await refreshStatus(started.run.runId);
+    } catch (startError: unknown) {
+      setError(startError instanceof Error ? startError.message : 'Agent run failed to start.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePlan(): Promise<void> {
+    if (run === undefined || disabled || busy || toolTurnBusy) return;
+    if (run.phase !== 'UNDERSTANDING' || run.awaitingGate2) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const planned = await agentApi.plan(run.runId);
       setRun(planned.run);
       setGate2Summary(planned.gate2Review);
       setApplyAuthorizationToken(planned.applyAuthorizationToken);
-    } catch (startError: unknown) {
-      setError(startError instanceof Error ? startError.message : 'Agent run failed to start.');
+    } catch (planError: unknown) {
+      setError(planError instanceof Error ? planError.message : 'Planning failed.');
+      try {
+        await refreshStatus(run.runId);
+      } catch {
+        // Keep prior run snapshot if refresh fails.
+      }
     } finally {
       setBusy(false);
     }
@@ -307,6 +394,10 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
       setError('A search query is required for this tool.');
       return;
     }
+    if (preset.needsLogicalPath && toolLogicalPath.trim().length === 0) {
+      setError('A logical path is required for this tool.');
+      return;
+    }
     if (preset.needsBrowserApproval && !browserObservationApproved) {
       setError(
         'Local browser observation requires explicit browser OPERATOR approval (distinct from Gate 2 and Git).',
@@ -317,11 +408,11 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     const intent = {
       toolId: preset.id,
       intentId: createIntentId(),
-      arguments: preset.needsQuery
-        ? { query: toolQuery.trim() }
-        : preset.id === 'run_local_browser_observation'
-          ? { routeIds: ['home'] }
-          : {},
+      arguments: buildToolPresetArguments(preset, {
+        query: toolQuery.trim(),
+        logicalPath: toolLogicalPath.trim(),
+        goal: run.goal.trim(),
+      }),
     };
 
     toolTurnInFlight.current = true;
@@ -415,6 +506,9 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     !busy &&
     !toolTurnBusy;
   const showToolTurn = run !== undefined && canOfferToolTurn(run.phase) && !disabled;
+  const showInvestigateBeforePlan =
+    run !== undefined && run.phase === 'UNDERSTANDING' && !run.awaitingGate2 && !disabled;
+  const canPlan = showInvestigateBeforePlan && !busy && !toolTurnBusy && !disabled;
   const availablePresets = useMemo(
     () => (run !== undefined ? presetsForPhase(run.phase) : TOOL_PRESETS),
     [run],
@@ -522,9 +616,35 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
             </button>
           </div>
 
+          {showInvestigateBeforePlan && (
+            <section
+              className={styles.agentToolTurnCard}
+              aria-labelledby="agent-investigate-before-plan-title"
+            >
+              <h3 id="agent-investigate-before-plan-title">Investigate before plan</h3>
+              <p>
+                Run bounded read/search/inspect tool turns while the run stays in UNDERSTANDING.
+                Review digests below, then click Plan when ready. Planning is a separate explicit
+                action — nothing auto-continues.
+              </p>
+              <button
+                type="button"
+                className={styles.approveButton}
+                disabled={!canPlan}
+                onClick={() => void handlePlan()}
+              >
+                {busy ? 'Planning…' : 'Plan'}
+              </button>
+            </section>
+          )}
+
           {showToolTurn && (
             <section className={styles.agentToolTurnCard} aria-labelledby="agent-tool-turn-title">
-              <h3 id="agent-tool-turn-title">Bounded tool turn</h3>
+              <h3 id="agent-tool-turn-title">
+                {showInvestigateBeforePlan
+                  ? 'Investigate — bounded tool turn'
+                  : 'Bounded tool turn'}
+              </h3>
               <p>
                 Explicit operator action only. Calls the existing authenticated B8 tool-turn API.
                 Does not approve Gate 2, apply files, write Git, or invent browser approval.
@@ -562,6 +682,39 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                       onChange={(event) => setToolQuery(event.target.value)}
                       placeholder="Bounded repository search…"
                     />
+                  </>
+                )}
+
+                {selectedPreset.needsLogicalPath && (
+                  <>
+                    <label htmlFor={toolLogicalPathId}>Logical path</label>
+                    <input
+                      id={toolLogicalPathId}
+                      type="text"
+                      value={toolLogicalPath}
+                      maxLength={500}
+                      disabled={busy || toolTurnBusy}
+                      onChange={(event) => setToolLogicalPath(event.target.value)}
+                      placeholder="src/example.ts"
+                    />
+                  </>
+                )}
+
+                {selectedPreset.needsGoal && (
+                  <>
+                    <label htmlFor={toolGoalId}>Investigation goal</label>
+                    <input
+                      id={toolGoalId}
+                      type="text"
+                      value={run.goal}
+                      maxLength={4_000}
+                      readOnly
+                      disabled
+                      aria-describedby={`${toolGoalId}-hint`}
+                    />
+                    <span id={`${toolGoalId}-hint`} className={styles.agentToolTurnHint}>
+                      Uses the agent goal for bounded context retrieval.
+                    </span>
                   </>
                 )}
 

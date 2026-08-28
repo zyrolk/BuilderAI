@@ -3,10 +3,24 @@
 Trusted-local operator guide for **bounded tool turns** on an existing AgentRun. Complements
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
-**Frozen stack:** B1–B10 / ADR-037–046 + D+B digest observability. Ops baseline HEAD:
-`76d12de5a41246ae36ebc86077084eac3cf60081` (ancestry: `efd4a7b` B10 → `326507d`
-Windows npm fix → `16c9790` freeze docs → `7a3d16b` ops closure → `76d12de` D+B). See
+**Frozen stack:** B1–B10 / ADR-037–046 + D+B digest observability + P1-C investigate-before-plan UI.
+Ops baseline HEAD: `79588be2aeff9918557eb8a28e3f0ba478c83c54` (P1-B A+D benchmark closure). See
 `docs/p1b-b1-b10-production-freeze.md`.
+
+## Investigate before plan (P1-C Slice 1)
+
+After **Start agent run**, the workspace keeps the run in **UNDERSTANDING** until you explicitly
+click **Plan**. Use bounded tool turns first to gather read/search/inspect digests; planning never
+auto-runs.
+
+1. Enter a goal and click **Start agent run** — phase stays `UNDERSTANDING`.
+2. Optional: run one or more **Investigate — bounded tool turn** presets (B1/B2 read-only tools) or
+   **Run provider-assisted tool turn** (B10). Review **Tool evidence (bounded digests)** only.
+3. When ready, click **Plan** — this calls the existing `POST …/plan` route (prepare + pause at
+   Gate 2). Investigation digests are **operator context only**; they are not injected into prepare.
+4. Continue with Gate 2 review and explicit approval as before.
+
+Nothing auto-continues between investigation turns or from investigation into plan.
 
 ## What tool turns are (and are not)
 
@@ -28,23 +42,26 @@ Mutation still requires: prepare → **AWAITING_GATE2** → explicit human appro
 
 ### 1. Operator preset turn (B8 / B9)
 
-1. Start (or resume) an AgentRun in the workspace UI.
-2. In **Bounded tool turn**, choose a soft tool (e.g. search repository).
+1. Start an AgentRun in the workspace UI (remains in UNDERSTANDING).
+2. In **Investigate — bounded tool turn**, choose a soft tool (B1 search/readiness or B2 context /
+   related-files / outline / imports).
 3. Click **Run tool turn**.
 4. Review **Tool evidence (bounded digests)** only — no raw provider payloads or secrets.
+5. Click **Plan** when ready to prepare and pause at Gate 2.
 
 Server path: UI → `HttpAgentWorkflow.toolTurn` → `POST …/tool-turn` →
 `AgentOperating.executeToolTurn` → AgentLoop.
 
 ### 2. Provider-assisted turn (B10)
 
-1. Same run, still in an allowed phase (not EXECUTING / terminal).
+1. Same run in UNDERSTANDING (or another allowed phase — not EXECUTING / terminal).
 2. Optionally check **localhost browser observation** only when you intend BROWSER tools
    (VERIFYING / DIAGNOSING) — distinct from Gate 2.
 3. Click **Run provider-assisted tool turn**.
 4. Server calls the provider with `toolCalling: false`, parses structured intents, validates, then
    executes via the **same** AgentLoop path.
 5. Review digests and the **provider-assisted summary** (proposed / accepted / rejected counts and bounded rejection codes). Do **not** expect another turn unless you click again.
+6. When in UNDERSTANDING, click **Plan** separately when ready for Gate 2.
 
 Server path: UI → `HttpAgentWorkflow.providerToolTurn` → `POST …/provider-tool-turn` →
 `executeProviderAssistedToolTurn` → emit intents → `executeToolTurn` → AgentLoop.
