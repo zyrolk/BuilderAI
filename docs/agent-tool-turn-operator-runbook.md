@@ -4,8 +4,8 @@ Trusted-local operator guide for **bounded tool turns** on an existing AgentRun.
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
 **Frozen stack:** B1–B10 / ADR-037–046. Ops baseline tip:
-`16c97905b80ef04cf23c999636aacaa5583a5484` (ancestry: `efd4a7b` B10 → `326507d`
-Windows npm fix → `16c9790` freeze docs). See `docs/p1b-b1-b10-production-freeze.md`.
+`7a3d16b410eb6ada68313f72d1b655a1108e6b98` (ancestry: `efd4a7b` B10 → `326507d`
+Windows npm fix → `16c9790` freeze docs → `7a3d16b` ops closure). See `docs/p1b-b1-b10-production-freeze.md`.
 
 ## What tool turns are (and are not)
 
@@ -43,7 +43,7 @@ Server path: UI → `HttpAgentWorkflow.toolTurn` → `POST …/tool-turn` →
 3. Click **Run provider-assisted tool turn**.
 4. Server calls the provider with `toolCalling: false`, parses structured intents, validates, then
    executes via the **same** AgentLoop path.
-5. Review digests. Do **not** expect another turn unless you click again.
+5. Review digests and the **provider-assisted summary** (proposed / accepted / rejected counts and bounded rejection codes). Do **not** expect another turn unless you click again.
 
 Server path: UI → `HttpAgentWorkflow.providerToolTurn` → `POST …/provider-tool-turn` →
 `executeProviderAssistedToolTurn` → emit intents → `executeToolTurn` → AgentLoop.
@@ -87,13 +87,13 @@ After restart:
 
 ## Failure handling
 
-| Symptom                                      | Operator action                                                                 |
-| -------------------------------------------- | ------------------------------------------------------------------------------- |
-| Phase / EXECUTING rejection                  | Wait for / transition out of EXECUTING; tools remain blocked there              |
-| Authority-field / malformed intent rejection | Do not retry with forged fields; fix operator input or re-run provider-assisted |
-| Budget exhausted                             | Stop; decide Gate2 / cancel / new run — do not auto-loop                        |
-| Browser denied                               | Explicitly approve browser observation; still localhost/catalog only            |
-| Cross-project / not found                    | Wrong run or workspace; do not reuse foreign runIds                             |
+| Symptom                                      | Operator action                                                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Phase / EXECUTING rejection                  | Wait for / transition out of EXECUTING; tools remain blocked there                                      |
+| Authority-field / malformed intent rejection | Read provider-assisted rejection code and operator action hint; retry explicitly or use operator preset |
+| Budget exhausted                             | Stop; decide Gate2 / cancel / new run — do not auto-loop                                                |
+| Browser denied                               | Explicitly approve browser observation; still localhost/catalog only                                    |
+| Cross-project / not found                    | Wrong run or workspace; do not reuse foreign runIds                                                     |
 
 ## Security reminders
 

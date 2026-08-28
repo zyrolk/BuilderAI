@@ -176,16 +176,16 @@ export class AgentOperatingService {
         ? {}
         : { providerTimeoutMs: this.dependencies.providerTimeoutMs }),
     });
-    const intents = await emission.proposeIntents({
+    const { intents, digest } = await emission.proposeIntentsWithDigest({
       run,
       ...(input.cancellation === undefined ? {} : { cancellation: input.cancellation }),
     });
-    // Never auto-continue: execute exactly one assisted turn through the existing path.
-    return this.executeToolTurn(runId, {
+    const turnResult = await this.executeToolTurn(runId, {
       intents,
       ...(input.securityEvidence === undefined ? {} : { securityEvidence: input.securityEvidence }),
       ...(input.cancellation === undefined ? {} : { cancellation: input.cancellation }),
     });
+    return { ...turnResult, providerAssisted: digest };
   }
 
   /** Bounded tool-loop digests for operator visibility (hydrate-only; never auto-continues). */

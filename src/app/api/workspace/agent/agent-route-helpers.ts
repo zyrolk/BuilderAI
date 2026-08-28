@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { AgentRunError, type AgentRun } from '../../../../application/workspace/agent-operating';
+import { ProviderIntentBatchRejectedError } from '../../../../application/workspace/agent-operating/provider-structured-intent-emission.service';
+import type { ProviderAssistedTurnDigest } from '../../../../application/workspace/agent-operating/provider-assisted-turn.types';
 import { AgentLoopError } from '../../../../application/workspace/agent-loop';
 import type { BoundedToolEvidenceRecord } from '../../../../application/workspace/agent-loop';
 import { WorkspaceRuntimeError } from '../../../../application/workspace';
@@ -67,6 +69,26 @@ export function toBoundedToolEvidenceHttpView(record: BoundedToolEvidenceRecord)
   };
 }
 
+export function toProviderAssistedDigestHttpView(
+  digest: ProviderAssistedTurnDigest,
+): Record<string, unknown> {
+  return {
+    source: digest.source,
+    toolCalling: digest.toolCalling,
+    proposedCount: digest.proposedCount,
+    acceptedCount: digest.acceptedCount,
+    rejectedCount: digest.rejectedCount,
+    rejections: digest.rejections.map((rejection) => ({
+      code: rejection.code,
+      message: rejection.message,
+      operatorAction: rejection.operatorAction,
+      ...(rejection.intentIndex === undefined ? {} : { intentIndex: rejection.intentIndex }),
+      ...(rejection.intentId === undefined ? {} : { intentId: rejection.intentId }),
+      ...(rejection.toolId === undefined ? {} : { toolId: rejection.toolId }),
+    })),
+  };
+}
+
 export function agentJson(value: unknown, status: number): NextResponse {
   return NextResponse.json(value, { status, headers: SAFE_HEADERS });
 }
@@ -74,6 +96,16 @@ export function agentJson(value: unknown, status: number): NextResponse {
 export function mapAgentRouteError(error: unknown): NextResponse {
   if (error instanceof LocalRequestRejectedError) {
     return agentJson({ code: error.code, message: error.message }, 403);
+  }
+  if (error instanceof ProviderIntentBatchRejectedError) {
+    return agentJson(
+      {
+        code: error.code,
+        message: error.message,
+        providerAssisted: toProviderAssistedDigestHttpView(error.digest),
+      },
+      mapAgentRunErrorStatus(error),
+    );
   }
   if (error instanceof AgentRunError) {
     return agentJson({ code: error.code, message: error.message }, mapAgentRunErrorStatus(error));

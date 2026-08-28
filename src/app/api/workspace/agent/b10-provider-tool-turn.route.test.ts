@@ -8,6 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as providerToolTurnPost } from './run/[runId]/provider-tool-turn/route';
 import { assertNoProviderToolTurnAuthorityFields } from './agent-route-helpers';
 import { WorkspaceRuntimeError } from '../../../../application/workspace';
+import {
+  buildProviderAssistedTurnDigest,
+  rejectionFromBatchError,
+} from '../../../../application/workspace/agent-operating/provider-assisted-turn-rejection';
+import { ProviderIntentBatchRejectedError } from '../../../../application/workspace/agent-operating/provider-structured-intent-emission.service';
 
 const mockGetReady = vi.fn();
 const mockSecurity = vi.fn();
@@ -99,6 +104,14 @@ describe('B10 provider-tool-turn HTTP route', () => {
         status: 'SUCCEEDED',
         replayed: false,
       },
+      providerAssisted: {
+        source: 'provider-structured-intent',
+        toolCalling: false,
+        proposedCount: 1,
+        acceptedCount: 1,
+        rejectedCount: 0,
+        rejections: [],
+      },
     }));
     mockGetReady.mockResolvedValue({
       getRun: vi.fn(async () => ({ projectId: 'builder-ai' })),
@@ -115,11 +128,21 @@ describe('B10 provider-tool-turn HTTP route', () => {
     );
     expect(response.status).toBe(200);
     const payload = (await response.json()) as {
-      emission: { toolCalling: boolean; source: string };
+      emission: {
+        toolCalling: boolean;
+        source: string;
+        proposedCount: number;
+        acceptedCount: number;
+        rejectedCount: number;
+      };
     };
     expect(payload.emission).toEqual({
       source: 'provider-structured-intent',
       toolCalling: false,
+      proposedCount: 1,
+      acceptedCount: 1,
+      rejectedCount: 0,
+      rejections: [],
     });
     expect(executeProviderAssistedToolTurn).toHaveBeenCalledWith(
       'run-1',
@@ -151,5 +174,34 @@ describe('B10 provider-tool-turn HTTP route', () => {
       { params: Promise.resolve({ runId: 'run-x' }) },
     );
     expect(response.status).toBe(404);
+  });
+
+  it('returns bounded providerAssisted digest on emission rejection', async () => {
+    const rejection = rejectionFromBatchError('EMPTY_INTENTS', 'intents[] must not be empty.');
+    const digest = buildProviderAssistedTurnDigest({
+      proposedCount: 0,
+      acceptedCount: 0,
+      rejections: [rejection],
+    });
+    mockGetReady.mockResolvedValue({
+      getRun: vi.fn(async () => ({ projectId: 'builder-ai' })),
+      executeProviderAssistedToolTurn: vi.fn(async () => {
+        throw new ProviderIntentBatchRejectedError(rejection.message, digest);
+      }),
+    });
+    const response = await providerToolTurnPost(
+      new Request('http://localhost/api/workspace/agent/run/run-1/provider-tool-turn', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ runId: 'run-1' }) },
+    );
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as {
+      providerAssisted?: { rejectedCount: number; rejections: readonly { code: string }[] };
+    };
+    expect(payload.providerAssisted?.rejectedCount).toBe(1);
+    expect(payload.providerAssisted?.rejections[0]?.code).toBe('EMPTY_INTENTS');
   });
 });

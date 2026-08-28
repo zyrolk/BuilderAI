@@ -13,10 +13,16 @@ import {
   HttpAgentWorkflow,
   type AgentApproveSuccessResponse,
   type AgentGate2Summary,
+  type AgentProviderAssistedDigest,
   type AgentRunHttpView,
   type AgentToolLoopStatus,
   type ExplainArtifact,
 } from './http-agent-workflow';
+import {
+  formatProviderAssistedSummary,
+  operatorActionLabel,
+} from './provider-assisted-turn-display';
+import { WorkspaceWorkflowError } from './workspace.types';
 import styles from './workspace.module.css';
 
 const POLL_INTERVAL_MS = 2_000;
@@ -113,6 +119,8 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   const [approveResult, setApproveResult] = useState<AgentApproveSuccessResponse>();
   const [explain, setExplain] = useState<ExplainArtifact>();
   const [toolLoop, setToolLoop] = useState<AgentToolLoopStatus>();
+  const [providerAssistedDigest, setProviderAssistedDigest] =
+    useState<AgentProviderAssistedDigest>();
   const [toolPreset, setToolPreset] =
     useState<(typeof TOOL_PRESETS)[number]['id']>('search_repository');
   const [toolQuery, setToolQuery] = useState('');
@@ -189,6 +197,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     setApplyAuthorizationToken(undefined);
     setExplain(undefined);
     setToolLoop(undefined);
+    setProviderAssistedDigest(undefined);
     setBrowserObservationApproved(false);
     stopPolling();
     try {
@@ -367,9 +376,13 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
         evidence: result.evidence,
         budget: result.budget,
       });
+      setProviderAssistedDigest(result.emission);
       // Never auto-continue: operator must explicitly request another turn.
       setBrowserObservationApproved(false);
     } catch (toolError: unknown) {
+      if (toolError instanceof WorkspaceWorkflowError && toolError.providerAssisted !== undefined) {
+        setProviderAssistedDigest(toolError.providerAssisted);
+      }
       setError(
         toolError instanceof Error ? toolError.message : 'Provider-assisted tool turn failed.',
       );
@@ -603,6 +616,28 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                     (distinct from Gate 2 and Git; never inferred from provider output)
                   </label>
                 )}
+              {providerAssistedDigest !== undefined && (
+                <div className={styles.agentProviderAssistedDigest} role="status">
+                  <p>
+                    <strong>Provider-assisted summary:</strong>{' '}
+                    {formatProviderAssistedSummary(providerAssistedDigest)}
+                  </p>
+                  {providerAssistedDigest.rejections.length > 0 && (
+                    <ul>
+                      {providerAssistedDigest.rejections.map((rejection, index) => (
+                        <li key={`${rejection.code}-${String(rejection.intentIndex ?? index)}`}>
+                          <strong>{rejection.code}</strong>
+                          {rejection.toolId !== undefined ? ` · ${rejection.toolId}` : ''}
+                          {rejection.intentId !== undefined ? ` · ${rejection.intentId}` : ''}:{' '}
+                          {rejection.message}
+                          <br />
+                          <em>{operatorActionLabel(rejection.operatorAction)}</em>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </section>
           )}
 

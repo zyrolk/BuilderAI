@@ -8,6 +8,15 @@ import {
 import type { ProviderExecutionPort } from '../workspace-runtime.types';
 import { AgentRunError } from './agent-run.types';
 import type { AgentRun } from './agent-run.types';
+import {
+  buildProviderAssistedTurnDigest,
+  rejectionFromAgentLoopError,
+  rejectionFromBatchError,
+} from './provider-assisted-turn-rejection';
+import type {
+  ProviderAssistedIntentRejection,
+  ProviderAssistedTurnDigest,
+} from './provider-assisted-turn.types';
 import { buildProviderStructuredIntentExecutionRequest } from './provider-structured-intent-prompt';
 
 /** Align with B8 HTTP intent cap; prefer fewer for a single explicit assisted turn. */
@@ -32,6 +41,24 @@ export class ProviderStructuredIntentEmissionService {
     readonly run: AgentRun;
     readonly cancellation?: ExecutionCancellationToken;
   }): Promise<readonly ProviderStructuredToolIntent[]> {
+    try {
+      const result = await this.proposeIntentsWithDigest(input);
+      return result.intents;
+    } catch (error: unknown) {
+      if (error instanceof ProviderIntentBatchRejectedError) {
+        throw new AgentRunError('INVALID_GOAL', error.message);
+      }
+      throw error;
+    }
+  }
+
+  async proposeIntentsWithDigest(input: {
+    readonly run: AgentRun;
+    readonly cancellation?: ExecutionCancellationToken;
+  }): Promise<{
+    readonly intents: readonly ProviderStructuredToolIntent[];
+    readonly digest: ProviderAssistedTurnDigest;
+  }> {
     const executionId = this.dependencies.ids.generate();
     const requestedAt = this.dependencies.clock.now().toISOString();
     const request = buildProviderStructuredIntentExecutionRequest({
@@ -50,17 +77,182 @@ export class ProviderStructuredIntentEmissionService {
       const output = await this.dependencies.providerExecution.execute(request);
       providerResponse = output.providerResponse;
     } catch (error: unknown) {
-      throw new AgentRunError(
-        'INVALID_GOAL',
+      const rejection = rejectionFromBatchError(
+        'PROVIDER_EXECUTION_FAILED',
         error instanceof Error
           ? `Provider structured-intent emission failed: ${error.message}`
           : 'Provider structured-intent emission failed.',
       );
+      throw new ProviderIntentBatchRejectedError(
+        rejection.message,
+        buildProviderAssistedTurnDigest({
+          proposedCount: 0,
+          acceptedCount: 0,
+          rejections: [rejection],
+        }),
+      );
     }
 
     const structured = extractStructuredData(providerResponse);
-    return parseProviderIntentBatch(structured);
+    return parseProviderIntentBatchWithDiagnostics(structured);
   }
+}
+
+export class ProviderIntentBatchRejectedError extends AgentRunError {
+  readonly digest: ProviderAssistedTurnDigest;
+
+  constructor(message: string, digest: ProviderAssistedTurnDigest) {
+    super('INVALID_GOAL', message);
+    this.name = 'ProviderIntentBatchRejectedError';
+    this.digest = digest;
+  }
+}
+
+export function parseProviderIntentBatchWithDiagnostics(raw: unknown): {
+  readonly intents: readonly ProviderStructuredToolIntent[];
+  readonly digest: ProviderAssistedTurnDigest;
+} {
+  const rejections: ProviderAssistedIntentRejection[] = [];
+
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    const rejection = rejectionFromBatchError(
+      'MALFORMED_OUTPUT',
+      'Provider structured-intent output must be a non-array object.',
+    );
+    throw new ProviderIntentBatchRejectedError(
+      rejection.message,
+      buildProviderAssistedTurnDigest({
+        proposedCount: 0,
+        acceptedCount: 0,
+        rejections: [rejection],
+      }),
+    );
+  }
+
+  const record = raw as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (
+      key === 'approved' ||
+      key === 'operatorApproved' ||
+      key === 'browserObservationApproved' ||
+      key === 'applyAuthorizationToken' ||
+      key === 'changePlan' ||
+      key === 'projectId' ||
+      key === 'runId' ||
+      key === 'phase'
+    ) {
+      const rejection = rejectionFromBatchError(
+        'AUTHORITY_FIELD_FORBIDDEN',
+        `Provider must not supply authority/binding field "${key}" on structured-intent output.`,
+      );
+      throw new ProviderIntentBatchRejectedError(
+        rejection.message,
+        buildProviderAssistedTurnDigest({
+          proposedCount: 0,
+          acceptedCount: 0,
+          rejections: [rejection],
+        }),
+      );
+    }
+  }
+
+  const intentsRaw = record.intents;
+  if (!Array.isArray(intentsRaw)) {
+    const rejection = rejectionFromBatchError(
+      'MISSING_INTENTS_ARRAY',
+      'Provider structured-intent output requires intents[].',
+    );
+    throw new ProviderIntentBatchRejectedError(
+      rejection.message,
+      buildProviderAssistedTurnDigest({
+        proposedCount: 0,
+        acceptedCount: 0,
+        rejections: [rejection],
+      }),
+    );
+  }
+
+  const proposedCount = intentsRaw.length;
+  if (proposedCount === 0) {
+    const rejection = rejectionFromBatchError(
+      'EMPTY_INTENTS',
+      'Provider structured-intent output intents[] must not be empty.',
+    );
+    throw new ProviderIntentBatchRejectedError(
+      rejection.message,
+      buildProviderAssistedTurnDigest({
+        proposedCount: 0,
+        acceptedCount: 0,
+        rejections: [rejection],
+      }),
+    );
+  }
+  if (proposedCount > PROVIDER_STRUCTURED_INTENT_MAX) {
+    const rejection = rejectionFromBatchError(
+      'EXCEEDS_INTENT_CAP',
+      `Provider may propose at most ${PROVIDER_STRUCTURED_INTENT_MAX} intents per assisted turn.`,
+    );
+    throw new ProviderIntentBatchRejectedError(
+      rejection.message,
+      buildProviderAssistedTurnDigest({
+        proposedCount,
+        acceptedCount: 0,
+        rejections: [rejection],
+      }),
+    );
+  }
+
+  const accepted: ProviderStructuredToolIntent[] = [];
+  intentsRaw.forEach((entry, index) => {
+    const intentRecord =
+      entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry as Record<string, unknown>)
+        : undefined;
+    const intentId =
+      typeof intentRecord?.intentId === 'string' ? intentRecord.intentId.trim() : undefined;
+    const toolId =
+      typeof intentRecord?.toolId === 'string' ? intentRecord.toolId.trim() : undefined;
+    try {
+      accepted.push(parseProviderStructuredToolIntent(entry));
+    } catch (error: unknown) {
+      if (error instanceof AgentLoopError) {
+        rejections.push(
+          rejectionFromAgentLoopError(error, {
+            intentIndex: index,
+            ...(intentId === undefined || intentId.length === 0 ? {} : { intentId }),
+            ...(toolId === undefined || toolId.length === 0 ? {} : { toolId }),
+          }),
+        );
+        return;
+      }
+      throw error;
+    }
+  });
+
+  if (accepted.length === 0) {
+    const batchRejection = rejectionFromBatchError(
+      'ALL_INTENTS_REJECTED',
+      'Every provider-proposed intent was rejected by server validation.',
+    );
+    rejections.push(batchRejection);
+    throw new ProviderIntentBatchRejectedError(
+      batchRejection.message,
+      buildProviderAssistedTurnDigest({
+        proposedCount,
+        acceptedCount: 0,
+        rejections,
+      }),
+    );
+  }
+
+  return {
+    intents: accepted,
+    digest: buildProviderAssistedTurnDigest({
+      proposedCount,
+      acceptedCount: accepted.length,
+      rejections,
+    }),
+  };
 }
 
 export function parseProviderIntentBatch(raw: unknown): readonly ProviderStructuredToolIntent[] {
@@ -130,14 +322,30 @@ function extractStructuredData(response: AIProviderResponse): unknown {
     try {
       return JSON.parse(text.content) as unknown;
     } catch {
-      throw new AgentRunError(
-        'INVALID_GOAL',
+      const rejection = rejectionFromBatchError(
+        'INVALID_JSON',
         'Provider structured-intent text was not valid JSON.',
+      );
+      throw new ProviderIntentBatchRejectedError(
+        rejection.message,
+        buildProviderAssistedTurnDigest({
+          proposedCount: 0,
+          acceptedCount: 0,
+          rejections: [rejection],
+        }),
       );
     }
   }
-  throw new AgentRunError(
-    'INVALID_GOAL',
+  const rejection = rejectionFromBatchError(
+    'NO_STRUCTURED_DATA',
     'Provider response did not include structured tool intents.',
+  );
+  throw new ProviderIntentBatchRejectedError(
+    rejection.message,
+    buildProviderAssistedTurnDigest({
+      proposedCount: 0,
+      acceptedCount: 0,
+      rejections: [rejection],
+    }),
   );
 }

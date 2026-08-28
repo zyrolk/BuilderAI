@@ -17,6 +17,7 @@ import {
   readRunIdParam,
   toAgentRunHttpView,
   toBoundedToolEvidenceHttpView,
+  toProviderAssistedDigestHttpView,
 } from '../../../agent-route-helpers';
 
 export const runtime = 'nodejs';
@@ -78,7 +79,10 @@ export async function POST(
         },
         evidence: result.evidence.map(toBoundedToolEvidenceHttpView),
         turn: summarizeTurn(result.turn),
-        emission: { source: 'provider-structured-intent', toolCalling: false },
+        emission:
+          result.providerAssisted === undefined
+            ? { source: 'provider-structured-intent', toolCalling: false }
+            : toProviderAssistedDigestHttpView(result.providerAssisted),
       },
       200,
     );

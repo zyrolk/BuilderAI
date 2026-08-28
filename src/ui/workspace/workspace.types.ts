@@ -178,14 +178,35 @@ export function isPartialApplyRecovery(snapshot: WorkspaceCompletionSnapshot | u
   return snapshot?.applyResult.status === 'PARTIALLY_APPLIED';
 }
 
+export interface WorkspaceProviderAssistedDigest {
+  readonly source: 'provider-structured-intent';
+  readonly toolCalling: false;
+  readonly proposedCount: number;
+  readonly acceptedCount: number;
+  readonly rejectedCount: number;
+  readonly rejections: readonly {
+    readonly code: string;
+    readonly message: string;
+    readonly operatorAction: string;
+    readonly intentIndex?: number;
+    readonly intentId?: string;
+    readonly toolId?: string;
+  }[];
+}
+
 export class WorkspaceWorkflowError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
+  readonly providerAssisted?: WorkspaceProviderAssistedDigest;
+
+  constructor(code: string, message: string, providerAssisted?: WorkspaceProviderAssistedDigest) {
     super(message);
     this.name = 'WorkspaceWorkflowError';
+    this.code = code;
+    if (providerAssisted !== undefined) {
+      this.providerAssisted = providerAssisted;
+    }
   }
+
+  readonly code: string;
 }
 
 export interface WorkspaceConversationEntry {

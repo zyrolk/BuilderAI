@@ -18,6 +18,7 @@ import type {
   AgentLoopTurnResult,
   BoundedToolEvidenceRecord,
 } from '../agent-loop/agent-loop.types';
+import type { ProviderAssistedTurnDigest } from './provider-assisted-turn.types';
 import type { AgentRun, AgentRunPhase, AgentRunStatus } from './agent-run.types';
 import type { AgentRunService } from './agent-run.service';
 import type { ExplainArtifact } from './explain-artifact.types';
@@ -127,6 +128,8 @@ export interface AgentOperatingToolTurnResult {
   readonly turn: AgentLoopProviderTurnResult | AgentLoopTurnResult;
   readonly evidence: readonly BoundedToolEvidenceRecord[];
   readonly budget: AgentLoopBudgetSnapshot;
+  /** B10 digest-only provider-assisted emission summary when applicable. */
+  readonly providerAssisted?: ProviderAssistedTurnDigest;
 }
 
 export interface AgentOperatingToolEvidenceResult {

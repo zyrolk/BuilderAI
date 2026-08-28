@@ -109,7 +109,15 @@ function buildSections(input: {
         templateInstruction('psi-json-shape', PROVIDER_STRUCTURED_INTENT_OUTPUT_JSON_SHAPE),
         templateInstruction(
           'psi-intent-id',
-          'Each intentId must be a unique non-empty string for this turn (for example psi-1, psi-2).',
+          'Each intentId must be a unique non-empty string for this turn (for example psi-1, psi-2). Never reuse intentIds within the same batch.',
+        ),
+        templateInstruction(
+          'psi-valid-example',
+          'Example valid output: {"schemaVersion":1,"intents":[{"toolId":"search_repository","intentId":"psi-1","arguments":{"query":"routing"}}]}',
+        ),
+        templateInstruction(
+          'psi-phase-tools',
+          'In UNDERSTANDING/PLANNING propose search_repository or inspect_readiness. In VERIFYING/DIAGNOSING you may propose inspect_browser_verification_catalog only when browser observation will be separately approved by the operator.',
         ),
         templateInstruction(
           'psi-binding-hint',

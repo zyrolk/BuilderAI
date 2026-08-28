@@ -803,7 +803,14 @@ describe('AgentRunPanel', () => {
         },
       ],
       turn: {},
-      emission: { source: 'provider-structured-intent', toolCalling: false },
+      emission: {
+        source: 'provider-structured-intent',
+        toolCalling: false,
+        proposedCount: 1,
+        acceptedCount: 1,
+        rejectedCount: 0,
+        rejections: [],
+      },
     });
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue({ run: createRun(), investigationId: 'inv-1' }),
@@ -837,5 +844,51 @@ describe('AgentRunPanel', () => {
     expect(agentApi.toolTurn).not.toHaveBeenCalled();
     expect(screen.getByText(/providerdigest01/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Tool evidence/i })).toBeInTheDocument();
+    expect(screen.getByText(/Proposed 1 · accepted 1 · rejected 0/i)).toBeInTheDocument();
+  });
+
+  it('surfaces bounded provider-assisted rejections without auto-retry', async () => {
+    const awaiting = createRun({
+      phase: 'UNDERSTANDING',
+      status: 'RUNNING',
+    });
+    const { WorkspaceWorkflowError } = await import('../workspace.types');
+    const providerToolTurn = vi.fn().mockRejectedValue(
+      new WorkspaceWorkflowError('INVALID_GOAL', 'intents[] must not be empty.', {
+        source: 'provider-structured-intent',
+        toolCalling: false,
+        proposedCount: 0,
+        acceptedCount: 0,
+        rejectedCount: 1,
+        rejections: [
+          {
+            code: 'EMPTY_INTENTS',
+            message: 'intents[] must not be empty.',
+            operatorAction: 'RETRY_PROVIDER_ASSISTED',
+          },
+        ],
+      }),
+    );
+    const agentApi = createAgentApi({
+      start: vi.fn().mockResolvedValue({ run: awaiting, investigationId: 'inv-1' }),
+      providerToolTurn,
+    });
+
+    render(<AgentRunPanel agentApi={agentApi} />);
+    fireEvent.change(screen.getByLabelText(/Agent goal/i), {
+      target: { value: 'Goal' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Start agent run/i }));
+    await screen.findByRole('heading', { name: /Bounded tool turn/i });
+    fireEvent.click(screen.getByRole('button', { name: /Run provider-assisted tool turn/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/must not be empty/i);
+    });
+    expect(screen.getByText(/EMPTY_INTENTS/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: /Run provider-assisted tool turn/i }),
+    ).toHaveLength(1);
+    expect(providerToolTurn).toHaveBeenCalledTimes(1);
   });
 });

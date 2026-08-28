@@ -96,6 +96,24 @@ export interface AgentExplainResponse {
   readonly persisted: boolean;
 }
 
+export interface AgentProviderAssistedRejection {
+  readonly code: string;
+  readonly message: string;
+  readonly operatorAction: string;
+  readonly intentIndex?: number;
+  readonly intentId?: string;
+  readonly toolId?: string;
+}
+
+export interface AgentProviderAssistedDigest {
+  readonly source: 'provider-structured-intent';
+  readonly toolCalling: false;
+  readonly proposedCount: number;
+  readonly acceptedCount: number;
+  readonly rejectedCount: number;
+  readonly rejections: readonly AgentProviderAssistedRejection[];
+}
+
 export interface AgentToolTurnResponse {
   readonly run: AgentRunHttpView;
   readonly budget: {
@@ -114,10 +132,7 @@ export interface AgentToolTurnResponse {
     readonly errorCode?: string;
   }[];
   readonly turn: Record<string, unknown>;
-  readonly emission?: {
-    readonly source: string;
-    readonly toolCalling: boolean;
-  };
+  readonly emission?: AgentProviderAssistedDigest;
 }
 
 /**
@@ -223,11 +238,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as { code?: string; message?: string };
+  const payload = (await response.json()) as {
+    code?: string;
+    message?: string;
+    providerAssisted?: AgentProviderAssistedDigest;
+  };
   if (!response.ok) {
     throw new WorkspaceWorkflowError(
       payload.code ?? 'WORKFLOW_FAILED',
       payload.message ?? 'Agent request failed.',
+      payload.providerAssisted,
     );
   }
   return payload as T;

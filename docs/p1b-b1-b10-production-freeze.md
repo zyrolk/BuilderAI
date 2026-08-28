@@ -1,8 +1,8 @@
 # P1-B B1–B10 Production Freeze
 
 - **Status:** Frozen for production hardening
-- **Freeze tip (ops baseline):** `16c97905b80ef04cf23c999636aacaa5583a5484`
-- **Freeze tip commit:** `P1-B: Freeze B1-B10 Production Hardening`
+- **Freeze tip (ops baseline):** `7a3d16b410eb6ada68313f72d1b655a1108e6b98`
+- **Freeze tip commit:** `P1-B: Finalize B1-B10 Production Hardening`
 - **Feature-complete B10 tip:** `efd4a7bedec1155bd1b3d7aac4258e1ba3a57960`
   (`P1-B: Add Provider Structured-Intent Emission Boundary`)
 - **Windows npm spawn EINVAL fix:** `326507d4a840de9f0a9087a2dd5351cfcae15c1d`
@@ -18,12 +18,14 @@ efd4a7b  B10 provider structured-intent emission
    ↓
 326507d  Windows npm process resolution (spawn EINVAL fix)
    ↓
-16c9790  Freeze documentation (production freeze tip / ops baseline)
+16c9790  Freeze documentation
+   ↓
+7a3d16b  Ops closure (hardening smoke + doc sync)
 ```
 
-Ops closure / hardening proceeds from freeze tip `16c9790`. Until an ops-closure commit
-lands, **current HEAD remains** `16c9790`. After that later commit, HEAD will move; the frozen
-product baseline stays B1–B10 / ADR-037–046 with the ancestry above.
+Ops closure / hardening proceeds from freeze tip `7a3d16b`. The frozen product baseline stays B1–B10 / ADR-037–046 with the ancestry above.
+
+Provider-assisted turn reliability + bounded observability (D+B) may extend B10 operator UX without new ADRs when it remains digest-only and `toolCalling:false`.
 
 ## Freeze statement
 
@@ -59,7 +61,7 @@ open-web/WEB, unbounded auto-continue, or provider-native `toolCalling: true`.
 
 ## Hardening checklist (operators / release)
 
-- [ ] `npm run ci` green on freeze tip `16c9790` (or authorized ops-closure successor)
+- [ ] `npm run ci` green on freeze tip `7a3d16b`
 - [ ] Operator tool-turn smoke (UNDERSTANDING / AWAITING_GATE2 soft tool)
 - [ ] Provider-assisted tool-turn smoke (`toolCalling:false`, no client intents)
 - [ ] Cross-project runId → 404 / NOT_FOUND
