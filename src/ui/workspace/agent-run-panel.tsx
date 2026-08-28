@@ -18,6 +18,7 @@ import {
   type AgentToolLoopStatus,
   type ExplainArtifact,
 } from './http-agent-workflow';
+import type { Gate2PlanningProvenanceReview } from '../../application/workspace/agent-operating/gate2-planning-provenance.types';
 import {
   formatProviderAssistedSummary,
   operatorActionLabel,
@@ -181,6 +182,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   const [error, setError] = useState<string>();
   const [run, setRun] = useState<AgentRunHttpView>();
   const [gate2Summary, setGate2Summary] = useState<AgentGate2Summary>();
+  const [planningProvenance, setPlanningProvenance] = useState<Gate2PlanningProvenanceReview>();
   const [applyAuthorizationToken, setApplyAuthorizationToken] = useState<string>();
   const [approved, setApproved] = useState(false);
   const [approveResult, setApproveResult] = useState<AgentApproveSuccessResponse>();
@@ -262,6 +264,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     setApproveResult(undefined);
     setApproved(false);
     setGate2Summary(undefined);
+    setPlanningProvenance(undefined);
     setApplyAuthorizationToken(undefined);
     setExplain(undefined);
     setToolLoop(undefined);
@@ -288,6 +291,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
       const planned = await agentApi.plan(run.runId);
       setRun(planned.run);
       setGate2Summary(planned.gate2Review);
+      setPlanningProvenance(planned.planningProvenance);
       setApplyAuthorizationToken(planned.applyAuthorizationToken);
     } catch (planError: unknown) {
       setError(planError instanceof Error ? planError.message : 'Planning failed.');
@@ -846,6 +850,43 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                     <li>Preparation: {run.references.preparationId}</li>
                   )}
                 </ul>
+              )}
+              {planningProvenance !== undefined && (
+                <details className={styles.agentGate2Provenance}>
+                  <summary>Planning provenance (read-only)</summary>
+                  <ul className={styles.agentGate2Summary}>
+                    <li>P0 investigation: {planningProvenance.hasP0Context ? 'Yes' : 'No'}</li>
+                    <li>
+                      Operator investigation: {planningProvenance.hasOperatorContext ? 'Yes' : 'No'}
+                    </li>
+                    <li>P0 hints: {planningProvenance.p0PathHintCount}</li>
+                    <li>Operator hints: {planningProvenance.operatorPathHintCount}</li>
+                    <li>Merged hints: {planningProvenance.mergedPathHintCount}</li>
+                    <li>Planned operations: {planningProvenance.plannedOperationCount}</li>
+                    <li>Path overlap: {planningProvenance.plannedPathOverlapCount}</li>
+                    <li>Unmatched merged hints: {planningProvenance.unmatchedMergedHintCount}</li>
+                    {planningProvenance.truncated && <li>Path lists truncated to policy cap</li>}
+                  </ul>
+                  {planningProvenance.p0OnlyPathHints.length > 0 && (
+                    <p>P0-only paths: {planningProvenance.p0OnlyPathHints.join(', ')}</p>
+                  )}
+                  {planningProvenance.operatorOnlyPathHints.length > 0 && (
+                    <p>
+                      Operator-only paths: {planningProvenance.operatorOnlyPathHints.join(', ')}
+                    </p>
+                  )}
+                  {planningProvenance.matchedPlannedPaths.length > 0 && (
+                    <p>
+                      Matched planned paths: {planningProvenance.matchedPlannedPaths.join(', ')}
+                    </p>
+                  )}
+                  {planningProvenance.unmatchedMergedPathHints.length > 0 && (
+                    <p>
+                      Unmatched merged hints:{' '}
+                      {planningProvenance.unmatchedMergedPathHints.join(', ')}
+                    </p>
+                  )}
+                </details>
               )}
               <label className={styles.approvalCheck} htmlFor={approvalId}>
                 <input

@@ -14,6 +14,7 @@ import {
   mapAgentRouteError,
   readRunIdParam,
   toAgentRunHttpView,
+  toGate2PlanningProvenanceHttpView,
 } from '../../../agent-route-helpers';
 
 export const runtime = 'nodejs';
@@ -68,6 +69,11 @@ export async function POST(
         ...(paused.applyAuthorizationToken === undefined
           ? {}
           : { applyAuthorizationToken: paused.applyAuthorizationToken }),
+        ...(paused.planningProvenance === undefined
+          ? {}
+          : {
+              planningProvenance: toGate2PlanningProvenanceHttpView(paused.planningProvenance),
+            }),
       },
       200,
     );

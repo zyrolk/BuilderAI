@@ -1,6 +1,7 @@
 'use client';
 
 import type { ExplainArtifact } from '../../application/workspace/agent-operating/explain-artifact.types';
+import type { Gate2PlanningProvenanceReview } from '../../application/workspace/agent-operating/gate2-planning-provenance.types';
 import { WorkspaceWorkflowError } from './workspace.types';
 
 export type { ExplainArtifact };
@@ -69,6 +70,7 @@ export interface AgentPlanResponse {
   readonly awaitingGate2: boolean;
   readonly gate2Review: AgentGate2Summary;
   readonly applyAuthorizationToken?: string;
+  readonly planningProvenance?: Gate2PlanningProvenanceReview;
 }
 
 export interface AgentApproveSuccessResponse {

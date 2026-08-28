@@ -32,6 +32,13 @@ import { ProviderStructuredIntentEmissionService } from './provider-structured-i
 import { isInvestigationHandoffFeedback } from '../investigation/investigation-handoff';
 import { buildOperatorToolPlanningContext } from './operator-tool-planning-context';
 import { mergeOperatorToolPlanningWithHandoff } from './operator-tool-planning-merge';
+import {
+  assembleGate2PlanningProvenance,
+  extractCorrectionPlanningPathHints,
+} from './gate2-planning-provenance.assembler';
+import type { InvestigationHandoffFeedback } from '../investigation/investigation-handoff';
+import type { OperatorToolPlanningContext } from './operator-tool-planning-context';
+import type { OperatorToolPlanningMergeInput } from './operator-tool-planning-prepare-input';
 
 const EXPLAIN_SUMMARY_MAX = 1_200;
 
@@ -261,13 +268,17 @@ export class AgentOperatingService {
     const handoff = isInvestigationHandoffFeedback(rawHandoff) ? rawHandoff : undefined;
 
     let prepareInput: unknown = handoff;
+    let operatorContext: OperatorToolPlanningContext | undefined;
+    let mergedForProvenance:
+      OperatorToolPlanningMergeInput | InvestigationHandoffFeedback | undefined = handoff;
     const loop = this.dependencies.loop;
     if (loop !== undefined) {
       await loop.hydrate(runId);
-      const operatorContext = buildOperatorToolPlanningContext(loop.listEvidence(runId));
+      operatorContext = buildOperatorToolPlanningContext(loop.listEvidence(runId));
       const merged = mergeOperatorToolPlanningWithHandoff({ handoff, operatorContext });
       if (merged !== undefined) {
         prepareInput = merged;
+        mergedForProvenance = merged;
       }
     }
 
@@ -276,6 +287,13 @@ export class AgentOperatingService {
       prepareInput,
       options.cancellation,
     );
+
+    const planningProvenance = assembleGate2PlanningProvenance({
+      handoff,
+      operatorContext,
+      merged: mergedForProvenance,
+      gate2Review: preparation.gate2Review,
+    });
 
     run = await this.dependencies.agentRuns.updateReferences(runId, {
       preparationId: preparation.preparationId,
@@ -287,6 +305,7 @@ export class AgentOperatingService {
       gate2Review: preparation.gate2Review,
       preparationId: preparation.preparationId,
       expiresAt: preparation.expiresAt,
+      planningProvenance,
       ...(preparation.applyAuthorizationToken === undefined
         ? {}
         : { applyAuthorizationToken: preparation.applyAuthorizationToken }),
@@ -301,6 +320,7 @@ export class AgentOperatingService {
       gate2Review: preparation.gate2Review,
       preparationId: preparation.preparationId,
       expiresAt: preparation.expiresAt,
+      planningProvenance,
       ...(preparation.applyAuthorizationToken === undefined
         ? {}
         : { applyAuthorizationToken: preparation.applyAuthorizationToken }),
@@ -330,6 +350,9 @@ export class AgentOperatingService {
       gate2Review: evidence.gate2Review,
       preparationId: evidence.preparationId,
       expiresAt: evidence.expiresAt,
+      ...(evidence.planningProvenance === undefined
+        ? {}
+        : { planningProvenance: evidence.planningProvenance }),
       ...(evidence.applyAuthorizationToken === undefined
         ? {}
         : { applyAuthorizationToken: evidence.applyAuthorizationToken }),
@@ -563,11 +586,17 @@ export class AgentOperatingService {
     }
 
     const iterationFeedback = buildIterationFeedbackFromCompletion(prior.completion);
+    const correctionPathHints = extractCorrectionPlanningPathHints(iterationFeedback);
     const preparation = await this.dependencies.runtime.prepare(
       session.correctionRequest,
       iterationFeedback,
       options.cancellation,
     );
+
+    const planningProvenance = assembleGate2PlanningProvenance({
+      gate2Review: preparation.gate2Review,
+      correctionPathHints,
+    });
 
     const recorded = await this.dependencies.correction.recordPrepared(
       correctionWorkflowId,
@@ -594,6 +623,7 @@ export class AgentOperatingService {
       gate2Review: preparation.gate2Review,
       preparationId: preparation.preparationId,
       expiresAt: preparation.expiresAt,
+      planningProvenance,
       ...(preparation.applyAuthorizationToken === undefined
         ? {}
         : { applyAuthorizationToken: preparation.applyAuthorizationToken }),
@@ -612,6 +642,7 @@ export class AgentOperatingService {
       gate2Review: preparation.gate2Review,
       preparationId: preparation.preparationId,
       expiresAt: preparation.expiresAt,
+      planningProvenance,
       ...(preparation.applyAuthorizationToken === undefined
         ? {}
         : { applyAuthorizationToken: preparation.applyAuthorizationToken }),

@@ -122,7 +122,25 @@ describe('AgentRunPanel', () => {
       run: createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' }),
       investigationId: 'inv-1',
     };
-    const planned = createGate2PlanResponse();
+    const planned = createGate2PlanResponse({
+      planningProvenance: {
+        schemaVersion: 1,
+        hasP0Context: true,
+        hasOperatorContext: false,
+        p0PathHintCount: 1,
+        operatorPathHintCount: 0,
+        mergedPathHintCount: 1,
+        plannedOperationCount: 2,
+        plannedPathOverlapCount: 1,
+        unmatchedMergedHintCount: 0,
+        p0OnlyPathHints: ['src/p0.ts'],
+        operatorOnlyPathHints: [],
+        mergedPathHints: ['src/p0.ts'],
+        matchedPlannedPaths: ['src/p0.ts'],
+        unmatchedMergedPathHints: [],
+        truncated: false,
+      },
+    });
     const agentApi = createAgentApi({
       start: vi.fn().mockResolvedValue(started),
       getStatus: vi.fn().mockResolvedValue({
@@ -137,7 +155,9 @@ describe('AgentRunPanel', () => {
     await clickPlan();
 
     expect(agentApi.plan).toHaveBeenCalledWith('agent-run-001');
-    expect(screen.getByText(/Planned operations: 2/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Planned operations: 2/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Planning provenance \(read-only\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/P0 investigation: Yes/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Approve and execute/i })).toBeDisabled();
     expect(agentApi.approve).not.toHaveBeenCalled();
   });

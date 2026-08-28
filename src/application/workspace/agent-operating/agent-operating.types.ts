@@ -23,6 +23,7 @@ import type { AgentRun, AgentRunPhase, AgentRunStatus } from './agent-run.types'
 import type { AgentRunService } from './agent-run.service';
 import type { ExplainArtifact } from './explain-artifact.types';
 import type { ExplainArtifactPersistence } from './explain-artifact.persistence';
+import type { Gate2PlanningProvenanceReview } from './gate2-planning-provenance.types';
 
 /** Bounded, secret-free explanation assembled from existing evidence only. */
 export interface AgentRunExplanation {
@@ -51,6 +52,8 @@ export interface AgentOperatingPlanResult {
   readonly preparationId: string;
   readonly expiresAt: string;
   readonly applyAuthorizationToken?: string;
+  /** Read-only planning provenance for Gate2 display (ADR-048). Never authority. */
+  readonly planningProvenance?: Gate2PlanningProvenanceReview;
 }
 
 export interface AgentOperatingGate2PauseResult {
@@ -59,6 +62,8 @@ export interface AgentOperatingGate2PauseResult {
   readonly preparationId: string;
   readonly expiresAt: string;
   readonly applyAuthorizationToken?: string;
+  /** Read-only planning provenance for Gate2 display (ADR-048). Never authority. */
+  readonly planningProvenance?: Gate2PlanningProvenanceReview;
 }
 
 export interface AgentOperatingExecuteResult {
@@ -149,6 +154,8 @@ export interface AgentRunEphemeralEvidence {
   readonly correctionCanPrepare?: boolean;
   /** Count of pauseAtGate2 observations in this process. */
   readonly gate2CyclesObserved?: number;
+  /** Read-only Gate2 planning provenance (ADR-048). Ephemeral only. */
+  readonly planningProvenance?: Gate2PlanningProvenanceReview;
 }
 
 export interface AgentOperatingExplainArtifactResult {

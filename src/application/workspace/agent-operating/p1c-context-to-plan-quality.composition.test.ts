@@ -273,6 +273,13 @@ describe('P1-C context to plan quality benchmark', () => {
       const planned = await reloaded.agent.plan(runId);
       expect(planned.run.phase).toBe('PLANNING');
       expect(harness.fileApply.calls).toBe(0);
+      expect(planned.planningProvenance).toBeDefined();
+      expect(planned.planningProvenance?.hasOperatorContext).toBe(true);
+      expect(planned.planningProvenance?.operatorPathHintCount).toBeGreaterThan(0);
+      expect(
+        planned.planningProvenance?.operatorOnlyPathHints.includes('src/integration-output.ts') ||
+          planned.planningProvenance?.mergedPathHints.includes('src/integration-output.ts'),
+      ).toBe(true);
 
       const mergeInput = reloaded.capturedPrepareInputs.at(-1);
       expect(isOperatorToolPlanningMergeInput(mergeInput)).toBe(true);
@@ -289,6 +296,9 @@ describe('P1-C context to plan quality benchmark', () => {
       const paused = await reloaded.agent.pauseAtGate2(runId);
       expect(paused.run.phase).toBe('AWAITING_GATE2');
       expect(harness.fileApply.calls).toBe(0);
+      expect(paused.planningProvenance).toBeDefined();
+      expect(paused.planningProvenance?.plannedOperationCount).toBeGreaterThan(0);
+      expect(paused.planningProvenance?.plannedPathOverlapCount).toBeGreaterThanOrEqual(0);
     } finally {
       await rm(stateRoot, { recursive: true, force: true });
     }

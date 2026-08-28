@@ -178,8 +178,25 @@ describe('Agent Operating HTTP API', () => {
       expiresAt: 't',
       gate2Review: {
         schemaVersion: 1,
-        operationDiffs: [{ operationId: 'op-1' }],
+        operationDiffs: [{ operationId: 'op-1', logicalPath: 'src/a.ts' }],
         totalCharacterCount: 10,
+        truncated: false,
+      },
+      planningProvenance: {
+        schemaVersion: 1,
+        hasP0Context: true,
+        hasOperatorContext: true,
+        p0PathHintCount: 1,
+        operatorPathHintCount: 1,
+        mergedPathHintCount: 2,
+        plannedOperationCount: 1,
+        plannedPathOverlapCount: 1,
+        unmatchedMergedHintCount: 1,
+        p0OnlyPathHints: ['src/p0.ts'],
+        operatorOnlyPathHints: ['src/op.ts'],
+        mergedPathHints: ['src/p0.ts', 'src/op.ts'],
+        matchedPlannedPaths: ['src/a.ts'],
+        unmatchedMergedPathHints: ['src/unmatched.ts'],
         truncated: false,
       },
     });
@@ -193,13 +210,34 @@ describe('Agent Operating HTTP API', () => {
       run: { phase: string; awaitingGate2?: boolean };
       awaitingGate2: boolean;
       gate2Review: { operationCount: number };
+      planningProvenance?: {
+        hasP0Context: boolean;
+        operatorOnlyPathHints: string[];
+        matchedPlannedPaths: string[];
+      };
     };
     expect(response.status).toBe(200);
     expect(payload.run.phase).toBe('AWAITING_GATE2');
     expect(payload.awaitingGate2).toBe(true);
     expect(payload.gate2Review.operationCount).toBe(1);
+    expect(payload.planningProvenance?.hasP0Context).toBe(true);
+    expect(payload.planningProvenance?.operatorOnlyPathHints).toEqual(['src/op.ts']);
+    expect(payload.planningProvenance?.matchedPlannedPaths).toEqual(['src/a.ts']);
+    const bodyText = JSON.stringify(payload);
+    expect(bodyText).not.toMatch(/unifiedDiff|fileContents|applyAuthorizationToken|changePlan/i);
     expect(plan).toHaveBeenCalled();
     expect(pauseAtGate2).toHaveBeenCalled();
+  });
+
+  it('rejects client-supplied planningProvenance on plan', async () => {
+    const response = await postJson(
+      '/api/workspace/agent/run/run-1/plan',
+      { planningProvenance: { hasP0Context: true } },
+      () => import('./run/[runId]/plan/route'),
+      { params: Promise.resolve({ runId: 'run-1' }) },
+    );
+    expect(response.status).toBe(400);
+    expect(plan).not.toHaveBeenCalled();
   });
 
   it('rejects client-injected ChangePlan on plan', async () => {

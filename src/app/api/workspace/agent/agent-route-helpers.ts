@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { AgentRunError, type AgentRun } from '../../../../application/workspace/agent-operating';
+import type { Gate2PlanningProvenanceReview } from '../../../../application/workspace/agent-operating/gate2-planning-provenance.types';
+import { GATE2_PLANNING_PROVENANCE_LIMITS } from '../../../../application/workspace/agent-operating/gate2-planning-provenance.types';
 import { ProviderIntentBatchRejectedError } from '../../../../application/workspace/agent-operating/provider-structured-intent-emission.service';
 import type { ProviderAssistedTurnDigest } from '../../../../application/workspace/agent-operating/provider-assisted-turn.types';
 import { AgentLoopError } from '../../../../application/workspace/agent-loop';
@@ -66,6 +68,29 @@ export function toBoundedToolEvidenceHttpView(record: BoundedToolEvidenceRecord)
     recordedAt: record.recordedAt,
     summaryDigest: record.summaryDigest,
     ...(record.errorCode === undefined ? {} : { errorCode: record.errorCode }),
+  };
+}
+
+export function toGate2PlanningProvenanceHttpView(
+  review: Gate2PlanningProvenanceReview,
+): Gate2PlanningProvenanceReview {
+  const cap = GATE2_PLANNING_PROVENANCE_LIMITS.MAX_PATH_HINTS;
+  return {
+    schemaVersion: review.schemaVersion,
+    hasP0Context: review.hasP0Context,
+    hasOperatorContext: review.hasOperatorContext,
+    p0PathHintCount: review.p0PathHintCount,
+    operatorPathHintCount: review.operatorPathHintCount,
+    mergedPathHintCount: review.mergedPathHintCount,
+    plannedOperationCount: review.plannedOperationCount,
+    plannedPathOverlapCount: review.plannedPathOverlapCount,
+    unmatchedMergedHintCount: review.unmatchedMergedHintCount,
+    p0OnlyPathHints: review.p0OnlyPathHints.slice(0, cap),
+    operatorOnlyPathHints: review.operatorOnlyPathHints.slice(0, cap),
+    mergedPathHints: review.mergedPathHints.slice(0, cap),
+    matchedPlannedPaths: review.matchedPlannedPaths.slice(0, cap),
+    unmatchedMergedPathHints: review.unmatchedMergedPathHints.slice(0, cap),
+    truncated: review.truncated,
   };
 }
 
@@ -162,6 +187,7 @@ export function assertNoClientAuthorityFields(body: object): void {
     'changePlan',
     'diff',
     'gate2Review',
+    'planningProvenance',
     'baselineDigest',
     'preparationId',
     'workflowId',
