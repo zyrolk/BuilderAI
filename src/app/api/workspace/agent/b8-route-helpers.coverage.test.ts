@@ -12,6 +12,7 @@ import {
   readToolTurnIntents,
   toBoundedToolEvidenceHttpView,
 } from './agent-route-helpers';
+import { BOUNDED_VERIFICATION_EVIDENCE_SCHEMA_VERSION } from '../../../../application/workspace/agent-loop/agent-loop.types';
 
 describe('B8 agent-route-helpers coverage', () => {
   it('maps AgentLoopError and AgentRunError statuses', async () => {
@@ -35,6 +36,9 @@ describe('B8 agent-route-helpers coverage', () => {
       }),
     ).toThrow(WorkspaceRuntimeError);
     expect(() => assertNoToolTurnAuthorityFields({ shell: true })).toThrow(WorkspaceRuntimeError);
+    expect(() => assertNoToolTurnAuthorityFields({ verificationEvidence: {} })).toThrow(
+      WorkspaceRuntimeError,
+    );
     expect(
       toBoundedToolEvidenceHttpView({
         schemaVersion: 1,
@@ -55,5 +59,40 @@ describe('B8 agent-route-helpers coverage', () => {
         summaryDigest: 'abc',
       }),
     );
+  });
+
+  it('projects durable verificationEvidence without prose or streams', () => {
+    const view = toBoundedToolEvidenceHttpView({
+      schemaVersion: 3,
+      runId: 'r',
+      projectId: 'p',
+      phase: 'UNDERSTANDING',
+      toolId: 'run_verification_command',
+      intentId: 'i-v',
+      status: 'FAILED',
+      recordedAt: 't',
+      summaryDigest: 'abc',
+      verificationEvidence: {
+        evidenceSchemaVersion: BOUNDED_VERIFICATION_EVIDENCE_SCHEMA_VERSION,
+        commandId: 'npm-run-build',
+        stage: 'BUILD_VALIDATION',
+        executionStatus: 'FAILED',
+        exitCode: 1,
+        timedOut: false,
+        cancelled: false,
+        policyBlocked: false,
+        outputLimited: false,
+      },
+    });
+    expect(view.verificationEvidence).toEqual(
+      expect.objectContaining({
+        commandId: 'npm-run-build',
+        executionStatus: 'FAILED',
+        exitCode: 1,
+      }),
+    );
+    expect(view).not.toHaveProperty('diagnosticSummary');
+    expect(JSON.stringify(view)).not.toContain('stdout');
+    expect(JSON.stringify(view)).not.toContain('stderr');
   });
 });

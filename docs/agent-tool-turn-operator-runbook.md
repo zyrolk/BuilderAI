@@ -3,8 +3,8 @@
 Trusted-local operator guide for **bounded tool turns** on an existing AgentRun. Complements
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
-**Frozen stack:** B1–B10 / ADR-037–049 + D+B digest observability + P1-C investigate-before-plan UI +
-P1-D baseline verification probe (UNDERSTANDING).
+**Frozen stack:** B1–B10 / ADR-037–050 + D+B digest observability + P1-C investigate-before-plan UI +
+P1-D baseline verification probe (UNDERSTANDING) + structured verification evidence reload (Slice 2).
 Ops baseline HEAD: `79588be2aeff9918557eb8a28e3f0ba478c83c54` (P1-B A+D benchmark closure). See
 `docs/p1b-b1-b10-production-freeze.md`.
 
@@ -45,6 +45,19 @@ Rules:
 - Gate 2 explicit approval remains mandatory before any source-file mutation.
 - B4 verification evidence does **not** feed operator planning projection (ADR-047) or prepare
   context.
+
+### Structured verification status after reload (P1-D Slice 2 / ADR-050)
+
+After a baseline verification command runs, **structured status** (catalog `commandId`, stage,
+execution status, exit code, and boolean flags) is persisted on the run’s tool-loop evidence and
+survives **GET `/run` reload**. The AgentRunPanel shows a short status line such as
+`Build — FAILED — exit 1`.
+
+- Only **server-controlled** bounded fields persist.
+- Free-form `diagnosticSummary` remains **transient** (immediate tool-turn display only) and is
+  **not** durable evidence.
+- Structured verification evidence remains **non-authoritative** — no planning, provider prompt,
+  Gate 2 provenance, or FileApply effect.
 
 Suggested sequence when assessing an existing project before planning a fix:
 

@@ -559,6 +559,153 @@ describe('AgentRunPanel', () => {
     expect(agentApi.providerToolTurn).not.toHaveBeenCalled();
   });
 
+  it('renders durable structured verification status from GET/reload toolLoop', async () => {
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
+    const getStatus = vi.fn().mockResolvedValue({
+      run: understanding,
+      toolLoop: {
+        budget: {
+          toolCalls: 1,
+          providerTurns: 0,
+          b4VerificationCalls: 1,
+          browserObservationCalls: 0,
+        },
+        evidence: [
+          {
+            toolId: 'run_verification_command',
+            intentId: 'verify-1',
+            phase: 'UNDERSTANDING',
+            status: 'FAILED',
+            recordedAt: NOW,
+            summaryDigest: 'verifydigest0123456789',
+            verificationEvidence: {
+              evidenceSchemaVersion: 1 as const,
+              commandId: 'npm-run-build',
+              stage: 'BUILD_VALIDATION',
+              executionStatus: 'FAILED',
+              exitCode: 1,
+              timedOut: false,
+              cancelled: false,
+              policyBlocked: false,
+              outputLimited: false,
+            },
+          },
+          {
+            toolId: 'search_repository',
+            intentId: 'search-1',
+            phase: 'UNDERSTANDING',
+            status: 'SUCCEEDED',
+            recordedAt: NOW,
+            summaryDigest: 'searchdigest0123456789',
+          },
+        ],
+      },
+    });
+    const agentApi = createAgentApi({
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus,
+    });
+
+    render(<AgentRunPanel agentApi={agentApi} />);
+    await submitGoal('Goal');
+    fireEvent.click(screen.getByRole('button', { name: /Refresh status/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Build — FAILED — exit 1/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/search_repository/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Ignore previous/i)).not.toBeInTheDocument();
+  });
+
+  it('renders PASSED / TIMEOUT / BLOCKED verification status lines from reload', async () => {
+    const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
+    const getStatus = vi.fn().mockResolvedValue({
+      run: understanding,
+      toolLoop: {
+        budget: {
+          toolCalls: 3,
+          providerTurns: 0,
+          b4VerificationCalls: 3,
+          browserObservationCalls: 0,
+        },
+        evidence: [
+          {
+            toolId: 'run_verification_command',
+            intentId: 'v-pass',
+            phase: 'UNDERSTANDING',
+            status: 'SUCCEEDED',
+            recordedAt: NOW,
+            summaryDigest: 'passdigest0123456789',
+            verificationEvidence: {
+              evidenceSchemaVersion: 1 as const,
+              commandId: 'npm-run-test',
+              stage: 'TEST_VALIDATION',
+              executionStatus: 'SUCCEEDED',
+              exitCode: 0,
+              timedOut: false,
+              cancelled: false,
+              policyBlocked: false,
+              outputLimited: false,
+            },
+          },
+          {
+            toolId: 'run_verification_command',
+            intentId: 'v-timeout',
+            phase: 'UNDERSTANDING',
+            status: 'TIMEOUT',
+            recordedAt: NOW,
+            summaryDigest: 'timedigestdigest0123',
+            verificationEvidence: {
+              evidenceSchemaVersion: 1 as const,
+              commandId: 'npm-run-lint',
+              stage: 'LINT_VALIDATION',
+              executionStatus: 'TIMEOUT',
+              exitCode: null,
+              timedOut: true,
+              cancelled: false,
+              policyBlocked: false,
+              outputLimited: true,
+            },
+          },
+          {
+            toolId: 'run_verification_command',
+            intentId: 'v-block',
+            phase: 'UNDERSTANDING',
+            status: 'REJECTED_BY_POLICY',
+            recordedAt: NOW,
+            summaryDigest: 'blockdigest012345678',
+            verificationEvidence: {
+              evidenceSchemaVersion: 1 as const,
+              commandId: 'npm-run-format',
+              stage: 'UNKNOWN',
+              executionStatus: 'REJECTED_BY_POLICY',
+              exitCode: null,
+              timedOut: false,
+              cancelled: false,
+              policyBlocked: true,
+              policyBlockCode: 'SCRIPT_UNAVAILABLE',
+              outputLimited: false,
+            },
+          },
+        ],
+      },
+    });
+    const agentApi = createAgentApi({
+      start: vi.fn().mockResolvedValue({ run: understanding, investigationId: 'inv-1' }),
+      getStatus,
+    });
+
+    render(<AgentRunPanel agentApi={agentApi} />);
+    await submitGoal('Goal');
+    fireEvent.click(screen.getByRole('button', { name: /Refresh status/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Test — PASSED/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Lint — TIMEOUT/i)).toBeInTheDocument();
+    expect(screen.getByText(/Format — BLOCKED — SCRIPT_UNAVAILABLE/i)).toBeInTheDocument();
+  });
+
   it('invokes authorized tool turns only via toolTurn API with runId binding', async () => {
     const understanding = createRun({ phase: 'UNDERSTANDING', status: 'RUNNING' });
     const toolTurn = vi.fn().mockResolvedValue({

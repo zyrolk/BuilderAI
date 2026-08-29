@@ -175,6 +175,17 @@ describe('P1-D B4 planning isolation (ADR-049)', () => {
     );
     expect(verifyTurn.status).toBe('SUCCEEDED');
     expect(verifyTurn.evidence.planningProjection).toBeUndefined();
+    expect(verifyTurn.evidence.verificationEvidence).toEqual(
+      expect.objectContaining({
+        commandId: 'npm-run-build',
+        stage: 'BUILD_VALIDATION',
+        executionStatus: 'SUCCEEDED',
+        exitCode: 0,
+      }),
+    );
+    expect(JSON.stringify(verifyTurn.evidence.verificationEvidence)).not.toContain(
+      'diagnosticSummary',
+    );
 
     const searchTurn = await loop.executeIntent(
       {
@@ -185,6 +196,7 @@ describe('P1-D B4 planning isolation (ADR-049)', () => {
       context,
     );
     expect(searchTurn.evidence.planningProjection).toBeDefined();
+    expect(searchTurn.evidence.verificationEvidence).toBeUndefined();
 
     const evidence = loop.listEvidence('run-b4-isolation');
     const operatorContext = buildOperatorToolPlanningContext(evidence);
@@ -192,5 +204,6 @@ describe('P1-D B4 planning isolation (ADR-049)', () => {
     expect(
       operatorContext?.records.every((record) => record.toolId !== 'run_verification_command'),
     ).toBe(true);
+    expect(evidence.some((item) => item.verificationEvidence !== undefined)).toBe(true);
   });
 });

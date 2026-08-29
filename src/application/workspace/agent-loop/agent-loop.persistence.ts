@@ -7,17 +7,23 @@ import {
 } from '../../../infrastructure/workflow-ledger/filesystem-safe-write';
 import { WorkflowLedgerError } from '../../../core/workflow-ledger';
 import {
+  assertNoForbiddenVerificationEvidenceKeys,
+  validateVerificationEvidenceForPersistence,
+} from './bounded-verification-evidence';
+import {
   assertNoForbiddenProjectionKeys,
   validateProjectionForPersistence,
 } from './operator-tool-planning-projection';
 import {
   AgentLoopError,
-  AGENT_LOOP_LEGACY_SCHEMA_VERSION,
   AGENT_LOOP_SCHEMA_VERSION,
+  BOUNDED_VERIFICATION_EVIDENCE_SCHEMA_VERSION,
+  isSupportedAgentLoopSchemaVersion,
   OPERATOR_TOOL_PLANNING_PROJECTION_SCHEMA_VERSION,
   type AgentLoopPersistedSchemaVersion,
   type AgentLoopPersistedState,
   type BoundedToolEvidenceRecord,
+  type BoundedVerificationEvidence,
   type OperatorToolPlanningProjection,
 } from './agent-loop.types';
 
@@ -112,10 +118,7 @@ export function parsePersistedAgentLoopState(
   }
   const record = raw as Record<string, unknown>;
   const schemaVersion = record.schemaVersion;
-  if (
-    schemaVersion !== AGENT_LOOP_SCHEMA_VERSION &&
-    schemaVersion !== AGENT_LOOP_LEGACY_SCHEMA_VERSION
-  ) {
+  if (!isSupportedAgentLoopSchemaVersion(schemaVersion)) {
     throw new AgentLoopError('INVALID_SCHEMA', 'Unsupported agent loop evidence schema.');
   }
   if (record.runId !== runId || record.projectId !== projectId) {
@@ -160,14 +163,12 @@ function parseEvidenceRecord(
   }
   const record = raw as Record<string, unknown>;
   const schemaVersion = record.schemaVersion;
-  if (
-    schemaVersion !== AGENT_LOOP_SCHEMA_VERSION &&
-    schemaVersion !== AGENT_LOOP_LEGACY_SCHEMA_VERSION
-  ) {
+  if (!isSupportedAgentLoopSchemaVersion(schemaVersion)) {
     throw new AgentLoopError('CORRUPT_STATE', `Evidence record ${index} has unsupported schema.`);
   }
 
   const planningProjection = parsePlanningProjection(record.planningProjection);
+  const verificationEvidence = parseVerificationEvidence(record.verificationEvidence);
 
   return {
     schemaVersion: schemaVersion as AgentLoopPersistedSchemaVersion,
@@ -180,6 +181,7 @@ function parseEvidenceRecord(
     recordedAt: String(record.recordedAt),
     summaryDigest: String(record.summaryDigest),
     ...(planningProjection === undefined ? {} : { planningProjection }),
+    ...(verificationEvidence === undefined ? {} : { verificationEvidence }),
     ...(record.resultStatus === undefined
       ? {}
       : { resultStatus: record.resultStatus as BoundedToolEvidenceRecord['resultStatus'] }),
@@ -211,6 +213,28 @@ function parsePlanningProjection(raw: unknown): OperatorToolPlanningProjection |
   return projection;
 }
 
+/** Malformed verification evidence degrades gracefully — record loads without it. */
+function parseVerificationEvidence(raw: unknown): BoundedVerificationEvidence | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  if (record.evidenceSchemaVersion !== BOUNDED_VERIFICATION_EVIDENCE_SCHEMA_VERSION) {
+    return undefined;
+  }
+  try {
+    assertNoForbiddenVerificationEvidenceKeys(record);
+  } catch {
+    return undefined;
+  }
+  const evidence = record as unknown as BoundedVerificationEvidence;
+  if (!validateVerificationEvidenceForPersistence(evidence)) {
+    return undefined;
+  }
+  return evidence;
+}
+
 function assertNoForbiddenPersistedKeysExceptEvidenceProjections(
   record: Record<string, unknown>,
 ): void {
@@ -222,6 +246,7 @@ function assertNoForbiddenPersistedKeysExceptEvidenceProjections(
     const evidenceRecord = entry as Record<string, unknown>;
     const recordRest = { ...evidenceRecord };
     delete recordRest.planningProjection;
+    delete recordRest.verificationEvidence;
     assertNoForbiddenPersistedKeys(recordRest);
   }
 }

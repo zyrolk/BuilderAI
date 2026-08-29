@@ -17,6 +17,7 @@ import {
 import { parseProviderStructuredToolIntent } from './agent-loop-intent.validator';
 import { assertAutonomousLoopToolAllowed } from './agent-loop-phase-policy';
 import type { AgentLoopEvidenceStore } from './agent-loop.persistence';
+import { extractBoundedVerificationEvidence } from './bounded-verification-evidence';
 import { extractOperatorToolPlanningProjection } from './operator-tool-planning-projection';
 import {
   AGENT_LOOP_SCHEMA_VERSION,
@@ -554,6 +555,13 @@ export class AgentLoopService {
             structured: toolResult.structured,
           })
         : undefined;
+    const verificationEvidence =
+      toolResult?.structured !== undefined
+        ? extractBoundedVerificationEvidence({
+            toolId: intent.toolId,
+            structured: toolResult.structured,
+          })
+        : undefined;
 
     return {
       schemaVersion: AGENT_LOOP_SCHEMA_VERSION,
@@ -566,6 +574,7 @@ export class AgentLoopService {
       recordedAt,
       summaryDigest,
       ...(planningProjection === undefined ? {} : { planningProjection }),
+      ...(verificationEvidence === undefined ? {} : { verificationEvidence }),
       ...(toolResult !== undefined ? { resultStatus: toolResult.status } : {}),
       ...(toolResult?.errorCode !== undefined ? { errorCode: toolResult.errorCode } : {}),
       ...(context.preparationId !== undefined ? { preparationId: context.preparationId } : {}),

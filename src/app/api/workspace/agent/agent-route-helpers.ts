@@ -6,7 +6,11 @@ import { GATE2_PLANNING_PROVENANCE_LIMITS } from '../../../../application/worksp
 import { ProviderIntentBatchRejectedError } from '../../../../application/workspace/agent-operating/provider-structured-intent-emission.service';
 import type { ProviderAssistedTurnDigest } from '../../../../application/workspace/agent-operating/provider-assisted-turn.types';
 import { AgentLoopError } from '../../../../application/workspace/agent-loop';
-import type { BoundedToolEvidenceRecord } from '../../../../application/workspace/agent-loop';
+import type {
+  BoundedToolEvidenceRecord,
+  BoundedVerificationEvidence,
+} from '../../../../application/workspace/agent-loop';
+import { validateVerificationEvidenceForPersistence } from '../../../../application/workspace/agent-loop/bounded-verification-evidence';
 import { WorkspaceRuntimeError } from '../../../../application/workspace';
 import {
   LocalRequestRejectedError,
@@ -65,8 +69,21 @@ export function toBoundedToolEvidenceHttpView(
   readonly summaryDigest: string;
   readonly errorCode?: string;
   readonly verificationDiagnosticSummary?: string;
+  readonly verificationEvidence?: {
+    readonly evidenceSchemaVersion: 1;
+    readonly commandId: string;
+    readonly stage: string;
+    readonly executionStatus: string;
+    readonly exitCode: number | null;
+    readonly timedOut: boolean;
+    readonly cancelled: boolean;
+    readonly policyBlocked: boolean;
+    readonly policyBlockCode?: string;
+    readonly outputLimited: boolean;
+  };
 } {
   const diagnostic = options?.verificationDiagnosticSummary;
+  const verificationEvidence = toVerificationEvidenceHttpView(record.verificationEvidence);
   return {
     toolId: record.toolId,
     intentId: record.intentId,
@@ -78,6 +95,40 @@ export function toBoundedToolEvidenceHttpView(
     ...(diagnostic === undefined || diagnostic.length === 0
       ? {}
       : { verificationDiagnosticSummary: diagnostic }),
+    ...(verificationEvidence === undefined ? {} : { verificationEvidence }),
+  };
+}
+
+/** Response-only explicit field pick for durable B4 structured status (ADR-050). */
+export function toVerificationEvidenceHttpView(evidence: BoundedVerificationEvidence | undefined):
+  | {
+      readonly evidenceSchemaVersion: 1;
+      readonly commandId: string;
+      readonly stage: string;
+      readonly executionStatus: string;
+      readonly exitCode: number | null;
+      readonly timedOut: boolean;
+      readonly cancelled: boolean;
+      readonly policyBlocked: boolean;
+      readonly policyBlockCode?: string;
+      readonly outputLimited: boolean;
+    }
+  | undefined {
+  if (evidence === undefined) return undefined;
+  if (!validateVerificationEvidenceForPersistence(evidence)) return undefined;
+  return {
+    evidenceSchemaVersion: 1,
+    commandId: evidence.commandId,
+    stage: evidence.stage,
+    executionStatus: evidence.executionStatus,
+    exitCode: evidence.exitCode,
+    timedOut: evidence.timedOut,
+    cancelled: evidence.cancelled,
+    policyBlocked: evidence.policyBlocked,
+    ...(evidence.policyBlockCode === undefined
+      ? {}
+      : { policyBlockCode: evidence.policyBlockCode }),
+    outputLimited: evidence.outputLimited,
   };
 }
 
@@ -248,6 +299,8 @@ export function assertNoClientAuthorityFields(body: object): void {
     'approvalBinding',
     'applyResult',
     'verificationReport',
+    'verificationEvidence',
+    'planningProjection',
   ] as const;
   for (const key of forbidden) {
     if (Reflect.has(body, key)) {
@@ -275,6 +328,8 @@ export function assertNoToolTurnAuthorityFields(body: object): void {
     'shell',
     'bearerToken',
     'accessToken',
+    'verificationEvidence',
+    'planningProjection',
   ] as const;
   for (const key of forbidden) {
     if (Reflect.has(body, key)) {

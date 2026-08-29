@@ -47,6 +47,19 @@ export interface AgentToolEvidenceItem {
   readonly errorCode?: string;
   /** Display-only bounded diagnostic from B4 verify tools (ADR-049); not planning authority. */
   readonly verificationDiagnosticSummary?: string;
+  /** Durable structured B4 status (ADR-050); evidence/display only — not planning authority. */
+  readonly verificationEvidence?: {
+    readonly evidenceSchemaVersion: 1;
+    readonly commandId: string;
+    readonly stage: string;
+    readonly executionStatus: string;
+    readonly exitCode: number | null;
+    readonly timedOut: boolean;
+    readonly cancelled: boolean;
+    readonly policyBlocked: boolean;
+    readonly policyBlockCode?: string;
+    readonly outputLimited: boolean;
+  };
 }
 
 export interface AgentToolLoopStatus {
@@ -134,6 +147,8 @@ export interface AgentToolTurnResponse {
     readonly recordedAt: string;
     readonly summaryDigest: string;
     readonly errorCode?: string;
+    readonly verificationDiagnosticSummary?: string;
+    readonly verificationEvidence?: AgentToolEvidenceItem['verificationEvidence'];
   }[];
   readonly turn: Record<string, unknown>;
   readonly emission?: AgentProviderAssistedDigest;

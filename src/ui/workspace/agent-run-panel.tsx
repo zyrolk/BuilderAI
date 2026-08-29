@@ -15,10 +15,13 @@ import {
   type AgentGate2Summary,
   type AgentProviderAssistedDigest,
   type AgentRunHttpView,
+  type AgentToolEvidenceItem,
   type AgentToolLoopStatus,
   type ExplainArtifact,
 } from './http-agent-workflow';
 import type { Gate2PlanningProvenanceReview } from '../../application/workspace/agent-operating/gate2-planning-provenance.types';
+import { formatVerificationEvidenceStatusLine } from '../../application/workspace/agent-loop/bounded-verification-evidence';
+import type { BoundedVerificationEvidence } from '../../application/workspace/agent-loop/agent-loop.types';
 import {
   formatProviderAssistedSummary,
   operatorActionLabel,
@@ -153,6 +156,13 @@ const TOOL_PRESETS = [
 interface AgentRunPanelProps {
   readonly agentApi?: HttpAgentWorkflow;
   readonly disabled?: boolean;
+}
+
+/** ADR-050: minimal structured verification status line (display only). */
+function verificationEvidenceStatusLine(
+  evidence: NonNullable<AgentToolEvidenceItem['verificationEvidence']>,
+): string {
+  return formatVerificationEvidenceStatusLine(evidence as BoundedVerificationEvidence);
 }
 
 function shouldLoadExplain(run: AgentRunHttpView): boolean {
@@ -892,6 +902,12 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                       <strong>{item.toolId}</strong> · {item.status} · {item.phase} ·{' '}
                       {item.summaryDigest.slice(0, 16)}…
                       {item.errorCode !== undefined ? ` · ${item.errorCode}` : ''}
+                      {item.verificationEvidence !== undefined ? (
+                        <span className={styles.verificationStatus}>
+                          {' '}
+                          · {verificationEvidenceStatusLine(item.verificationEvidence)}
+                        </span>
+                      ) : null}
                       {item.verificationDiagnosticSummary !== undefined &&
                       item.verificationDiagnosticSummary.length > 0 ? (
                         <span className={styles.verificationDiagnostic}>

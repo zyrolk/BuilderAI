@@ -4,18 +4,46 @@
  */
 
 import type { AgentRunPhase } from '../agent-operating/agent-run.types';
+import type {
+  ControlledTerminalCommandId,
+  ControlledTerminalExecutionStatus,
+} from '../controlled-terminal/controlled-terminal.types';
 import type { ToolCapabilityClass, ToolResult } from '../tool-registry/tool-registry.types';
 
-/** Current persisted agent-loop evidence schema (ADR-047 v2 adds optional planningProjection). */
-export const AGENT_LOOP_SCHEMA_VERSION = 2 as const;
+/**
+ * Current persisted agent-loop evidence schema.
+ * v2 = optional planningProjection (ADR-047); v3 = optional verificationEvidence (ADR-050).
+ */
+export const AGENT_LOOP_SCHEMA_VERSION = 3 as const;
 
-/** Legacy v1 evidence remains readable without planningProjection. */
+/** Legacy v1 evidence remains readable without planningProjection / verificationEvidence. */
 export const AGENT_LOOP_LEGACY_SCHEMA_VERSION = 1 as const;
 
-export type AgentLoopPersistedSchemaVersion =
-  typeof AGENT_LOOP_SCHEMA_VERSION | typeof AGENT_LOOP_LEGACY_SCHEMA_VERSION;
+/** Intermediate schema with planningProjection only (ADR-047). */
+export const AGENT_LOOP_SCHEMA_VERSION_V2 = 2 as const;
+
+/** Readable top-level / evidence-record schema versions (fail closed on anything else). */
+export const AGENT_LOOP_SUPPORTED_SCHEMA_VERSIONS = [
+  AGENT_LOOP_LEGACY_SCHEMA_VERSION,
+  AGENT_LOOP_SCHEMA_VERSION_V2,
+  AGENT_LOOP_SCHEMA_VERSION,
+] as const;
+
+export type AgentLoopPersistedSchemaVersion = (typeof AGENT_LOOP_SUPPORTED_SCHEMA_VERSIONS)[number];
+
+export function isSupportedAgentLoopSchemaVersion(
+  value: unknown,
+): value is AgentLoopPersistedSchemaVersion {
+  return (
+    typeof value === 'number' &&
+    (AGENT_LOOP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(value)
+  );
+}
 
 export const OPERATOR_TOOL_PLANNING_PROJECTION_SCHEMA_VERSION = 1 as const;
+
+/** Nested BoundedVerificationEvidence schema (ADR-050). */
+export const BOUNDED_VERIFICATION_EVIDENCE_SCHEMA_VERSION = 1 as const;
 
 /** Bounded server-derived planning extract (ADR-047). DATA only — never authority. */
 export interface OperatorToolPlanningProjection {
@@ -38,6 +66,23 @@ export interface OperatorToolPlanningProjection {
 
   readonly provenance: 'OPERATOR_TOOL_TURN';
   readonly summaryDigest: string;
+}
+
+/**
+ * Bounded server-derived B4 verification status (ADR-050).
+ * Evidence / display only — never planning, provider, Gate2, or FileApply authority.
+ */
+export interface BoundedVerificationEvidence {
+  readonly evidenceSchemaVersion: typeof BOUNDED_VERIFICATION_EVIDENCE_SCHEMA_VERSION;
+  readonly commandId: ControlledTerminalCommandId;
+  readonly stage: string;
+  readonly executionStatus: ControlledTerminalExecutionStatus;
+  readonly exitCode: number | null;
+  readonly timedOut: boolean;
+  readonly cancelled: boolean;
+  readonly policyBlocked: boolean;
+  readonly policyBlockCode?: string;
+  readonly outputLimited: boolean;
 }
 
 export const DEFAULT_AGENT_LOOP_BUDGETS = {
@@ -124,6 +169,8 @@ export interface BoundedToolEvidenceRecord {
   readonly recordedAt: string;
   readonly summaryDigest: string;
   readonly planningProjection?: OperatorToolPlanningProjection;
+  /** ADR-050: sibling of planningProjection — structured B4 status only. */
+  readonly verificationEvidence?: BoundedVerificationEvidence;
   readonly resultStatus?: ToolResult['status'];
   readonly errorCode?: string;
   readonly preparationId?: string;

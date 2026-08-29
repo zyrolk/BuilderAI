@@ -1333,6 +1333,11 @@
   font-size: 0.85rem;
 }
 
+.verificationStatus {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
 .agentGate2Summary {
   margin: 0.5rem 0 0.75rem;
   padding-left: 1.1rem;
