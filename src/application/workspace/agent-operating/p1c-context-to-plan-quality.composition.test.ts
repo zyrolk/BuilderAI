@@ -35,6 +35,20 @@ import type {
 import type { AgentLoopService } from '../agent-loop/agent-loop.service';
 
 export const CONTEXT_TO_PLAN_QUALITY_BENCHMARK_ID = 'p1c-context-to-plan-quality-v1' as const;
+export const P1C_CLOSURE_BENCHMARK_ID = 'p1c-closure-v1' as const;
+
+export interface P1cClosureBenchmarkEvidence {
+  readonly benchmarkId: typeof P1C_CLOSURE_BENCHMARK_ID;
+  readonly runId: string;
+  readonly phasesObserved: readonly string[];
+  readonly fileApplyCallsBeforeApproval: number;
+  readonly fileApplyCallsAfterApproval: number;
+  readonly operatorPathInProvenance: boolean;
+  readonly plannedPathOverlapCount: number;
+  readonly verificationStatus: string | null;
+  readonly finalPhase: string;
+  readonly finalStatus: string;
+}
 
 function neverCancelled(): ExecutionCancellationToken {
   return { cancelled: false, subscribe: () => () => undefined };
@@ -112,7 +126,11 @@ interface ComposedAgent {
   readonly capturedPrepareInputs: unknown[];
 }
 
-function composeAgentWithLoop(harness: AgentCompositionHarness, stateRoot: string): ComposedAgent {
+function composeAgentWithLoop(
+  harness: AgentCompositionHarness,
+  stateRoot: string,
+  runId: string,
+): ComposedAgent {
   const projectId = 'builder-ai';
   const capturedPrepareInputs: unknown[] = [];
   const authorization = new WorkspaceAuthorizationService({
@@ -223,7 +241,7 @@ function composeAgentWithLoop(harness: AgentCompositionHarness, stateRoot: strin
     investigation: createInvestigationWithEmptyPaths(),
     runtime,
     correction: harness.correction,
-    ids: { generate: () => 'p1c2-quality-run' },
+    ids: { generate: () => runId },
     clock: { now: () => new Date('2026-08-21T15:00:00.000Z') },
     loop: composed.loop,
     projectRoot: process.cwd(),
@@ -243,7 +261,7 @@ describe('P1-C context to plan quality benchmark', () => {
     const runId = 'p1c2-quality-run';
     try {
       const harness = createAgentCompositionHarness({ stateRoot, runId });
-      const first = composeAgentWithLoop(harness, stateRoot);
+      const first = composeAgentWithLoop(harness, stateRoot, runId);
 
       await first.agent.startRun('Benchmark context-to-plan-quality artifact.');
 
@@ -263,7 +281,7 @@ describe('P1-C context to plan quality benchmark', () => {
       expect(harness.fileApply.calls).toBe(0);
 
       // Simulate process restart: new AgentOperatingService + fresh in-memory loop cache.
-      const reloaded = composeAgentWithLoop(harness, stateRoot);
+      const reloaded = composeAgentWithLoop(harness, stateRoot, runId);
       await reloaded.loop.hydrate(runId);
       const hydratedEvidence = reloaded.loop.listEvidence(runId);
       expect(hydratedEvidence[0]?.planningProjection?.pathHints).toContain(
@@ -299,6 +317,121 @@ describe('P1-C context to plan quality benchmark', () => {
       expect(paused.planningProvenance).toBeDefined();
       expect(paused.planningProvenance?.plannedOperationCount).toBeGreaterThan(0);
       expect(paused.planningProvenance?.plannedPathOverlapCount).toBeGreaterThanOrEqual(0);
+    } finally {
+      await rm(stateRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('records full P1-C closure: investigate → provenance → approve → apply → verify → explain', async () => {
+    const stateRoot = await mkdtemp(path.join(tmpdir(), 'builderai-p1c-closure-'));
+    const runId = 'p1c-closure-run';
+    try {
+      const harness = createAgentCompositionHarness({ stateRoot, runId });
+      const { agent, loop, capturedPrepareInputs } = composeAgentWithLoop(
+        harness,
+        stateRoot,
+        runId,
+      );
+      const { fileApply, fileSystem } = harness;
+      const phasesObserved: string[] = [];
+
+      const started = await agent.startRun('P1-C closure benchmark governed lifecycle.');
+      phasesObserved.push(started.run.phase);
+      expect(started.run.phase).toBe('UNDERSTANDING');
+      expect(fileApply.calls).toBe(0);
+
+      const turn = await agent.executeToolTurn(runId, {
+        intents: [
+          {
+            toolId: 'search_repository',
+            intentId: 'p1c-closure-intent-1',
+            arguments: { query: 'integration' },
+          },
+        ],
+        cancellation: neverCancelled(),
+      });
+      phasesObserved.push(turn.run.phase);
+      expect(turn.run.phase).toBe('UNDERSTANDING');
+      expect(turn.evidence[0]?.planningProjection?.pathHints).toContain(
+        'src/integration-output.ts',
+      );
+      expect(fileApply.calls).toBe(0);
+      expect(fileSystem.mutationCalls).toEqual([]);
+
+      const planned = await agent.plan(runId);
+      phasesObserved.push(planned.run.phase);
+      expect(planned.run.phase).toBe('PLANNING');
+      expect(fileApply.calls).toBe(0);
+      expect(planned.planningProvenance).toBeDefined();
+      expect(planned.planningProvenance?.hasOperatorContext).toBe(true);
+      expect(isOperatorToolPlanningMergeInput(capturedPrepareInputs.at(-1))).toBe(true);
+
+      const paused = await agent.pauseAtGate2(runId);
+      phasesObserved.push(paused.run.phase);
+      expect(paused.run.phase).toBe('AWAITING_GATE2');
+      expect(paused.run.status).toBe('AWAITING_GATE2');
+      expect(fileApply.calls).toBe(0);
+
+      const provenance = paused.planningProvenance;
+      expect(provenance).toBeDefined();
+      expect(provenance?.mergedPathHints).toContain('src/integration-output.ts');
+      expect(provenance?.plannedPathOverlapCount).toBeGreaterThanOrEqual(1);
+      expect(provenance?.matchedPlannedPaths).toContain('src/integration-output.ts');
+
+      await expect(agent.executeAfterApproval(runId, { approved: false })).rejects.toThrow(
+        /Explicit approval is required/,
+      );
+      expect(fileApply.calls).toBe(0);
+
+      const executed = await agent.executeAfterApproval(runId, { approved: true });
+      expect('completion' in executed).toBe(true);
+      if (!('completion' in executed)) throw new Error('expected completion');
+      phasesObserved.push(executed.run.phase);
+      expect(fileApply.calls).toBe(1);
+      expect(fileSystem.mutationCalls.length).toBeGreaterThan(0);
+      expect(executed.completion.verificationReport?.status).toBe('PASSED');
+
+      const explained = await agent.explain(runId);
+      phasesObserved.push(explained.run.phase);
+      expect(explained.run.phase).toBe('COMPLETED');
+      expect(explained.run.status).toBe('COMPLETED');
+      expect(explained.explain.verification.overallStatus).toBe('PASSED');
+      expect(explained.explain.toolLoop.evidenceCount).toBeGreaterThan(0);
+
+      const fileApplyCallsBeforeApproval = 0;
+      const evidence: P1cClosureBenchmarkEvidence = {
+        benchmarkId: P1C_CLOSURE_BENCHMARK_ID,
+        runId,
+        phasesObserved,
+        fileApplyCallsBeforeApproval,
+        fileApplyCallsAfterApproval: fileApply.calls,
+        operatorPathInProvenance:
+          provenance?.mergedPathHints.includes('src/integration-output.ts') ?? false,
+        plannedPathOverlapCount: provenance?.plannedPathOverlapCount ?? 0,
+        verificationStatus: explained.explain.verification.overallStatus ?? null,
+        finalPhase: explained.run.phase,
+        finalStatus: explained.run.status,
+      };
+
+      expect(evidence.phasesObserved).toEqual([
+        'UNDERSTANDING',
+        'UNDERSTANDING',
+        'PLANNING',
+        'AWAITING_GATE2',
+        'VERIFYING',
+        'COMPLETED',
+      ]);
+      expect(evidence.fileApplyCallsBeforeApproval).toBe(0);
+      expect(evidence.fileApplyCallsAfterApproval).toBe(1);
+      expect(evidence.operatorPathInProvenance).toBe(true);
+      expect(evidence.plannedPathOverlapCount).toBeGreaterThanOrEqual(1);
+      expect(evidence.verificationStatus).toBe('PASSED');
+      expect(evidence.finalPhase).toBe('COMPLETED');
+
+      await loop.hydrate(runId);
+      expect(loop.listEvidence(runId)[0]?.planningProjection?.pathHints).toContain(
+        'src/integration-output.ts',
+      );
     } finally {
       await rm(stateRoot, { recursive: true, force: true });
     }
