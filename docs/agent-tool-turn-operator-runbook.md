@@ -3,8 +3,9 @@
 Trusted-local operator guide for **bounded tool turns** on an existing AgentRun. Complements
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
-**Frozen stack:** B1–B10 / ADR-037–050 + D+B digest observability + P1-C investigate-before-plan UI +
-P1-D baseline verification probe (UNDERSTANDING) + structured verification evidence reload (Slice 2).
+**Frozen stack:** B1–B10 / ADR-037–051 + D+B digest observability + P1-C investigate-before-plan UI +
+P1-D baseline verification → structured evidence → governed planning DATA + Gate2 provenance
+(Slices 1–3).
 Ops baseline HEAD: `79588be2aeff9918557eb8a28e3f0ba478c83c54` (P1-B A+D benchmark closure). See
 `docs/p1b-b1-b10-production-freeze.md`.
 
@@ -40,11 +41,9 @@ Rules:
 
 - Baseline verification is **optional** and occurs only in **UNDERSTANDING** (or later VERIFYING /
   DIAGNOSING per existing B4 policy).
-- Results are **bounded observable evidence only** — they do **not** authorize planning, Gate 2,
-  or FileApply.
 - Gate 2 explicit approval remains mandatory before any source-file mutation.
-- B4 verification evidence does **not** feed operator planning projection (ADR-047) or prepare
-  context.
+- FileApply remains the sole mutation path.
+- B4 verification does **not** overload ADR-047 operator path-hint planning projection.
 
 ### Structured verification status after reload (P1-D Slice 2 / ADR-050)
 
@@ -56,8 +55,22 @@ survives **GET `/run` reload**. The AgentRunPanel shows a short status line such
 - Only **server-controlled** bounded fields persist.
 - Free-form `diagnosticSummary` remains **transient** (immediate tool-turn display only) and is
   **not** durable evidence.
-- Structured verification evidence remains **non-authoritative** — no planning, provider prompt,
-  Gate 2 provenance, or FileApply effect.
+
+### Verification → first plan + Gate2 provenance (P1-D Slice 3 / ADR-051)
+
+When **UNDERSTANDING** baseline verification evidence exists, **Plan** may derive a bounded
+`VerificationPlanningProjection` (catalog command ids + baseline status enums only) and pass it
+through a **dedicated prepare DATA channel**. That influence is **advisory engineering context**,
+not mutation authority.
+
+- Only structured command/status tokens reach planning — **no** diagnostic prose, stdout/stderr, or
+  paths.
+- The same bounded projection is exposed in **Gate2 planning provenance** (e.g. “Baseline
+  verification considered”). Influence is never hidden.
+- Correction planning (`planCorrection`) does **not** automatically merge verification planning
+  context.
+- Gate2 remains mandatory; FileApply remains the sole mutation path; provider stays
+  `toolCalling:false`.
 
 Suggested sequence when assessing an existing project before planning a fix:
 

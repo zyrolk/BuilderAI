@@ -39,6 +39,8 @@ import {
 import type { InvestigationHandoffFeedback } from '../investigation/investigation-handoff';
 import type { OperatorToolPlanningContext } from './operator-tool-planning-context';
 import type { OperatorToolPlanningMergeInput } from './operator-tool-planning-prepare-input';
+import { deriveVerificationPlanningProjection } from './verification-planning-projection';
+import { buildAgentOperatingPlanPrepareInput } from './verification-planning-prepare-input';
 
 const EXPLAIN_SUMMARY_MAX = 1_200;
 
@@ -271,14 +273,29 @@ export class AgentOperatingService {
     let operatorContext: OperatorToolPlanningContext | undefined;
     let mergedForProvenance:
       OperatorToolPlanningMergeInput | InvestigationHandoffFeedback | undefined = handoff;
+    let verificationPlanning = undefined as
+      ReturnType<typeof deriveVerificationPlanningProjection> | undefined;
     const loop = this.dependencies.loop;
     if (loop !== undefined) {
       await loop.hydrate(runId);
-      operatorContext = buildOperatorToolPlanningContext(loop.listEvidence(runId));
+      const evidence = loop.listEvidence(runId);
+      operatorContext = buildOperatorToolPlanningContext(evidence);
       const merged = mergeOperatorToolPlanningWithHandoff({ handoff, operatorContext });
       if (merged !== undefined) {
         prepareInput = merged;
         mergedForProvenance = merged;
+      }
+      // ADR-051: same projection object feeds prepare and Gate2 provenance (transparency).
+      verificationPlanning = deriveVerificationPlanningProjection(evidence);
+      if (verificationPlanning !== undefined) {
+        prepareInput = buildAgentOperatingPlanPrepareInput({
+          ...(merged !== undefined
+            ? { planning: merged }
+            : handoff !== undefined
+              ? { planning: handoff }
+              : {}),
+          verificationPlanning,
+        });
       }
     }
 
@@ -293,6 +310,7 @@ export class AgentOperatingService {
       operatorContext,
       merged: mergedForProvenance,
       gate2Review: preparation.gate2Review,
+      ...(verificationPlanning === undefined ? {} : { verificationPlanning }),
     });
 
     run = await this.dependencies.agentRuns.updateReferences(runId, {

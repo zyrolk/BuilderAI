@@ -196,6 +196,20 @@ export function toGate2PlanningProvenanceHttpView(
     matchedPlannedPaths: review.matchedPlannedPaths.slice(0, cap),
     unmatchedMergedPathHints: review.unmatchedMergedPathHints.slice(0, cap),
     truncated: review.truncated,
+    ...(review.verification === undefined
+      ? {}
+      : {
+          verification: {
+            hasVerificationContext: true,
+            baselineStatus: review.verification.baselineStatus,
+            consideredCommandCount: review.verification.consideredCommandCount,
+            failedCommandIds: [...review.verification.failedCommandIds],
+            blockedCommandIds: [...review.verification.blockedCommandIds],
+            timedOutCommandIds: [...review.verification.timedOutCommandIds],
+            cancelledCommandIds: [...review.verification.cancelledCommandIds],
+            succeededCommandIds: [...review.verification.succeededCommandIds],
+          },
+        }),
   };
 }
 
@@ -301,6 +315,16 @@ export function assertNoClientAuthorityFields(body: object): void {
     'verificationReport',
     'verificationEvidence',
     'planningProjection',
+    'verificationPlanningProjection',
+    'verificationPlanningContext',
+    'verificationPlanning',
+    'baselineStatus',
+    'consideredCommandIds',
+    'failedCommandIds',
+    'blockedCommandIds',
+    'timedOutCommandIds',
+    'cancelledCommandIds',
+    'succeededCommandIds',
   ] as const;
   for (const key of forbidden) {
     if (Reflect.has(body, key)) {
@@ -330,6 +354,11 @@ export function assertNoToolTurnAuthorityFields(body: object): void {
     'accessToken',
     'verificationEvidence',
     'planningProjection',
+    'verificationPlanningProjection',
+    'verificationPlanningContext',
+    'verificationPlanning',
+    'baselineStatus',
+    'planningProvenance',
   ] as const;
   for (const key of forbidden) {
     if (Reflect.has(body, key)) {

@@ -139,6 +139,16 @@ describe('AgentRunPanel', () => {
         matchedPlannedPaths: ['src/p0.ts'],
         unmatchedMergedPathHints: [],
         truncated: false,
+        verification: {
+          hasVerificationContext: true,
+          baselineStatus: 'FAIL',
+          consideredCommandCount: 1,
+          failedCommandIds: ['npm-run-build'],
+          blockedCommandIds: [],
+          timedOutCommandIds: [],
+          cancelledCommandIds: [],
+          succeededCommandIds: [],
+        },
       },
     });
     const agentApi = createAgentApi({
@@ -158,6 +168,9 @@ describe('AgentRunPanel', () => {
     expect(screen.getAllByText(/Planned operations: 2/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Planning provenance \(read-only\)/i)).toBeInTheDocument();
     expect(screen.getByText(/P0 investigation: Yes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Baseline verification considered/i)).toBeInTheDocument();
+    expect(screen.getByText(/Build — FAILED/i)).toBeInTheDocument();
+    expect(screen.getByText(/Status: FAIL/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Approve and execute/i })).toBeDisabled();
     expect(agentApi.approve).not.toHaveBeenCalled();
   });

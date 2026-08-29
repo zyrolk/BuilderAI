@@ -74,6 +74,11 @@ import {
   isInvestigationHandoffFeedback,
 } from './investigation/investigation-handoff';
 import { isOperatorToolPlanningMergeInput } from './agent-operating/operator-tool-planning-prepare-input';
+import {
+  isAgentOperatingPlanPrepareInput,
+  unwrapPlanningInner,
+} from './agent-operating/verification-planning-prepare-input';
+import type { VerificationPlanningProjection } from './agent-operating/verification-planning-projection';
 import type { ProjectMemoryService } from './project-memory/project-memory.service';
 import {
   extractIterationPathHints,
@@ -178,20 +183,37 @@ export class WorkspaceRuntimeService {
   ): Promise<WorkspacePreparation> {
     await this.assertExternalTargetWorkflowAllowed('PREPARE');
     const normalizedRequest = validateRequest(request);
-    const operatorPlanningMerge = isOperatorToolPlanningMergeInput(iterationFeedbackInput)
+    const planPrepare = isAgentOperatingPlanPrepareInput(iterationFeedbackInput)
       ? iterationFeedbackInput
       : undefined;
+    const verificationPlanningContext = planPrepare?.verificationPlanning;
+    const planningInner =
+      planPrepare !== undefined
+        ? unwrapPlanningInner(planPrepare.planning)
+        : { merge: undefined, handoff: undefined };
+    const effectivePlanningInput =
+      planPrepare !== undefined ? (planPrepare.planning ?? undefined) : iterationFeedbackInput;
+
+    const operatorPlanningMerge =
+      planningInner.merge !== undefined
+        ? planningInner.merge
+        : isOperatorToolPlanningMergeInput(effectivePlanningInput)
+          ? effectivePlanningInput
+          : undefined;
     const investigationHandoff =
       operatorPlanningMerge !== undefined
         ? this.prepareConfidentiality.filterInvestigationHandoff(
             operatorPlanningMerge.mergedHandoff,
           )
-        : isInvestigationHandoffFeedback(iterationFeedbackInput)
-          ? this.prepareConfidentiality.filterInvestigationHandoff(iterationFeedbackInput)
-          : undefined;
+        : planningInner.handoff !== undefined
+          ? this.prepareConfidentiality.filterInvestigationHandoff(planningInner.handoff)
+          : isInvestigationHandoffFeedback(effectivePlanningInput)
+            ? this.prepareConfidentiality.filterInvestigationHandoff(effectivePlanningInput)
+            : undefined;
     const normalizedFeedback =
       investigationHandoff === undefined &&
       operatorPlanningMerge === undefined &&
+      planPrepare === undefined &&
       iterationFeedbackInput !== undefined
         ? normalizeIterationFeedback(iterationFeedbackInput, {
             priorRequestSummary: readOptionalPriorSummary(iterationFeedbackInput),
@@ -310,6 +332,7 @@ export class WorkspaceRuntimeService {
                 externalPreparePlan === undefined
                   ? (normalizedFeedback as PromptIterationContent | undefined)
                   : externalPreparePlan.iterationFeedback,
+              ...(verificationPlanningContext === undefined ? {} : { verificationPlanningContext }),
               ...(externalPreparePlan === undefined
                 ? {}
                 : {
@@ -1130,6 +1153,7 @@ export class WorkspaceRuntimeService {
     readonly correlationId: string;
     readonly metadata: Record<string, string>;
     readonly iterationFeedback?: PromptIterationContent;
+    readonly verificationPlanningContext?: VerificationPlanningProjection;
     readonly sourceContextPolicy?: SourceContextPolicy;
     readonly contextBudget?: ExternalTargetPrepareContextBudget;
     readonly memoryContextCharacters?: number;
@@ -1186,6 +1210,9 @@ export class WorkspaceRuntimeService {
         ...(input.iterationFeedback === undefined
           ? {}
           : { iterationFeedback: input.iterationFeedback }),
+        ...(input.verificationPlanningContext === undefined
+          ? {}
+          : { verificationPlanningContext: input.verificationPlanningContext }),
         ...(scopeResolution.preservationContract === undefined
           ? {}
           : { preservationContract: scopeResolution.preservationContract }),

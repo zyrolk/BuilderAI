@@ -20,7 +20,10 @@ import {
   type ExplainArtifact,
 } from './http-agent-workflow';
 import type { Gate2PlanningProvenanceReview } from '../../application/workspace/agent-operating/gate2-planning-provenance.types';
-import { formatVerificationEvidenceStatusLine } from '../../application/workspace/agent-loop/bounded-verification-evidence';
+import {
+  formatVerificationEvidenceStatusLine,
+  verificationCommandDisplayLabel,
+} from '../../application/workspace/agent-loop/bounded-verification-evidence';
 import type { BoundedVerificationEvidence } from '../../application/workspace/agent-loop/agent-loop.types';
 import {
   formatProviderAssistedSummary,
@@ -981,6 +984,35 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                       Unmatched merged hints:{' '}
                       {planningProvenance.unmatchedMergedPathHints.join(', ')}
                     </p>
+                  )}
+                  {planningProvenance.verification !== undefined && (
+                    <div className={styles.agentGate2Verification}>
+                      <p>Baseline verification considered</p>
+                      <ul className={styles.agentGate2Summary}>
+                        <li>Status: {planningProvenance.verification.baselineStatus}</li>
+                        {planningProvenance.verification.failedCommandIds.map((id) => (
+                          <li key={`fail-${id}`}>{verificationCommandDisplayLabel(id)} — FAILED</li>
+                        ))}
+                        {planningProvenance.verification.blockedCommandIds.map((id) => (
+                          <li key={`block-${id}`}>
+                            {verificationCommandDisplayLabel(id)} — BLOCKED
+                          </li>
+                        ))}
+                        {planningProvenance.verification.timedOutCommandIds.map((id) => (
+                          <li key={`timeout-${id}`}>
+                            {verificationCommandDisplayLabel(id)} — TIMEOUT
+                          </li>
+                        ))}
+                        {planningProvenance.verification.cancelledCommandIds.map((id) => (
+                          <li key={`cancel-${id}`}>
+                            {verificationCommandDisplayLabel(id)} — CANCELLED
+                          </li>
+                        ))}
+                        {planningProvenance.verification.succeededCommandIds.map((id) => (
+                          <li key={`ok-${id}`}>{verificationCommandDisplayLabel(id)} — PASSED</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </details>
               )}

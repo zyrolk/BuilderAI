@@ -267,6 +267,20 @@ export interface PromptBuildInput {
   readonly metadata?: PromptMetadata;
   readonly iterationFeedback?: PromptIterationContent;
   readonly preservationContract?: PreservationContractContent;
+  /**
+   * ADR-051: optional bounded engineering baseline verification DATA (server-derived tokens only).
+   * Serialized into SAFETY as read-only DATA — never free-form diagnostics.
+   */
+  readonly verificationPlanningContext?: {
+    readonly schemaVersion: 1;
+    readonly baselineStatus: string;
+    readonly consideredCommandIds: readonly string[];
+    readonly failedCommandIds: readonly string[];
+    readonly blockedCommandIds: readonly string[];
+    readonly timedOutCommandIds: readonly string[];
+    readonly cancelledCommandIds: readonly string[];
+    readonly succeededCommandIds: readonly string[];
+  };
 }
 
 export type PromptValidationCode =

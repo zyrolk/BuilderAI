@@ -30,6 +30,7 @@ import {
   type AgentCompositionHarness,
 } from './test/agent-operating.composition.fixture';
 import { isOperatorToolPlanningMergeInput } from './operator-tool-planning-prepare-input';
+import { isAgentOperatingPlanPrepareInput } from './verification-planning-prepare-input';
 import type { AgentOperatingRuntimePort } from './agent-operating.types';
 import type { AgentLoopService } from '../agent-loop/agent-loop.service';
 
@@ -281,7 +282,13 @@ describe('P1-D baseline verification probe benchmark', () => {
       phasesObserved.push(planned.run.phase);
       expect(planned.run.phase).toBe('PLANNING');
       expect(fileApply.calls).toBe(0);
-      expect(isOperatorToolPlanningMergeInput(capturedPrepareInputs.at(-1))).toBe(true);
+      const prepareInput = capturedPrepareInputs.at(-1);
+      expect(isAgentOperatingPlanPrepareInput(prepareInput)).toBe(true);
+      if (isAgentOperatingPlanPrepareInput(prepareInput)) {
+        expect(isOperatorToolPlanningMergeInput(prepareInput.planning)).toBe(true);
+        expect(prepareInput.verificationPlanning.baselineStatus).toBe('PASS');
+      }
+      expect(planned.planningProvenance?.verification?.hasVerificationContext).toBe(true);
 
       const paused = await agent.pauseAtGate2(runId);
       phasesObserved.push(paused.run.phase);

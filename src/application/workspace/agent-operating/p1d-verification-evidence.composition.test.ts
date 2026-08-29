@@ -30,6 +30,7 @@ import {
   type AgentCompositionHarness,
 } from './test/agent-operating.composition.fixture';
 import { isOperatorToolPlanningMergeInput } from './operator-tool-planning-prepare-input';
+import { isAgentOperatingPlanPrepareInput } from './verification-planning-prepare-input';
 import type { AgentOperatingRuntimePort } from './agent-operating.types';
 import type { AgentLoopService } from '../agent-loop/agent-loop.service';
 
@@ -185,8 +186,8 @@ function composeAgentWithLoop(
   };
 }
 
-describe('P1-D Slice 2 verification evidence composition (ADR-050)', () => {
-  it('persists structured verification evidence across reload and ignores it at plan', async () => {
+describe('P1-D Slice 2 verification evidence composition (ADR-050 / ADR-051)', () => {
+  it('persists structured verification evidence and feeds bounded planning DATA at plan', async () => {
     const stateRoot = await mkdtemp(path.join(tmpdir(), 'builderai-p1d2-'));
     const runId = 'run-p1d2-evidence';
     const projectRoot = ZYRO_STYLE_FIXTURE_ROOT;
@@ -285,9 +286,19 @@ describe('P1-D Slice 2 verification evidence composition (ADR-050)', () => {
       const planned = await agent.plan(runId);
       expect(planned.run.phase).toBe('PLANNING');
       expect(harness.fileApply.calls).toBe(0);
-      expect(isOperatorToolPlanningMergeInput(capturedPrepareInputs.at(-1))).toBe(true);
-      expect(JSON.stringify(capturedPrepareInputs.at(-1))).not.toContain('verificationEvidence');
-      expect(JSON.stringify(capturedPrepareInputs.at(-1))).not.toContain('npm-run-build');
+      const prepareInput = capturedPrepareInputs.at(-1);
+      expect(isAgentOperatingPlanPrepareInput(prepareInput)).toBe(true);
+      if (isAgentOperatingPlanPrepareInput(prepareInput)) {
+        expect(prepareInput.verificationPlanning.baselineStatus).toBe('PASS');
+        expect(prepareInput.verificationPlanning.succeededCommandIds).toContain('npm-run-build');
+        expect(isOperatorToolPlanningMergeInput(prepareInput.planning)).toBe(true);
+      }
+      expect(JSON.stringify(prepareInput)).not.toContain('diagnosticSummary');
+      expect(JSON.stringify(prepareInput)).not.toContain('stdout');
+      expect(planned.planningProvenance?.verification?.baselineStatus).toBe('PASS');
+      expect(planned.planningProvenance?.verification?.succeededCommandIds).toContain(
+        'npm-run-build',
+      );
     } finally {
       await rm(stateRoot, { recursive: true, force: true });
     }

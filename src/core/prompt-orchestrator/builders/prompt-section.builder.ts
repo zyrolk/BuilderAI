@@ -28,6 +28,7 @@ export class PromptSectionBuilder {
     expectedOutput: PromptOutputContract,
     iterationFeedback?: PromptIterationContent,
     preservationContract?: PreservationContractContent,
+    verificationPlanningText?: string,
   ): readonly PromptSection[] {
     const sections = template.sections.flatMap((section) => {
       const built = this.buildSection(
@@ -36,6 +37,7 @@ export class PromptSectionBuilder {
         expectedOutput,
         iterationFeedback,
         preservationContract,
+        verificationPlanningText,
       );
       return built === undefined ? [] : [built];
     });
@@ -48,6 +50,7 @@ export class PromptSectionBuilder {
     expectedOutput: PromptOutputContract,
     iterationFeedback?: PromptIterationContent,
     preservationContract?: PreservationContractContent,
+    verificationPlanningText?: string,
   ): PromptSection | undefined {
     const base = {
       id: templateSection.id,
@@ -154,7 +157,18 @@ export class PromptSectionBuilder {
         return {
           ...base,
           kind: 'SAFETY',
-          instructions: templateInstructions(templateSection.instructions),
+          instructions: [
+            ...templateInstructions(templateSection.instructions),
+            ...(verificationPlanningText === undefined
+              ? []
+              : [
+                  {
+                    id: 'verification-baseline-planning-data',
+                    text: verificationPlanningText,
+                    source: 'TEMPLATE' as const,
+                  },
+                ]),
+          ],
         };
     }
   }

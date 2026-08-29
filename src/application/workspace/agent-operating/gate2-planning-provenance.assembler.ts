@@ -10,8 +10,10 @@ import {
 import {
   GATE2_PLANNING_PROVENANCE_LIMITS,
   GATE2_PLANNING_PROVENANCE_SCHEMA_VERSION,
+  toGate2VerificationProvenance,
   type Gate2PlanningProvenanceReview,
 } from './gate2-planning-provenance.types';
+import type { VerificationPlanningProjection } from './verification-planning-projection';
 
 export interface AssembleGate2PlanningProvenanceInput {
   readonly handoff?: InvestigationHandoffFeedback;
@@ -20,6 +22,11 @@ export interface AssembleGate2PlanningProvenanceInput {
   readonly gate2Review: Gate2ReviewProjection;
   /** Correction-plan only: paths from iteration feedback apply evidence (no operator merge). */
   readonly correctionPathHints?: readonly string[];
+  /**
+   * Same VerificationPlanningProjection instance (or equivalent) that was sent to prepare.
+   * Omit when verification did not influence planning (transparency invariant).
+   */
+  readonly verificationPlanning?: VerificationPlanningProjection;
 }
 
 /** Pure deterministic Gate2 planning provenance (ADR-048). No I/O, no provider, no tools. */
@@ -74,6 +81,9 @@ export function assembleGate2PlanningProvenance(
     matchedPlannedPaths,
     unmatchedMergedPathHints,
     truncated,
+    ...(input.verificationPlanning === undefined
+      ? {}
+      : { verification: toGate2VerificationProvenance(input.verificationPlanning) }),
   };
 }
 

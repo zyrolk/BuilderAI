@@ -309,4 +309,31 @@ describe('assembleGate2PlanningProvenance', () => {
       expect(serialized).not.toContain(`"${key}"`);
     }
   });
+
+  it('includes verification provenance when the same projection is supplied', () => {
+    const projection = {
+      schemaVersion: 1 as const,
+      baselineStatus: 'FAIL' as const,
+      consideredCommandIds: ['npm-run-build' as const],
+      failedCommandIds: ['npm-run-build' as const],
+      blockedCommandIds: [] as const,
+      timedOutCommandIds: [] as const,
+      cancelledCommandIds: [] as const,
+      succeededCommandIds: [] as const,
+    };
+    const review = assembleGate2PlanningProvenance({
+      gate2Review: gate2(['src/a.ts']),
+      verificationPlanning: projection,
+    });
+    expect(review.verification).toEqual({
+      hasVerificationContext: true,
+      baselineStatus: 'FAIL',
+      consideredCommandCount: 1,
+      failedCommandIds: ['npm-run-build'],
+      blockedCommandIds: [],
+      timedOutCommandIds: [],
+      cancelledCommandIds: [],
+      succeededCommandIds: [],
+    });
+  });
 });
