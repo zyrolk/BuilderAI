@@ -38,7 +38,36 @@ const TOOL_TURN_UI_PHASES = new Set([
   'CORRECTING',
 ]);
 
+const VERIFICATION_CATALOG_COMMAND_IDS = [
+  { id: 'npm-run-build', label: 'Build (npm-run-build)' },
+  { id: 'npm-run-test', label: 'Test (npm-run-test)' },
+  { id: 'npm-run-lint', label: 'Lint (npm-run-lint)' },
+  { id: 'npm-run-typecheck', label: 'Typecheck (npm-run-typecheck)' },
+  { id: 'npm-run-format', label: 'Format check (npm-run-format)' },
+  { id: 'npm-ls-omit-dev-json', label: 'Dependencies (npm-ls-omit-dev-json)' },
+] as const;
+
 const TOOL_PRESETS = [
+  {
+    id: 'inspect_verification_catalog',
+    label: 'Inspect verification catalog (read-only)',
+    needsQuery: false,
+    needsLogicalPath: false,
+    needsGoal: false,
+    needsBrowserApproval: false,
+    needsVerificationCommandId: false,
+    phases: ['UNDERSTANDING', 'PLANNING', 'VERIFYING', 'DIAGNOSING', 'CORRECTING'],
+  },
+  {
+    id: 'run_verification_command',
+    label: 'Run baseline verification command (catalog-only)',
+    needsQuery: false,
+    needsLogicalPath: false,
+    needsGoal: false,
+    needsBrowserApproval: false,
+    needsVerificationCommandId: true,
+    phases: ['UNDERSTANDING', 'VERIFYING', 'DIAGNOSING', 'CORRECTING'],
+  },
   {
     id: 'search_repository',
     label: 'Search repository (read-only)',
@@ -46,6 +75,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: false,
     needsGoal: false,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
   },
   {
@@ -55,6 +85,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: false,
     needsGoal: false,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'AWAITING_GATE2', 'DIAGNOSING', 'CORRECTING'],
   },
   {
@@ -64,6 +95,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: false,
     needsGoal: true,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
   },
   {
@@ -73,6 +105,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: true,
     needsGoal: false,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
   },
   {
@@ -82,6 +115,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: true,
     needsGoal: false,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
   },
   {
@@ -91,6 +125,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: true,
     needsGoal: false,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['UNDERSTANDING', 'PLANNING', 'DIAGNOSING', 'CORRECTING'],
   },
   {
@@ -100,6 +135,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: false,
     needsGoal: false,
     needsBrowserApproval: false,
+    needsVerificationCommandId: false,
     phases: ['VERIFYING', 'DIAGNOSING'],
   },
   {
@@ -109,6 +145,7 @@ const TOOL_PRESETS = [
     needsLogicalPath: false,
     needsGoal: false,
     needsBrowserApproval: true,
+    needsVerificationCommandId: false,
     phases: ['VERIFYING', 'DIAGNOSING'],
   },
 ] as const;
@@ -148,7 +185,12 @@ function createIntentId(): string {
 
 function buildToolPresetArguments(
   preset: (typeof TOOL_PRESETS)[number],
-  input: { readonly query: string; readonly logicalPath: string; readonly goal: string },
+  input: {
+    readonly query: string;
+    readonly logicalPath: string;
+    readonly goal: string;
+    readonly verificationCommandId: string;
+  },
 ): Record<string, string | readonly string[]> {
   if (preset.needsQuery) {
     return { query: input.query };
@@ -160,6 +202,9 @@ function buildToolPresetArguments(
   }
   if (preset.needsGoal) {
     return { goal: input.goal };
+  }
+  if (preset.needsVerificationCommandId) {
+    return { commandId: input.verificationCommandId };
   }
   if (preset.id === 'run_local_browser_observation') {
     return { routeIds: ['home'] };
@@ -175,6 +220,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
   const toolQueryId = useId();
   const toolLogicalPathId = useId();
   const toolGoalId = useId();
+  const toolVerificationCommandSelectId = useId();
   const browserApprovalId = useId();
   const [goal, setGoal] = useState('');
   const [busy, setBusy] = useState(false);
@@ -194,6 +240,8 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
     useState<(typeof TOOL_PRESETS)[number]['id']>('search_repository');
   const [toolQuery, setToolQuery] = useState('');
   const [toolLogicalPath, setToolLogicalPath] = useState('');
+  const [verificationCommandId, setVerificationCommandId] =
+    useState<(typeof VERIFICATION_CATALOG_COMMAND_IDS)[number]['id']>('npm-run-build');
   const [browserObservationApproved, setBrowserObservationApproved] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const toolTurnInFlight = useRef(false);
@@ -416,6 +464,7 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
         query: toolQuery.trim(),
         logicalPath: toolLogicalPath.trim(),
         goal: run.goal.trim(),
+        verificationCommandId: verificationCommandId,
       }),
     };
 
@@ -722,6 +771,29 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                   </>
                 )}
 
+                {selectedPreset.needsVerificationCommandId && (
+                  <>
+                    <label htmlFor={toolVerificationCommandSelectId}>Verification command</label>
+                    <select
+                      id={toolVerificationCommandSelectId}
+                      value={verificationCommandId}
+                      disabled={busy || toolTurnBusy}
+                      onChange={(event) =>
+                        setVerificationCommandId(
+                          event.target
+                            .value as (typeof VERIFICATION_CATALOG_COMMAND_IDS)[number]['id'],
+                        )
+                      }
+                    >
+                      {VERIFICATION_CATALOG_COMMAND_IDS.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+
                 {selectedPreset.needsBrowserApproval && (
                   <label className={styles.approvalCheck} htmlFor={browserApprovalId}>
                     <input
@@ -820,6 +892,14 @@ export function AgentRunPanel({ agentApi: injectedApi, disabled = false }: Agent
                       <strong>{item.toolId}</strong> · {item.status} · {item.phase} ·{' '}
                       {item.summaryDigest.slice(0, 16)}…
                       {item.errorCode !== undefined ? ` · ${item.errorCode}` : ''}
+                      {item.verificationDiagnosticSummary !== undefined &&
+                      item.verificationDiagnosticSummary.length > 0 ? (
+                        <span className={styles.verificationDiagnostic}>
+                          {' '}
+                          · {item.verificationDiagnosticSummary.slice(0, 160)}
+                          {item.verificationDiagnosticSummary.length > 160 ? '…' : ''}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

@@ -763,6 +763,8 @@ describe('AgentRunPanel', () => {
       (option) => option.getAttribute('value'),
     );
     expect(options).toEqual([
+      'inspect_verification_catalog',
+      'run_verification_command',
       'search_repository',
       'inspect_readiness',
       'retrieve_relevant_context',

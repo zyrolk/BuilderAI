@@ -100,6 +100,26 @@ describe('ADR-042 agent-loop unit matrix', () => {
     ).toMatchObject({ ok: false, code: 'FORBIDDEN_TOOL' });
   });
 
+  it('allows VERIFY in UNDERSTANDING and denies VERIFY in PLANNING and EXECUTING (P1-D Slice 1)', () => {
+    const verifyTool = def({
+      toolId: 'run_verification_command',
+      capabilityClass: 'VERIFY',
+      authorizationAction: 'PREPARE',
+      riskLevel: 'HIGH',
+    });
+    expect(assertAutonomousLoopToolAllowed('UNDERSTANDING', verifyTool).ok).toBe(true);
+    expect(assertAutonomousLoopToolAllowed('PLANNING', verifyTool)).toMatchObject({
+      ok: false,
+      code: 'PHASE_CAPABILITY_DENIED',
+    });
+    expect(assertAutonomousLoopToolAllowed('EXECUTING', verifyTool)).toMatchObject({
+      ok: false,
+      code: 'PHASE_TOOLS_FORBIDDEN',
+    });
+    expect(assertAutonomousLoopToolAllowed('VERIFYING', verifyTool).ok).toBe(true);
+    expect(assertAutonomousLoopToolAllowed('DIAGNOSING', verifyTool).ok).toBe(true);
+  });
+
   it('validates intents and rejects shell/push/authority', () => {
     expect(parseProviderStructuredToolIntent({ toolId: 'a', intentId: 'b' }).toolId).toBe('a');
     expect(() => parseProviderStructuredToolIntent(null)).toThrow(AgentLoopError);

@@ -415,7 +415,7 @@ describe('B5 controlled Git composition matrix', { timeout: 120_000 }, () => {
           toolId: 'run_verification_command',
           args: { commandId: 'git' },
         },
-        baseContext({ projectRoot: repo.root, phase: 'PLANNING' }),
+        baseContext({ projectRoot: repo.root, phase: 'UNDERSTANDING' }),
       );
       expect(b4git.errorCode).toBe('UNKNOWN_COMMAND_ID');
 

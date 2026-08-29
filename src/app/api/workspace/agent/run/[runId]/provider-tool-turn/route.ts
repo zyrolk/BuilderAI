@@ -77,7 +77,7 @@ export async function POST(
           b4VerificationCalls: result.budget.b4VerificationCalls,
           browserObservationCalls: result.budget.browserObservationCalls,
         },
-        evidence: result.evidence.map(toBoundedToolEvidenceHttpView),
+        evidence: result.evidence.map((record) => toBoundedToolEvidenceHttpView(record)),
         turn: summarizeTurn(result.turn),
         emission:
           result.providerAssisted === undefined

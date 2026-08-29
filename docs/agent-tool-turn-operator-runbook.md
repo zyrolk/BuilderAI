@@ -3,7 +3,8 @@
 Trusted-local operator guide for **bounded tool turns** on an existing AgentRun. Complements
 `docs/trusted-local-operator-runbook.md` (Gate2 / apply). Does not authorize unattended automation.
 
-**Frozen stack:** B1–B10 / ADR-037–047 + D+B digest observability + P1-C investigate-before-plan UI.
+**Frozen stack:** B1–B10 / ADR-037–049 + D+B digest observability + P1-C investigate-before-plan UI +
+P1-D baseline verification probe (UNDERSTANDING).
 Ops baseline HEAD: `79588be2aeff9918557eb8a28e3f0ba478c83c54` (P1-B A+D benchmark closure). See
 `docs/p1b-b1-b10-production-freeze.md`.
 
@@ -14,8 +15,9 @@ click **Plan**. Use bounded tool turns first to gather read/search/inspect diges
 auto-runs.
 
 1. Enter a goal and click **Start agent run** — phase stays `UNDERSTANDING`.
-2. Optional: run one or more **Investigate — bounded tool turn** presets (B1/B2 read-only tools) or
-   **Run provider-assisted tool turn** (B10). Review **Tool evidence (bounded digests)** only.
+2. Optional: run one or more **Investigate — bounded tool turn** presets (B1/B2 read-only tools,
+   B4 baseline verification — see P1-D below) or **Run provider-assisted tool turn** (B10). Review
+   **Tool evidence (bounded digests)** only.
 3. When ready, click **Plan** — this calls the existing `POST …/plan` route (prepare + pause at
    Gate 2). When operator B1/B2 investigation turns ran in UNDERSTANDING, bounded planning
    projections (ADR-047) are merged server-side into prepare context; the client cannot supply
@@ -23,6 +25,32 @@ auto-runs.
 4. Continue with Gate 2 review and explicit approval as before.
 
 Nothing auto-continues between investigation turns or from investigation into plan.
+
+## Baseline engineering verification (P1-D Slice 1 — optional)
+
+During **UNDERSTANDING**, before the first **Plan**, you may optionally assess current engineering
+health using existing B4 catalog tools:
+
+1. **Inspect verification catalog** — lists allowlisted build/test/lint/typecheck/format command ids
+   available for the workspace (no spawn).
+2. **Run baseline verification command** — runs one catalog id via the hardened
+   `SafeVerificationRunner` (catalog-only; no shell).
+
+Rules:
+
+- Baseline verification is **optional** and occurs only in **UNDERSTANDING** (or later VERIFYING /
+  DIAGNOSING per existing B4 policy).
+- Results are **bounded observable evidence only** — they do **not** authorize planning, Gate 2,
+  or FileApply.
+- Gate 2 explicit approval remains mandatory before any source-file mutation.
+- B4 verification evidence does **not** feed operator planning projection (ADR-047) or prepare
+  context.
+
+Suggested sequence when assessing an existing project before planning a fix:
+
+```
+UNDERSTANDING → inspect catalog → run baseline verify → B1/B2 investigate → Plan → Gate 2 → approve
+```
 
 ## What tool turns are (and are not)
 

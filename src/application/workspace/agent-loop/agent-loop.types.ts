@@ -174,7 +174,7 @@ export class AgentLoopError extends Error {
 export const AUTONOMOUS_LOOP_PHASE_CAPABILITIES: Readonly<
   Record<AgentRunPhase, readonly ToolCapabilityClass[] | null>
 > = {
-  UNDERSTANDING: ['SEARCH', 'READ', 'INSPECT'],
+  UNDERSTANDING: ['SEARCH', 'READ', 'INSPECT', 'VERIFY'],
   PLANNING: ['SEARCH', 'READ', 'INSPECT', 'PLAN'],
   AWAITING_GATE2: ['SEARCH', 'READ', 'INSPECT', 'GIT_READ'],
   EXECUTING: null,

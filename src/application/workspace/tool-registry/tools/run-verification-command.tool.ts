@@ -54,7 +54,7 @@ const DEFINITION: ToolDefinition = {
   supportsCancellation: true,
   evidencePolicy: 'DIGEST',
   auditPolicy: 'DIGEST',
-  allowedPhases: ['PLANNING', 'VERIFYING', 'DIAGNOSING', 'CORRECTING'],
+  allowedPhases: ['UNDERSTANDING', 'VERIFYING', 'DIAGNOSING', 'CORRECTING'],
 };
 
 export function createRunVerificationCommandTool(

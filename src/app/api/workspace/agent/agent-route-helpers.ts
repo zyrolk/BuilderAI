@@ -51,7 +51,12 @@ export function toAgentRunHttpView(run: AgentRun): AgentRunHttpView {
   };
 }
 
-export function toBoundedToolEvidenceHttpView(record: BoundedToolEvidenceRecord): {
+export function toBoundedToolEvidenceHttpView(
+  record: BoundedToolEvidenceRecord,
+  options?: {
+    readonly verificationDiagnosticSummary?: string;
+  },
+): {
   readonly toolId: string;
   readonly intentId: string;
   readonly phase: string;
@@ -59,7 +64,9 @@ export function toBoundedToolEvidenceHttpView(record: BoundedToolEvidenceRecord)
   readonly recordedAt: string;
   readonly summaryDigest: string;
   readonly errorCode?: string;
+  readonly verificationDiagnosticSummary?: string;
 } {
+  const diagnostic = options?.verificationDiagnosticSummary;
   return {
     toolId: record.toolId,
     intentId: record.intentId,
@@ -68,7 +75,54 @@ export function toBoundedToolEvidenceHttpView(record: BoundedToolEvidenceRecord)
     recordedAt: record.recordedAt,
     summaryDigest: record.summaryDigest,
     ...(record.errorCode === undefined ? {} : { errorCode: record.errorCode }),
+    ...(diagnostic === undefined || diagnostic.length === 0
+      ? {}
+      : { verificationDiagnosticSummary: diagnostic }),
   };
+}
+
+const VERIFICATION_DIAGNOSTIC_MAX_CHARS = 1_024 as const;
+
+/** Display-only bounded B4 diagnostic for tool-turn HTTP responses (ADR-049). */
+export function extractBoundedVerificationDiagnostic(structured: unknown): string | undefined {
+  if (structured === null || typeof structured !== 'object' || Array.isArray(structured)) {
+    return undefined;
+  }
+  const record = structured as Record<string, unknown>;
+  const raw = record.diagnosticSummary;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  if (trimmed.length <= VERIFICATION_DIAGNOSTIC_MAX_CHARS) return trimmed;
+  return `${trimmed.slice(0, VERIFICATION_DIAGNOSTIC_MAX_CHARS - 1)}…`;
+}
+
+export function resolveVerificationDiagnosticForTurn(input: {
+  readonly record: BoundedToolEvidenceRecord;
+  readonly turn:
+    | {
+        readonly intentId?: string;
+        readonly toolId?: string;
+        readonly toolResult?: { readonly structured?: unknown };
+        readonly results?: readonly {
+          readonly intentId: string;
+          readonly toolId: string;
+          readonly toolResult?: { readonly structured?: unknown };
+        }[];
+      }
+    | undefined;
+}): string | undefined {
+  if (input.record.toolId !== 'run_verification_command') return undefined;
+  const turn = input.turn;
+  if (turn === undefined) return undefined;
+
+  if (turn.results !== undefined) {
+    const match = turn.results.find((item) => item.intentId === input.record.intentId);
+    return extractBoundedVerificationDiagnostic(match?.toolResult?.structured);
+  }
+
+  if (turn.intentId !== input.record.intentId) return undefined;
+  return extractBoundedVerificationDiagnostic(turn.toolResult?.structured);
 }
 
 export function toGate2PlanningProvenanceHttpView(

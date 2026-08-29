@@ -82,7 +82,7 @@ function baseContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecuti
     runId: 'run-b4',
     projectId: 'builder-ai',
     projectRoot: process.cwd(),
-    phase: 'PLANNING',
+    phase: 'UNDERSTANDING',
     principal: { principalId: 'local-operator', projectId: 'builder-ai' },
     securityProfile: 'TRUSTED_LOCAL',
     securityEvidence: { operatorApproved: true },

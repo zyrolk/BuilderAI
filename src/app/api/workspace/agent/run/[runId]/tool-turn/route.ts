@@ -18,6 +18,7 @@ import {
   readToolTurnIntents,
   toAgentRunHttpView,
   toBoundedToolEvidenceHttpView,
+  resolveVerificationDiagnosticForTurn,
 } from '../../../agent-route-helpers';
 
 export const runtime = 'nodejs';
@@ -79,7 +80,14 @@ export async function POST(
           b4VerificationCalls: result.budget.b4VerificationCalls,
           browserObservationCalls: result.budget.browserObservationCalls,
         },
-        evidence: result.evidence.map(toBoundedToolEvidenceHttpView),
+        evidence: result.evidence.map((record) =>
+          toBoundedToolEvidenceHttpView(record, {
+            verificationDiagnosticSummary: resolveVerificationDiagnosticForTurn({
+              record,
+              turn: result.turn,
+            }),
+          }),
+        ),
         turn: summarizeTurn(result.turn),
       },
       200,

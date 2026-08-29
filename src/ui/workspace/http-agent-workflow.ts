@@ -45,6 +45,8 @@ export interface AgentToolEvidenceItem {
   readonly recordedAt: string;
   readonly summaryDigest: string;
   readonly errorCode?: string;
+  /** Display-only bounded diagnostic from B4 verify tools (ADR-049); not planning authority. */
+  readonly verificationDiagnosticSummary?: string;
 }
 
 export interface AgentToolLoopStatus {

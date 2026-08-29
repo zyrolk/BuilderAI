@@ -43,7 +43,7 @@ export async function GET(
       {
         run: toAgentRunHttpView(run),
         toolLoop: {
-          evidence: tool.evidence.map(toBoundedToolEvidenceHttpView),
+          evidence: tool.evidence.map((record) => toBoundedToolEvidenceHttpView(record)),
           ...(tool.budget === undefined
             ? {}
             : {
