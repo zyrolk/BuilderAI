@@ -24,9 +24,9 @@
     "ci": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run audit:production && npm run build"
   },
   "dependencies": {
-    "@google/genai": "2.15.0",
-    "next": "16.2.12",
-    "openai": "7.2.0",
+    "@google/genai": "2.19.0",
+    "next": "16.3.3",
+    "openai": "7.8.0",
     "parse5": "^8.0.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -51,6 +51,6 @@
     "sharp": "0.35.3"
   },
   "optionalDependencies": {
-    "playwright": "1.55.1"
+    "playwright": "1.62.1"
   }
 }
