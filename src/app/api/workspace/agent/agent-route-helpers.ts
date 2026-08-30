@@ -325,6 +325,11 @@ export function assertNoClientAuthorityFields(body: object): void {
     'timedOutCommandIds',
     'cancelledCommandIds',
     'succeededCommandIds',
+    'structuredFailureDiagnostics',
+    'failureDiagnostics',
+    'boundedFailureDiagnostics',
+    'diagnosticSource',
+    'diagnosticCommandId',
   ] as const;
   for (const key of forbidden) {
     if (Reflect.has(body, key)) {
@@ -359,6 +364,11 @@ export function assertNoToolTurnAuthorityFields(body: object): void {
     'verificationPlanning',
     'baselineStatus',
     'planningProvenance',
+    'structuredFailureDiagnostics',
+    'failureDiagnostics',
+    'boundedFailureDiagnostics',
+    'diagnosticSource',
+    'diagnosticCommandId',
   ] as const;
   for (const key of forbidden) {
     if (Reflect.has(body, key)) {

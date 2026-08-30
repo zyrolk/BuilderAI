@@ -60,6 +60,10 @@ export function buildCorrectionDiagnostic(input: {
       'correction-attempt': input.attempt,
       'failure-category': input.classification.category,
     },
+    ...(input.beginInput.structuredFailureDiagnostics === undefined ||
+    input.beginInput.structuredFailureDiagnostics.length === 0
+      ? {}
+      : { structuredFailureDiagnostics: input.beginInput.structuredFailureDiagnostics }),
   };
 }
 

@@ -23,6 +23,10 @@ import {
   getLocalWorkspaceSecurityConfiguration,
   getLocalCorrectionLoopService,
 } from '../../../../infrastructure/workspace/local-feature-workflow-runtime';
+import {
+  assertNoClientFailureDiagnosticAuthority,
+  CORRECTION_PREPARE_KIND,
+} from '../../../../application/workspace/correction-loop/correction-prepare-input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,6 +35,19 @@ export async function POST(request: Request): Promise<Response> {
   try {
     assertTrustedLocalRequest(request);
     const body = await readBoundedJson(request);
+    if (typeof body === 'object' && body !== null) {
+      assertNoClientFailureDiagnosticAuthority(body);
+      const iterationCandidate = Reflect.get(body, 'iterationFeedback');
+      if (typeof iterationCandidate === 'object' && iterationCandidate !== null) {
+        assertNoClientFailureDiagnosticAuthority(iterationCandidate);
+        if (Reflect.get(iterationCandidate, 'kind') === CORRECTION_PREPARE_KIND) {
+          throw new WorkspaceRuntimeError(
+            'INVALID_REQUEST',
+            'Client-supplied CORRECTION_PREPARE is not accepted; server-derived diagnostics are authoritative.',
+          );
+        }
+      }
+    }
     const security = getLocalWorkspaceSecurityConfiguration();
     assertAuthorizedWorkspaceRequest({
       security,

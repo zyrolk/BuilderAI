@@ -29,6 +29,7 @@ export class PromptSectionBuilder {
     iterationFeedback?: PromptIterationContent,
     preservationContract?: PreservationContractContent,
     verificationPlanningText?: string,
+    untrustedFailureDiagnosticsText?: string,
   ): readonly PromptSection[] {
     const sections = template.sections.flatMap((section) => {
       const built = this.buildSection(
@@ -38,6 +39,7 @@ export class PromptSectionBuilder {
         iterationFeedback,
         preservationContract,
         verificationPlanningText,
+        untrustedFailureDiagnosticsText,
       );
       return built === undefined ? [] : [built];
     });
@@ -51,6 +53,7 @@ export class PromptSectionBuilder {
     iterationFeedback?: PromptIterationContent,
     preservationContract?: PreservationContractContent,
     verificationPlanningText?: string,
+    untrustedFailureDiagnosticsText?: string,
   ): PromptSection | undefined {
     const base = {
       id: templateSection.id,
@@ -115,6 +118,15 @@ export class PromptSectionBuilder {
                   {
                     id: 'preservation-rejection-feedback',
                     text: renderPreservationRejectionText(iterationFeedback.preservationRejection),
+                    source: 'TEMPLATE' as const,
+                  },
+                ]),
+            ...(untrustedFailureDiagnosticsText === undefined
+              ? []
+              : [
+                  {
+                    id: 'untrusted-failure-diagnostics',
+                    text: untrustedFailureDiagnosticsText,
                     source: 'TEMPLATE' as const,
                   },
                 ]),

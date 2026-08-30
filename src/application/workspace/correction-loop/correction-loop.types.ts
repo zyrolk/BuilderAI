@@ -1,6 +1,7 @@
 import type { ResponseMetadata } from '../../../core/response-processor';
 import type { RuntimeBrowserOverallStatus } from '../../../core/runtime-verification';
 import type { VerificationStatus } from '../../../core/verification';
+import type { BoundedFailureDiagnostic } from '../failure-diagnostics';
 
 export const CORRECTION_LOOP_SCHEMA_VERSION = 1 as const;
 
@@ -82,6 +83,11 @@ export interface CorrectionDiagnostic {
   readonly affectedRoutes: readonly string[];
   readonly affectedFiles: readonly string[];
   readonly diagnostics: readonly CorrectionDiagnosticEvidence[];
+  /**
+   * ADR-052 Slice 2 — validated planning DATA only.
+   * Must not feed mutation-scope validators (buildCorrectionAllowedPaths).
+   */
+  readonly structuredFailureDiagnostics?: readonly BoundedFailureDiagnostic[];
   readonly evidenceReferences: readonly string[];
   readonly verificationStatus?: VerificationStatus;
   readonly runtimeStatus?: RuntimeBrowserOverallStatus;
@@ -139,6 +145,8 @@ export interface CorrectionLoopBeginInput {
     }[];
     readonly errors: readonly { readonly code: string; readonly message: string }[];
   };
+  /** Server-derived Slice 2 planning DATA. Must not be accepted from HTTP. */
+  readonly structuredFailureDiagnostics?: readonly BoundedFailureDiagnostic[];
   readonly runtimeBrowserVerificationReport?: {
     readonly status: RuntimeBrowserOverallStatus;
     readonly server: { readonly status: string; readonly policyBlockCode?: string };

@@ -65,6 +65,9 @@ export interface CreateAgentCompositionOptions {
   readonly includeBrowserVerification?: boolean;
   /** After first provider response, emit UPDATE_FILE for correction re-apply. */
   readonly correctionUpdateOnSecondPrepare?: boolean;
+  /** Defaults to BUILD_VALIDATION when failedVerification is true. */
+  readonly failedVerificationStage?: 'BUILD_VALIDATION' | 'TYPECHECK_VALIDATION';
+  readonly failedStageExcerpt?: string;
 }
 
 export function createStubInvestigation(
@@ -111,9 +114,22 @@ export function createAgentCompositionHarness(
     warnings: [],
     errors: [{ code: 'STAGE_FAILED', message: 'Simulated stage failure.' }],
     metadata: {},
+    ...(options.failedStageExcerpt === undefined
+      ? {}
+      : {
+          diagnostic: {
+            commandDescriptorId:
+              options.failedVerificationStage === 'TYPECHECK_VALIDATION'
+                ? 'npm-run-typecheck'
+                : 'npm-run-build',
+            truncated: false,
+            stderrExcerpt: options.failedStageExcerpt,
+          },
+        }),
   };
+  const failedStageName = options.failedVerificationStage ?? 'BUILD_VALIDATION';
   const verification = options.failedVerification
-    ? createPortHarness({ BUILD_VALIDATION: failedStage })
+    ? createPortHarness({ [failedStageName]: failedStage })
     : createPortHarness();
   const runtime = createCompositionRuntime({
     fileSystem,
@@ -138,6 +154,7 @@ export function createAgentCompositionHarness(
     correction,
     ids: { generate: () => options.runId ?? 'agent-run-e2e-1' },
     clock: { now: () => new Date(clockIso) },
+    projectRoot: process.cwd(),
   });
   return {
     fileSystem,

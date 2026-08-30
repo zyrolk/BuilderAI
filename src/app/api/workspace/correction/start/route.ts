@@ -5,6 +5,7 @@ import {
   isCorrectionEligibleCompletion,
   CorrectionLoopCancelledError,
   CorrectionPersistenceError,
+  assertNoClientFailureDiagnosticAuthority,
 } from '../../../../../application/workspace/correction-loop';
 import { buildIterationFeedbackFromCompletion } from '../../../../../application/workspace/iteration-feedback.service';
 import type { WorkspaceCompletion } from '../../../../../application/workspace/workspace-runtime.types';
@@ -23,6 +24,9 @@ export async function POST(request: Request): Promise<Response> {
   try {
     assertTrustedLocalRequest(request);
     const body = await readBoundedJson(request);
+    if (typeof body === 'object' && body !== null) {
+      assertNoClientFailureDiagnosticAuthority(body);
+    }
     const completion = parseCompletion(body);
     if (!isCorrectionEligibleCompletion(completion)) {
       throw new WorkspaceRuntimeError(

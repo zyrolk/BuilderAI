@@ -446,6 +446,12 @@ Every stage receives a defensive context containing the accepted apply evidence 
 All stages run once for accepted input, even after an earlier failure, so the report contains complete
 verification evidence rather than a fail-fast subset.
 
+Post-apply correction planning (ADR-052) may parse already-bounded, redacted stage excerpts into
+`BoundedFailureDiagnostic` records. Those records are server-derived planning DATA only: they do not
+persist raw stdout/stderr, they do not expand FileApply or correction mutation scope, unsupported
+commands (including `npm-run-build`) fall back to existing prose diagnostics, and fresh Gate2
+approval remains mandatory before any correction apply.
+
 Port output is untrusted. Each result is runtime validated for closed structure, Passed or Failed
 status consistency, bounded and unique findings, and bounded scalar metadata, then normalized into
 canonical order. Thrown adapters and invalid adapter results become generic failed stages without

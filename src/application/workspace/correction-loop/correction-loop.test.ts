@@ -170,6 +170,40 @@ describe('P0-9 bounded correction loop', () => {
     expect(JSON.stringify(diagnostic)).not.toMatch(/api[_-]?key/i);
   });
 
+  it('replaces structured failure diagnostics on the next correction begin', async () => {
+    const service = new CorrectionLoopService();
+    const first = {
+      schemaVersion: 1 as const,
+      source: 'TYPESCRIPT' as const,
+      commandId: 'npm-run-typecheck' as const,
+      severity: 'ERROR' as const,
+      code: 'TS1111',
+      relativePath: 'src/a.ts',
+      line: 1,
+      column: 1,
+    };
+    const second = {
+      ...first,
+      code: 'TS2222',
+      relativePath: 'src/b.ts',
+    };
+    await service.beginCorrection({
+      ...failedBuildInput(),
+      structuredFailureDiagnostics: [first],
+    });
+    expect(
+      service.getSession('wf-1')?.currentDiagnostic?.structuredFailureDiagnostics?.[0]?.code,
+    ).toBe('TS1111');
+    await service.beginCorrection({
+      ...failedBuildInput(),
+      structuredFailureDiagnostics: [second],
+    });
+    const session = service.getSession('wf-1');
+    expect(session?.currentDiagnostic?.structuredFailureDiagnostics).toEqual([second]);
+    expect(JSON.stringify(session?.currentDiagnostic)).not.toContain('TS1111');
+    expect(JSON.stringify(session?.currentDiagnostic)).not.toContain('src/a.ts');
+  });
+
   it('detects identical change plans and repeated failures', () => {
     const plan = samplePlan();
     const digest = digestChangePlan(plan);

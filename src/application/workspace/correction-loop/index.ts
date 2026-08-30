@@ -7,3 +7,6 @@ export * from './correction-loop-detection';
 export * from './correction-loop-transitions';
 export * from './correction-loop.service';
 export * from './correction-request-builder';
+export * from './extract-correction-failure-diagnostics';
+export * from './correction-prepare-input';
+export * from './serialize-untrusted-failure-diagnostics';

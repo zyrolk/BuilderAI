@@ -78,6 +78,11 @@ import {
   isAgentOperatingPlanPrepareInput,
   unwrapPlanningInner,
 } from './agent-operating/verification-planning-prepare-input';
+import {
+  isCorrectionPrepareInput,
+  sanitizeStructuredFailureDiagnostics,
+} from './correction-loop/correction-prepare-input';
+import { serializeUntrustedFailureDiagnostics } from './correction-loop/serialize-untrusted-failure-diagnostics';
 import type { VerificationPlanningProjection } from './agent-operating/verification-planning-projection';
 import type { ProjectMemoryService } from './project-memory/project-memory.service';
 import {
@@ -186,13 +191,26 @@ export class WorkspaceRuntimeService {
     const planPrepare = isAgentOperatingPlanPrepareInput(iterationFeedbackInput)
       ? iterationFeedbackInput
       : undefined;
+    const correctionPrepare = isCorrectionPrepareInput(iterationFeedbackInput)
+      ? iterationFeedbackInput
+      : undefined;
     const verificationPlanningContext = planPrepare?.verificationPlanning;
+    const untrustedFailureDiagnosticsText =
+      correctionPrepare === undefined
+        ? undefined
+        : serializeUntrustedFailureDiagnostics(
+            sanitizeStructuredFailureDiagnostics(correctionPrepare.structuredFailureDiagnostics),
+          );
     const planningInner =
       planPrepare !== undefined
         ? unwrapPlanningInner(planPrepare.planning)
         : { merge: undefined, handoff: undefined };
     const effectivePlanningInput =
-      planPrepare !== undefined ? (planPrepare.planning ?? undefined) : iterationFeedbackInput;
+      planPrepare !== undefined
+        ? (planPrepare.planning ?? undefined)
+        : correctionPrepare !== undefined
+          ? undefined
+          : iterationFeedbackInput;
 
     const operatorPlanningMerge =
       planningInner.merge !== undefined
@@ -214,10 +232,15 @@ export class WorkspaceRuntimeService {
       investigationHandoff === undefined &&
       operatorPlanningMerge === undefined &&
       planPrepare === undefined &&
-      iterationFeedbackInput !== undefined
-        ? normalizeIterationFeedback(iterationFeedbackInput, {
-            priorRequestSummary: readOptionalPriorSummary(iterationFeedbackInput),
-          })
+      (correctionPrepare !== undefined || iterationFeedbackInput !== undefined)
+        ? normalizeIterationFeedback(
+            correctionPrepare?.iterationFeedback ?? iterationFeedbackInput,
+            {
+              priorRequestSummary: readOptionalPriorSummary(
+                correctionPrepare?.iterationFeedback ?? iterationFeedbackInput,
+              ),
+            },
+          )
         : undefined;
     const iterationPathHints = this.prepareConfidentiality.filterPaths(
       investigationHandoff !== undefined
@@ -333,6 +356,10 @@ export class WorkspaceRuntimeService {
                   ? (normalizedFeedback as PromptIterationContent | undefined)
                   : externalPreparePlan.iterationFeedback,
               ...(verificationPlanningContext === undefined ? {} : { verificationPlanningContext }),
+              ...(untrustedFailureDiagnosticsText === undefined ||
+              untrustedFailureDiagnosticsText.length === 0
+                ? {}
+                : { untrustedFailureDiagnosticsText }),
               ...(externalPreparePlan === undefined
                 ? {}
                 : {
@@ -1154,6 +1181,7 @@ export class WorkspaceRuntimeService {
     readonly metadata: Record<string, string>;
     readonly iterationFeedback?: PromptIterationContent;
     readonly verificationPlanningContext?: VerificationPlanningProjection;
+    readonly untrustedFailureDiagnosticsText?: string;
     readonly sourceContextPolicy?: SourceContextPolicy;
     readonly contextBudget?: ExternalTargetPrepareContextBudget;
     readonly memoryContextCharacters?: number;
@@ -1213,6 +1241,10 @@ export class WorkspaceRuntimeService {
         ...(input.verificationPlanningContext === undefined
           ? {}
           : { verificationPlanningContext: input.verificationPlanningContext }),
+        ...(input.untrustedFailureDiagnosticsText === undefined ||
+        input.untrustedFailureDiagnosticsText.length === 0
+          ? {}
+          : { untrustedFailureDiagnosticsText: input.untrustedFailureDiagnosticsText }),
         ...(scopeResolution.preservationContract === undefined
           ? {}
           : { preservationContract: scopeResolution.preservationContract }),

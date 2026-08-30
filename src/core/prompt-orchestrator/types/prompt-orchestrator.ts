@@ -281,6 +281,11 @@ export interface PromptBuildInput {
     readonly cancelledCommandIds: readonly string[];
     readonly succeededCommandIds: readonly string[];
   };
+  /**
+   * ADR-052 Slice 2: pre-serialized UNTRUSTED DIAGNOSTIC DATA for the ITERATION section.
+   * Must not reuse verificationPlanningContext / SAFETY.
+   */
+  readonly untrustedFailureDiagnosticsText?: string;
 }
 
 export type PromptValidationCode =

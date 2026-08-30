@@ -415,6 +415,7 @@ export class CorrectionLoopService {
       readonly priorRequestSummary?: string;
       readonly investigationEvidencePaths?: readonly string[];
       readonly explicitlyAuthorizedPaths?: readonly string[];
+      readonly structuredFailureDiagnostics?: CorrectionLoopBeginInput['structuredFailureDiagnostics'];
     } = {},
     options: { readonly cancellation?: ExecutionCancellationToken } = {},
   ): Promise<CorrectionLoopBeginResult> {

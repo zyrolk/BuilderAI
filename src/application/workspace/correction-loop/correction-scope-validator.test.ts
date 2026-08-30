@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ProjectChangePlan } from '../../../core/change-planner';
 import { CHANGE_PLAN, CORRECTED_CHANGE_PLAN } from '../../../ui/workspace/test/workspace.fixture';
+import { BOUNDED_FAILURE_DIAGNOSTIC_SCHEMA_VERSION } from '../failure-diagnostics';
 import { buildCorrectionDiagnostic } from './correction-diagnostic.service';
 import { classifyCorrectionFailure } from './correction-failure-classifier';
 import type { CorrectionLoopBeginInput } from './correction-loop.types';
@@ -162,5 +163,40 @@ describe('correction ChangePlan scope validator', () => {
       explicitlyAuthorizedPaths: ['src/example-corrected.ts'],
     });
     expect(result.ok).toBe(true);
+  });
+
+  it('does not expand mutation scope from structuredFailureDiagnostics relativePath', () => {
+    const diagnostic = {
+      ...diagnosticFor('src/example.ts'),
+      structuredFailureDiagnostics: [
+        {
+          schemaVersion: BOUNDED_FAILURE_DIAGNOSTIC_SCHEMA_VERSION,
+          source: 'TYPESCRIPT' as const,
+          commandId: 'npm-run-typecheck' as const,
+          severity: 'ERROR' as const,
+          relativePath: 'src/unrelated.ts',
+          line: 1,
+          column: 1,
+          code: 'TS2322',
+        },
+      ],
+    };
+    const plan: ProjectChangePlan = {
+      ...CHANGE_PLAN,
+      changeSet: {
+        operations: [
+          {
+            ...CHANGE_PLAN.changeSet.operations[0]!,
+            logicalPath: 'src/unrelated.ts',
+            operationId: 'op-update-unrelated-from-diagnostic',
+          },
+        ],
+      },
+    };
+    const result = validateCorrectionChangePlanScope({ diagnostic, changePlan: plan });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.rejectedPaths).toContain('src/unrelated.ts');
+    }
   });
 });

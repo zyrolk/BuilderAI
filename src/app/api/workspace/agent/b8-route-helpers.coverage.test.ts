@@ -36,6 +36,9 @@ describe('B8 agent-route-helpers coverage', () => {
       }),
     ).toThrow(WorkspaceRuntimeError);
     expect(() => assertNoToolTurnAuthorityFields({ shell: true })).toThrow(WorkspaceRuntimeError);
+    expect(() => assertNoToolTurnAuthorityFields({ structuredFailureDiagnostics: [] })).toThrow(
+      WorkspaceRuntimeError,
+    );
     expect(() => assertNoToolTurnAuthorityFields({ verificationEvidence: {} })).toThrow(
       WorkspaceRuntimeError,
     );

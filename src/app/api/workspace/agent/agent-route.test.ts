@@ -240,6 +240,17 @@ describe('Agent Operating HTTP API', () => {
     expect(plan).not.toHaveBeenCalled();
   });
 
+  it('rejects client-supplied structuredFailureDiagnostics on plan', async () => {
+    const response = await postJson(
+      '/api/workspace/agent/run/run-1/plan',
+      { structuredFailureDiagnostics: [{ relativePath: 'src/evil.ts' }] },
+      () => import('./run/[runId]/plan/route'),
+      { params: Promise.resolve({ runId: 'run-1' }) },
+    );
+    expect(response.status).toBe(400);
+    expect(plan).not.toHaveBeenCalled();
+  });
+
   it('rejects client-injected ChangePlan on plan', async () => {
     const response = await postJson(
       '/api/workspace/agent/run/run-1/plan',

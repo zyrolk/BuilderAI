@@ -18,6 +18,10 @@ import type {
 import type { WorkspaceRequestSecurityEvidence } from '../workspace-authorization.types';
 import type { WorkspaceCompletion } from '../workspace-runtime.types';
 import { isCorrectionEligibleCompletion } from '../correction-loop/correction-failure-classifier';
+import {
+  buildCorrectionPrepareInput,
+  extractCorrectionFailureDiagnostics,
+} from '../correction-loop';
 import { buildIterationFeedbackFromCompletion } from '../iteration-feedback.service';
 import { assembleExplainArtifact } from './explain-artifact.assembler';
 import type { ExplainArtifact } from './explain-artifact.types';
@@ -605,9 +609,18 @@ export class AgentOperatingService {
 
     const iterationFeedback = buildIterationFeedbackFromCompletion(prior.completion);
     const correctionPathHints = extractCorrectionPlanningPathHints(iterationFeedback);
+    const structuredFailureDiagnostics =
+      session.currentDiagnostic?.structuredFailureDiagnostics ?? [];
+    const prepareInput =
+      structuredFailureDiagnostics.length === 0
+        ? iterationFeedback
+        : buildCorrectionPrepareInput({
+            iterationFeedback,
+            structuredFailureDiagnostics,
+          });
     const preparation = await this.dependencies.runtime.prepare(
       session.correctionRequest,
-      iterationFeedback,
+      prepareInput,
       options.cancellation,
     );
 
@@ -687,10 +700,19 @@ export class AgentOperatingService {
       );
     }
 
+    const structuredFailureDiagnostics =
+      this.dependencies.projectRoot === undefined || completion.verificationReport === undefined
+        ? []
+        : extractCorrectionFailureDiagnostics({
+            verificationReport: completion.verificationReport,
+            projectRoot: this.dependencies.projectRoot,
+          });
+
     const began = await this.dependencies.correction.beginFromCompletion(workflowId, completion, {
       originalTaskSummary: run.goal,
       sourcePreparationId: run.references.preparationId,
       priorRequestSummary: run.goal,
+      ...(structuredFailureDiagnostics.length === 0 ? {} : { structuredFailureDiagnostics }),
     });
 
     run = await this.dependencies.agentRuns.updateReferences(runId, {

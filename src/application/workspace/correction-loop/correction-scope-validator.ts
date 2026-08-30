@@ -70,6 +70,8 @@ export function buildCorrectionAllowedPaths(input: CorrectionScopeValidationInpu
       allowed.add(normalizePath(evidence.path));
     }
   }
+  // ADR-052: structuredFailureDiagnostics[].relativePath is planning DATA only
+  // and must not expand correction mutation scope.
 
   const anchors = [...allowed];
   for (const anchor of anchors) {

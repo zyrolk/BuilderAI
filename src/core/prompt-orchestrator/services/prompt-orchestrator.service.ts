@@ -81,6 +81,11 @@ export class PromptOrchestratorService {
       input.verificationPlanningContext === undefined
         ? undefined
         : serializeVerificationPlanningContext(input.verificationPlanningContext);
+    const untrustedFailureDiagnosticsText =
+      input.untrustedFailureDiagnosticsText !== undefined &&
+      input.untrustedFailureDiagnosticsText.trim().length > 0
+        ? input.untrustedFailureDiagnosticsText
+        : undefined;
     const sections = this.sectionBuilder.build(
       template,
       input.context,
@@ -88,6 +93,7 @@ export class PromptOrchestratorService {
       input.iterationFeedback,
       input.preservationContract,
       verificationPlanningText,
+      untrustedFailureDiagnosticsText,
     );
     const draft: PromptPackageDraft = {
       schemaVersion: 1,
